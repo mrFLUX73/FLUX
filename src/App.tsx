@@ -71,17 +71,6 @@ const initialEntries: MealEntry[] = [
 
 const macroTargets = { protein: 110, fat: 70, carbs: 230 };
 
-function FluxMark({ className = '' }: { className?: string }) {
-  return (
-    <svg aria-hidden="true" className={className} viewBox="0 0 48 48" fill="none">
-      <path d="M23.7 21.2C17.2 20.6 11 17.1 7.5 11.5C5.9 8.9 7.2 5.4 10.1 4.4C16.9 2 24.4 4.3 29 9.8C32.7 14.2 33.6 19.9 31.4 24.4" fill="currentColor" />
-      <path d="M26.9 23.6C30.7 18.2 36.8 14.5 43.4 14.2C46.4 14 48.8 16.8 48 19.8C46.1 26.8 40.1 31.9 33 33C27.3 33.8 21.9 31.7 19.1 27.7" fill="currentColor" transform="translate(-1 -1)" />
-      <path d="M22.8 27.2C25.6 33.2 25.8 40.5 22.5 46.3C21 48.9 17.3 49.5 15.2 47.3C10.2 42.1 8.7 34.3 11.4 27.7C13.6 22.4 18.1 18.8 23 18.6" fill="currentColor" transform="translate(1 -1)" />
-      <circle cx="24" cy="24" r="5.5" fill="var(--flux-bg)" />
-    </svg>
-  );
-}
-
 function ProductIcon({ type }: { type: Product['icon'] }) {
   const Icon = type === 'wheat' ? Wheat : type === 'banana' ? Banana : type === 'coffee' ? Coffee : Utensils;
   return <Icon aria-hidden="true" />;
@@ -483,7 +472,7 @@ export default function App() {
       <main className="flux-stage">
         <section className="flux-app-shell" aria-label="Приложение FLUX">
           <div className="flux-base-app" aria-hidden={workoutOpen || undefined} inert={workoutOpen || undefined}>
-            <header className="flux-topbar"><button className="flux-brand" type="button" onClick={() => setTab('today')} aria-label="FLUX — главная"><FluxMark className="flux-logo" /><span>FLUX</span></button><Button className="flux-avatar" variant="secondary" size="icon" onClick={() => toast.add({ title: 'Профиль появится следующим', description: 'Настройки из онбординга подключим к Supabase.', type: 'info' })} aria-label="Открыть профиль">АК</Button></header>
+            <header className="flux-topbar"><button className="flux-brand" type="button" onClick={() => setTab('today')} aria-label="FLUX — главная"><img className="flux-brand-lockup" src={`${import.meta.env.BASE_URL}brand/flux-lockup.png`} alt="" draggable="false" /></button><Button className="flux-avatar" variant="secondary" size="icon" onClick={() => toast.add({ title: 'Профиль появится следующим', description: 'Настройки из онбординга подключим к Supabase.', type: 'info' })} aria-label="Открыть профиль">АК</Button></header>
             <div className="flux-content" id="top">
               {tab === 'today' && <TodayScreen totals={totals} target={calorieTarget} onAdd={(product) => addProduct(product)} onOpenFood={() => setQuickAddOpen(true)} onWorkout={() => setWorkoutOpen(true)} />}
               {tab === 'food' && <FoodScreen entries={entries} target={calorieTarget} onAdd={() => setQuickAddOpen(true)} />}
