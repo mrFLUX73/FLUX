@@ -1,9 +1,32 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
+
 import { fallbackProducts, productFromRow } from './catalog';
 import type { MealEntry, MealKind, Product, ProductUnit } from './types';
-import { getSupabaseClient, isAnonymousAuthEnabled, isSupabaseConfigured } from '../../lib/supabase';
+import {
+  getSupabaseClientForUser,
+  isSupabaseConfigured,
+  SupabaseAuthScopeError,
+} from '../../lib/supabase';
 
-const STORAGE_KEY = 'flux.nutrition-diary.v2';
-const PENDING_DELETIONS_KEY = 'flux.nutrition-pending-deletions.v1';
+const LEGACY_STORAGE_KEY = 'flux.nutrition-diary.v2';
+const STORAGE_KEY_PREFIX = 'flux.nutrition-diary.v3';
+const PENDING_DELETIONS_KEY_PREFIX = 'flux.nutrition-pending-deletions.v2';
+const GUEST_CLAIM_KEY = 'flux.nutrition-guest-claim.v1';
+
+export type NutritionStorageScope =
+  | { kind: 'guest' }
+  | { kind: 'user'; userId: string };
+
+export const guestNutritionScope: NutritionStorageScope = { kind: 'guest' };
+
+export function nutritionScopeForUser(userId: string): NutritionStorageScope {
+  return { kind: 'user', userId };
+}
+
+export function isSameNutritionScope(left: NutritionStorageScope, right: NutritionStorageScope) {
+  if (left.kind === 'guest' || right.kind === 'guest') return left.kind === right.kind;
+  return left.userId === right.userId;
+}
 
 export type NutritionMode = 'local' | 'supabase';
 
@@ -12,20 +35,46 @@ export type NutritionBootstrap = {
   products: Product[];
   entries: MealEntry[];
   message?: string;
-  requiresCaptcha?: boolean;
+  requiresAuth?: boolean;
 };
 
-class CaptchaRequiredError extends Error {
-  constructor() {
-    super('Нужна защитная проверка для подключения синхронизации');
-    this.name = 'CaptchaRequiredError';
-  }
+type PendingDeletion = Pick<MealEntry, 'entryId' | 'mealId'>;
+
+type DiaryEnvelope = {
+  version: 3;
+  ownerUserId: string | null;
+  entries: MealEntry[];
+  pendingAddEntryIds: string[];
+};
+
+type PendingDeletionsEnvelope = {
+  version: 2;
+  ownerUserId: string;
+  entries: PendingDeletion[];
+};
+
+type GuestClaimMarker = {
+  version: 1;
+  status: 'copying' | 'done';
+  ownerUserId: string;
+  sourceEntryIds: string[];
+};
+
+function scopeToken(scope: NutritionStorageScope) {
+  return scope.kind === 'user' ? `user:${scope.userId}` : 'guest';
 }
 
-let userPromise: Promise<string> | null = null;
-let bootstrapPromise: Promise<NutritionBootstrap> | null = null;
+function storageKey(scope: NutritionStorageScope) {
+  return `${STORAGE_KEY_PREFIX}:${scopeToken(scope)}`;
+}
 
-type PendingDeletion = Pick<MealEntry, 'entryId' | 'mealId'>;
+function pendingDeletionsKey(scope: Extract<NutritionStorageScope, { kind: 'user' }>) {
+  return `${PENDING_DELETIONS_KEY_PREFIX}:user:${scope.userId}`;
+}
+
+function ownerUserId(scope: NutritionStorageScope) {
+  return scope.kind === 'user' ? scope.userId : null;
+}
 
 function isSameLocalDay(isoDate: string, date = new Date()) {
   const candidate = new Date(isoDate);
@@ -35,53 +84,193 @@ function isSameLocalDay(isoDate: string, date = new Date()) {
     && candidate.getDate() === date.getDate();
 }
 
-function readAllLocalEntries(): MealEntry[] {
+function validMealEntries(value: unknown): MealEntry[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is MealEntry => {
+    if (!entry || typeof entry !== 'object') return false;
+    const candidate = entry as Partial<MealEntry>;
+    return typeof candidate.entryId === 'string'
+      && typeof candidate.mealId === 'string'
+      && typeof candidate.eatenAt === 'string'
+      && typeof candidate.name === 'string';
+  });
+}
+
+function emptyDiary(scope: NutritionStorageScope, entries: MealEntry[] = []): DiaryEnvelope {
+  return {
+    version: 3,
+    ownerUserId: ownerUserId(scope),
+    entries,
+    pendingAddEntryIds: [],
+  };
+}
+
+function readLocalDiary(scope: NutritionStorageScope): DiaryEnvelope {
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? '[]') as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((entry): entry is MealEntry => {
-      if (!entry || typeof entry !== 'object') return false;
-      const value = entry as Partial<MealEntry>;
-      return typeof value.entryId === 'string'
-        && typeof value.mealId === 'string'
-        && typeof value.eatenAt === 'string'
-        && typeof value.name === 'string';
-    });
+    const raw = window.localStorage.getItem(storageKey(scope));
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<DiaryEnvelope>;
+      if (parsed.version !== 3 || parsed.ownerUserId !== ownerUserId(scope)) return emptyDiary(scope);
+      const entries = validMealEntries(parsed.entries);
+      const entryIds = new Set(entries.map((entry) => entry.entryId));
+      const pendingAddEntryIds = Array.isArray(parsed.pendingAddEntryIds)
+        ? parsed.pendingAddEntryIds.filter((entryId): entryId is string => typeof entryId === 'string' && entryIds.has(entryId))
+        : [];
+      return { ...emptyDiary(scope, entries), pendingAddEntryIds };
+    }
+
+    // Old entries had no owner. Keep them available only to the guest scope;
+    // they must never be attached silently to whichever account signs in next.
+    if (scope.kind === 'guest') {
+      const legacyRaw = window.localStorage.getItem(LEGACY_STORAGE_KEY);
+      if (!legacyRaw) return emptyDiary(scope);
+      const legacyEntries = validMealEntries(JSON.parse(legacyRaw) as unknown);
+      const diary = emptyDiary(scope, legacyEntries);
+      try {
+        persistLocalDiary(diary);
+      } catch {
+        // The legacy value remains untouched and can be retried later.
+      }
+      return diary;
+    }
+    return emptyDiary(scope);
   } catch {
-    return [];
+    return emptyDiary(scope);
   }
 }
 
-export function loadLocalEntriesForToday() {
-  return readAllLocalEntries().filter((entry) => isSameLocalDay(entry.eatenAt));
+function persistLocalDiary(diary: DiaryEnvelope) {
+  const scope = diary.ownerUserId ? nutritionScopeForUser(diary.ownerUserId) : guestNutritionScope;
+  window.localStorage.setItem(storageKey(scope), JSON.stringify(diary));
 }
 
-export function persistLocalEntriesForToday(entries: MealEntry[]) {
+function readAllLocalEntries(scope: NutritionStorageScope) {
+  return readLocalDiary(scope).entries;
+}
+
+export function loadLocalEntriesForToday(scope: NutritionStorageScope) {
+  return readAllLocalEntries(scope).filter((entry) => isSameLocalDay(entry.eatenAt));
+}
+
+export function countGuestDiaryEntries() {
+  return readLocalDiary(guestNutritionScope).entries.length;
+}
+
+export function persistLocalEntriesForToday(scope: NutritionStorageScope, entries: MealEntry[]) {
   try {
-    const olderEntries = readAllLocalEntries().filter((entry) => !isSameLocalDay(entry.eatenAt));
+    const current = readLocalDiary(scope);
+    const olderEntries = current.entries.filter((entry) => !isSameLocalDay(entry.eatenAt));
     const todayEntries = entries.filter((entry) => isSameLocalDay(entry.eatenAt));
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify([...olderEntries, ...todayEntries]));
+    const nextEntries = [...olderEntries, ...todayEntries];
+    const nextEntryIds = new Set(nextEntries.map((entry) => entry.entryId));
+    persistLocalDiary({
+      ...current,
+      entries: nextEntries,
+      pendingAddEntryIds: current.pendingAddEntryIds.filter((entryId) => nextEntryIds.has(entryId)),
+    });
     return true;
   } catch {
     return false;
   }
 }
 
-export function removeLocalEntryFromStorage(entryId: string) {
+export function removeLocalEntryFromStorage(scope: NutritionStorageScope, entryId: string) {
   try {
-    const remaining = readAllLocalEntries().filter((entry) => entry.entryId !== entryId);
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(remaining));
+    const current = readLocalDiary(scope);
+    persistLocalDiary({
+      ...current,
+      entries: current.entries.filter((entry) => entry.entryId !== entryId),
+      pendingAddEntryIds: current.pendingAddEntryIds.filter((candidate) => candidate !== entryId),
+    });
     return true;
   } catch {
     return false;
   }
 }
 
-function readPendingDeletions(): PendingDeletion[] {
+export function persistNewLocalEntry(scope: NutritionStorageScope, entry: MealEntry) {
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(PENDING_DELETIONS_KEY) ?? '[]') as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((entry): entry is PendingDeletion => {
+    const current = readLocalDiary(scope);
+    const entries = current.entries.some((candidate) => candidate.entryId === entry.entryId)
+      ? current.entries
+      : [...current.entries, entry];
+    const pendingAddEntryIds = scope.kind === 'user' && !current.pendingAddEntryIds.includes(entry.entryId)
+      ? [...current.pendingAddEntryIds, entry.entryId]
+      : current.pendingAddEntryIds;
+    persistLocalDiary({ ...current, entries, pendingAddEntryIds });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function claimGuestDiaryForNewUser(userId: string) {
+  await getSupabaseClientForUser(userId);
+
+  const copy = () => {
+    const guestDiary = readLocalDiary(guestNutritionScope);
+    if (!guestDiary.entries.length) return 0;
+
+    const sourceEntryIds = guestDiary.entries.map((entry) => entry.entryId).sort();
+    let previousMarker: GuestClaimMarker | null = null;
+    try {
+      previousMarker = JSON.parse(window.localStorage.getItem(GUEST_CLAIM_KEY) ?? 'null') as GuestClaimMarker | null;
+    } catch {
+      previousMarker = null;
+    }
+
+    if (previousMarker?.version === 1
+      && previousMarker.status === 'copying'
+      && previousMarker.ownerUserId !== userId) {
+      throw new Error('Этот гостевой дневник уже переносится в другой профиль');
+    }
+
+    const marker: GuestClaimMarker = {
+      version: 1,
+      status: 'copying',
+      ownerUserId: userId,
+      sourceEntryIds,
+    };
+    window.localStorage.setItem(GUEST_CLAIM_KEY, JSON.stringify(marker));
+
+    const targetScope = nutritionScopeForUser(userId);
+    const targetDiary = readLocalDiary(targetScope);
+    const merged = new Map(targetDiary.entries.map((entry) => [entry.entryId, entry]));
+    for (const entry of guestDiary.entries) {
+      if (!merged.has(entry.entryId)) merged.set(entry.entryId, entry);
+    }
+    const pendingAddEntryIds = [...new Set([...targetDiary.pendingAddEntryIds, ...sourceEntryIds])];
+    persistLocalDiary({ ...targetDiary, entries: [...merged.values()], pendingAddEntryIds });
+
+    const verified = readLocalDiary(targetScope);
+    const verifiedIds = new Set(verified.entries.map((entry) => entry.entryId));
+    if (!sourceEntryIds.every((entryId) => verifiedIds.has(entryId))) {
+      throw new Error('Не удалось проверить перенос гостевого дневника');
+    }
+
+    window.localStorage.removeItem(storageKey(guestNutritionScope));
+    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+    window.localStorage.setItem(GUEST_CLAIM_KEY, JSON.stringify({ ...marker, status: 'done' }));
+    return guestDiary.entries.length;
+  };
+
+  if (navigator.locks) return navigator.locks.request(GUEST_CLAIM_KEY, copy);
+  return copy();
+}
+
+function markLocalAdditionSynced(scope: Extract<NutritionStorageScope, { kind: 'user' }>, entryId: string) {
+  const current = readLocalDiary(scope);
+  persistLocalDiary({
+    ...current,
+    pendingAddEntryIds: current.pendingAddEntryIds.filter((candidate) => candidate !== entryId),
+  });
+}
+
+function readPendingDeletions(scope: Extract<NutritionStorageScope, { kind: 'user' }>): PendingDeletion[] {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(pendingDeletionsKey(scope)) ?? '{}') as Partial<PendingDeletionsEnvelope>;
+    if (parsed.version !== 2 || parsed.ownerUserId !== scope.userId || !Array.isArray(parsed.entries)) return [];
+    return parsed.entries.filter((entry): entry is PendingDeletion => {
       if (!entry || typeof entry !== 'object') return false;
       const value = entry as Partial<PendingDeletion>;
       return typeof value.entryId === 'string' && typeof value.mealId === 'string';
@@ -91,15 +280,17 @@ function readPendingDeletions(): PendingDeletion[] {
   }
 }
 
-function persistPendingDeletions(entries: PendingDeletion[]) {
-  window.localStorage.setItem(PENDING_DELETIONS_KEY, JSON.stringify(entries));
+function persistPendingDeletions(scope: Extract<NutritionStorageScope, { kind: 'user' }>, entries: PendingDeletion[]) {
+  const envelope: PendingDeletionsEnvelope = { version: 2, ownerUserId: scope.userId, entries };
+  window.localStorage.setItem(pendingDeletionsKey(scope), JSON.stringify(envelope));
 }
 
-export function queueRemoteMealDeletion(entry: MealEntry) {
+export function queueRemoteMealDeletion(scope: NutritionStorageScope, entry: MealEntry) {
+  if (scope.kind !== 'user') return false;
   try {
-    const pending = readPendingDeletions();
+    const pending = readPendingDeletions(scope);
     if (!pending.some((candidate) => candidate.entryId === entry.entryId)) {
-      persistPendingDeletions([...pending, { entryId: entry.entryId, mealId: entry.mealId }]);
+      persistPendingDeletions(scope, [...pending, { entryId: entry.entryId, mealId: entry.mealId }]);
     }
     return true;
   } catch {
@@ -131,41 +322,7 @@ function formatTime(isoDate: string) {
   return new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit' }).format(new Date(isoDate));
 }
 
-async function ensureUserId(captchaToken?: string) {
-  const client = await getSupabaseClient();
-  if (!client) throw new Error('Supabase не настроен');
-  if (!userPromise) {
-    userPromise = (async () => {
-      const { data: sessionData, error: sessionError } = await client.auth.getSession();
-      if (sessionError) throw sessionError;
-      if (sessionData.session?.user.id) return sessionData.session.user.id;
-
-      if (!isAnonymousAuthEnabled) {
-        throw new Error('Анонимная синхронизация ещё не включена');
-      }
-
-      if (!captchaToken) throw new CaptchaRequiredError();
-
-      const { data, error } = await client.auth.signInAnonymously({
-        options: { captchaToken, data: { display_name: 'Данил' } },
-      });
-      if (error) throw error;
-      if (!data.user?.id) throw new Error('Supabase не вернул пользователя');
-      return data.user.id;
-    })();
-  }
-
-  const pendingUser = userPromise;
-  try {
-    return await pendingUser;
-  } finally {
-    if (userPromise === pendingUser) userPromise = null;
-  }
-}
-
-async function loadRemoteProducts() {
-  const client = await getSupabaseClient();
-  if (!client) return fallbackProducts;
+async function loadRemoteProducts(client: SupabaseClient) {
   const { data, error } = await client
     .from('products')
     .select('id,name,brand,category,serving_size_g,serving_unit,default_serving_quantity,energy_kcal_per_100g,protein_g_per_100g,carbohydrates_g_per_100g,fat_g_per_100g')
@@ -174,9 +331,7 @@ async function loadRemoteProducts() {
   return data.map(productFromRow);
 }
 
-async function loadRemoteEntries(userId: string, products: Product[]) {
-  const client = await getSupabaseClient();
-  if (!client) return [];
+async function loadRemoteEntries(client: SupabaseClient, userId: string, products: Product[]) {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
   const end = new Date(start);
@@ -229,78 +384,27 @@ async function loadRemoteEntries(userId: string, products: Product[]) {
   });
 }
 
-async function deleteRemoteEntryById(entryId: string) {
-  await ensureUserId();
-  const client = await getSupabaseClient();
-  if (!client) return false;
-  const { error } = await client.rpc('delete_meal_item', { p_item_id: entryId });
+async function deleteRemoteEntryById(client: SupabaseClient, entryId: string) {
+  const { data, error } = await client.rpc('delete_meal_item', { p_item_id: entryId });
   if (error) throw error;
-  return true;
+  return data === true;
 }
 
-async function flushPendingDeletions() {
-  const pending = readPendingDeletions();
+async function flushPendingDeletions(client: SupabaseClient, scope: Extract<NutritionStorageScope, { kind: 'user' }>) {
+  const pending = readPendingDeletions(scope);
   for (const entry of pending) {
-    await deleteRemoteEntryById(entry.entryId);
-    persistPendingDeletions(readPendingDeletions().filter((candidate) => candidate.entryId !== entry.entryId));
+    // false is an idempotent success: this user's row is already absent.
+    await deleteRemoteEntryById(client, entry.entryId);
+    persistPendingDeletions(scope, readPendingDeletions(scope).filter((candidate) => candidate.entryId !== entry.entryId));
   }
 }
 
-export function bootstrapNutrition(localEntries: MealEntry[], forceRefresh = false, captchaToken?: string): Promise<NutritionBootstrap> {
-  if (!isSupabaseConfigured) {
-    return Promise.resolve({ mode: 'local', products: fallbackProducts, entries: localEntries });
-  }
-
-  if (forceRefresh) bootstrapPromise = null;
-
-  if (!bootstrapPromise) {
-    bootstrapPromise = (async () => {
-      const pendingEntryIds = new Set(readPendingDeletions().map((entry) => entry.entryId));
-      const activeLocalEntries = localEntries.filter((entry) => !pendingEntryIds.has(entry.entryId));
-      try {
-        const userId = await ensureUserId(captchaToken);
-        for (const entryId of pendingEntryIds) {
-          if (!removeLocalEntryFromStorage(entryId)) {
-            throw new Error('Не удалось обновить локальный дневник');
-          }
-        }
-        await flushPendingDeletions();
-        const products = await loadRemoteProducts();
-        const remoteEntries = await loadRemoteEntries(userId, products);
-        const merged = new Map(remoteEntries.map((entry) => [entry.entryId, entry]));
-
-        for (const localEntry of activeLocalEntries) {
-          if (merged.has(localEntry.entryId)) continue;
-          await addRemoteMealEntry(localEntry);
-          merged.set(localEntry.entryId, localEntry);
-        }
-
-        return {
-          mode: 'supabase' as const,
-          products,
-          entries: [...merged.values()].sort((a, b) => a.eatenAt.localeCompare(b.eatenAt)),
-        };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Не удалось подключиться к Supabase';
-        return {
-          mode: 'local' as const,
-          products: fallbackProducts,
-          entries: activeLocalEntries,
-          message,
-          requiresCaptcha: error instanceof CaptchaRequiredError,
-        };
-      }
-    })();
-  }
-
-  return bootstrapPromise;
-}
-
-export async function addRemoteMealEntry(entry: MealEntry) {
-  if (!isSupabaseConfigured || !entry.productId) return false;
-  await ensureUserId();
-  const client = await getSupabaseClient();
-  if (!client) return false;
+async function addRemoteMealEntryWithClient(
+  client: SupabaseClient,
+  scope: Extract<NutritionStorageScope, { kind: 'user' }>,
+  entry: MealEntry,
+) {
+  if (!entry.productId) return false;
   const { error } = await client.rpc('add_meal_item', {
     p_product_id: entry.productId,
     p_meal_type: mealToDatabase(entry.meal),
@@ -310,14 +414,70 @@ export async function addRemoteMealEntry(entry: MealEntry) {
     p_item_id: entry.entryId,
   });
   if (error) throw error;
+  markLocalAdditionSynced(scope, entry.entryId);
   return true;
 }
 
-export async function deleteRemoteMealEntry(entry: MealEntry) {
-  if (!isSupabaseConfigured) return false;
-  const deleted = await deleteRemoteEntryById(entry.entryId);
-  if (deleted && removeLocalEntryFromStorage(entry.entryId)) {
-    persistPendingDeletions(readPendingDeletions().filter((candidate) => candidate.entryId !== entry.entryId));
+export async function bootstrapNutrition(scope: NutritionStorageScope, localEntries: MealEntry[]): Promise<NutritionBootstrap> {
+  if (!isSupabaseConfigured || scope.kind === 'guest') {
+    return { mode: 'local', products: fallbackProducts, entries: localEntries };
   }
-  return deleted;
+
+  const pendingEntryIds = new Set(readPendingDeletions(scope).map((entry) => entry.entryId));
+  const activeLocalEntries = localEntries.filter((entry) => !pendingEntryIds.has(entry.entryId));
+  const pendingAddEntryIds = new Set(readLocalDiary(scope).pendingAddEntryIds);
+  const pendingLocalEntries = activeLocalEntries.filter((entry) => pendingAddEntryIds.has(entry.entryId));
+  try {
+    const client = await getSupabaseClientForUser(scope.userId);
+    for (const entryId of pendingEntryIds) {
+      if (!removeLocalEntryFromStorage(scope, entryId)) {
+        throw new Error('Не удалось обновить локальный дневник');
+      }
+    }
+    await flushPendingDeletions(client, scope);
+    const products = await loadRemoteProducts(client);
+    const remoteEntries = await loadRemoteEntries(client, scope.userId, products);
+    const merged = new Map(remoteEntries.map((entry) => [entry.entryId, entry]));
+
+    for (const localEntry of pendingLocalEntries) {
+      if (merged.has(localEntry.entryId)) {
+        markLocalAdditionSynced(scope, localEntry.entryId);
+        continue;
+      }
+      const synced = await addRemoteMealEntryWithClient(client, scope, localEntry);
+      if (!synced) throw new Error('Не удалось синхронизировать локальную запись');
+      merged.set(localEntry.entryId, localEntry);
+    }
+
+    return {
+      mode: 'supabase' as const,
+      products,
+      entries: [...merged.values()].sort((a, b) => a.eatenAt.localeCompare(b.eatenAt)),
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Не удалось подключиться к Supabase';
+    return {
+      mode: 'local' as const,
+      products: fallbackProducts,
+      entries: activeLocalEntries,
+      message,
+      requiresAuth: error instanceof SupabaseAuthScopeError,
+    };
+  }
+}
+
+export async function addRemoteMealEntry(scope: NutritionStorageScope, entry: MealEntry) {
+  if (!isSupabaseConfigured || scope.kind !== 'user' || !entry.productId) return false;
+  const client = await getSupabaseClientForUser(scope.userId);
+  return addRemoteMealEntryWithClient(client, scope, entry);
+}
+
+export async function deleteRemoteMealEntry(scope: NutritionStorageScope, entry: MealEntry) {
+  if (!isSupabaseConfigured || scope.kind !== 'user') return false;
+  const client = await getSupabaseClientForUser(scope.userId);
+  await deleteRemoteEntryById(client, entry.entryId);
+  if (removeLocalEntryFromStorage(scope, entry.entryId)) {
+    persistPendingDeletions(scope, readPendingDeletions(scope).filter((candidate) => candidate.entryId !== entry.entryId));
+  }
+  return true;
 }

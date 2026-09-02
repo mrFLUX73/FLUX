@@ -130,8 +130,7 @@ button { cursor: pointer; }
 .flux-sync-status:disabled { border: 0; opacity: 1; }
 .flux-sync-status svg { width: 12px; height: 12px; }
 
-.flux-sync-drawer { padding-bottom: max(24px, env(safe-area-inset-bottom)); }
-.flux-sync-drawer [data-slot='drawer-content'] > [data-slot='button'] { margin: 0 20px; }
+.flux-auth-drawer { padding-bottom: max(24px, env(safe-area-inset-bottom)); }
 .flux-sync-shield { width: 44px; height: 44px; margin-bottom: 10px; border-radius: 15px; background: #e3efdd; color: #365f3b; display: grid; place-items: center; }
 .flux-sync-shield svg { width: 22px; height: 22px; }
 .flux-turnstile-area { min-height: 92px; margin: 0 10px 16px; display: grid; place-items: center; }
@@ -139,6 +138,33 @@ button { cursor: pointer; }
 .flux-turnstile-progress { color: #718071; display: flex; align-items: center; gap: 8px; font-size: 11px; }
 .flux-turnstile-progress svg { width: 16px; height: 16px; }
 .flux-turnstile-error { margin: 8px 0 0; color: #9c493f; font-size: 10px; line-height: 1.45; text-align: center; }
+.flux-auth-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin: 2px 22px 14px; padding: 4px; border-radius: 15px; background: #edf4e9; }
+.flux-auth-tabs button { min-height: 36px; border: 0; border-radius: 12px; background: transparent; color: #718071; font-size: 10px; }
+.flux-auth-tabs button.is-active { background: #fff; color: #365f3b; box-shadow: 0 3px 12px rgb(43 70 42 / 8%); font-weight: 500; }
+.flux-auth-form { display: grid; gap: 13px; padding: 0 22px; }
+.flux-auth-field { display: grid; gap: 6px; }
+.flux-auth-field > span:first-child { color: #556455; font-size: 10px; }
+.flux-auth-field > span:first-child small { margin-left: 4px; color: #879388; font-size: 8px; font-weight: 400; }
+.flux-auth-field > [data-slot='input'], .flux-password-control [data-slot='input'] { height: 51px; padding: 0 14px; border-color: #dfe8dc; border-radius: 16px; background: #fff; color: #202b21; font-size: 16px; box-shadow: none; }
+.flux-phone-control { height: 51px; display: grid; grid-template-columns: 48px 1fr; align-items: center; border: 1px solid #dfe8dc; border-radius: 16px; background: #fff; overflow: hidden; transition: border-color .18s ease, box-shadow .18s ease; }
+.flux-phone-control:focus-within { border-color: #78a971; box-shadow: 0 0 0 3px rgb(120 169 113 / 15%); }
+.flux-phone-control > b { height: 31px; display: grid; place-items: center; border-right: 1px solid #dfe8dc; color: #365f3b; font-size: 15px; font-weight: 500; }
+.flux-phone-control [data-slot='input'] { height: 49px; padding: 0 13px; border: 0; border-radius: 0; background: transparent; color: #202b21; font-size: 16px; box-shadow: none; }
+.flux-password-control { position: relative; display: block; }
+.flux-password-control [data-slot='input'] { padding-right: 48px; }
+.flux-password-control > button { width: 43px; height: 43px; position: absolute; top: 4px; right: 4px; border: 0; border-radius: 13px; background: transparent; color: #718071; display: grid; place-items: center; }
+.flux-password-control > button:hover { background: #edf4e9; color: #365f3b; }
+.flux-password-control svg { width: 17px; height: 17px; }
+.flux-guest-import { padding: 12px; border: 1px solid #dfe8dc; border-radius: 16px; background: #f7faf5; display: grid; grid-template-columns: 20px 1fr; gap: 10px; align-items: start; cursor: pointer; }
+.flux-guest-import input { width: 18px; height: 18px; margin: 1px 0 0; accent-color: #365f3b; }
+.flux-guest-import span { display: grid; gap: 3px; }
+.flux-guest-import strong { color: #365f3b; font-size: 10px; font-weight: 600; }
+.flux-guest-import small { color: #718071; font-size: 8px; line-height: 1.45; }
+.flux-auth-error { margin: 0; padding: 10px 12px; border-radius: 13px; background: #f8eeeb; color: #91483e; font-size: 10px; line-height: 1.45; }
+.flux-auth-submit { width: 100%; min-height: 51px !important; margin-top: 2px; border-radius: 17px !important; font-size: 12px !important; }
+.flux-auth-note { margin: -2px 4px 0; color: #879388; font-size: 8px; line-height: 1.5; text-align: center; }
+.flux-auth-verification { min-height: 150px; margin: 0 10px; padding: 20px 12px 4px; border-radius: 20px; background: #edf4e9; display: grid; place-items: center; align-content: center; }
+.flux-auth-verification .flux-auth-error { width: 100%; margin-top: 10px; text-align: center; }
 .is-spinning { animation: flux-spin .9s linear infinite; }
 .flux-meal-list { margin-top: 25px; }
 .flux-diary-empty { min-height: 130px; margin-bottom: 14px; padding: 20px; border-radius: 21px; background: #edf4e9; color: #718071; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }

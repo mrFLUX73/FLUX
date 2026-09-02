@@ -26,7 +26,18 @@ import {
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { AnonymousSyncGate, isTurnstileConfigured } from './features/auth/AnonymousSyncGate';
+import {
+  PhonePasswordAuthGate,
+  isTurnstileConfigured,
+  type PhoneAuthMode,
+  type PhoneAuthSubmission,
+} from './features/auth/PhonePasswordAuthGate';
+import {
+  getCurrentAccount,
+  registerWithLogin,
+  signInWithLogin,
+  type FluxAccount,
+} from './features/auth/phonePasswordAuth';
 import {
   Drawer,
   DrawerContent,
@@ -41,14 +52,21 @@ import { fallbackProducts } from './features/nutrition/catalog';
 import {
   addRemoteMealEntry,
   bootstrapNutrition,
+  claimGuestDiaryForNewUser,
+  countGuestDiaryEntries,
   deleteRemoteMealEntry,
+  guestNutritionScope,
+  isSameNutritionScope,
   loadLocalEntriesForToday,
+  nutritionScopeForUser,
   persistLocalEntriesForToday,
+  persistNewLocalEntry,
   queueRemoteMealDeletion,
   removeLocalEntryFromStorage,
   type NutritionMode,
+  type NutritionStorageScope,
 } from './features/nutrition/repository';
-import { isAnonymousAuthEnabled, isSupabaseConfigured } from './lib/supabase';
+import { getSupabaseClient, isSupabaseConfigured } from './lib/supabase';
 import {
   MEAL_KINDS,
   type MealEntry,
@@ -441,6 +459,7 @@ function WorkoutFlow({ onClose }: { onClose: () => void }) {
 }
 
 function TodayScreen({
+  firstName,
   totals,
   target,
   products,
@@ -448,6 +467,7 @@ function TodayScreen({
   onOpenFood,
   onWorkout,
 }: {
+  firstName?: string;
   totals: NutritionTotals;
   target: number;
   products: Product[];
@@ -465,7 +485,7 @@ function TodayScreen({
 
   return (
     <>
-      <section className="flux-greeting"><p>Доброе утро, Данил</p><h1>Сегодня достаточно<br />просто продолжить.</h1></section>
+      <section className="flux-greeting"><p>Доброе утро{firstName ? `, ${firstName}` : ''}</p><h1>Сегодня достаточно<br />просто продолжить.</h1></section>
       <section className="flux-balance-card" aria-label="Баланс питания на сегодня">
         <div className="flux-balance-heading"><div><span className="flux-eyebrow">Баланс на сегодня</span><strong><MorphNumber value={remaining.toLocaleString('ru-RU')} /> <small>ккал осталось</small></strong></div><div className="flux-ring" style={{ '--flux-progress': `${progress * 3.6}deg` } as CSSProperties}><span>{progress}%</span></div></div>
         <div className="flux-macro-grid">{macros.map((macro) => <div key={macro.label}><span>{macro.label}</span><strong>{macro.value} / {macro.target} г</strong><Progress value={(macro.value / macro.target) * 100} aria-label={`${macro.label}: ${macro.value} из ${macro.target} грамм`} /></div>)}</div>
@@ -481,8 +501,8 @@ function FoodScreen({
   target,
   mode,
   isConnecting,
+  isAuthenticated,
   canConnect,
-  requiresCaptcha,
   onConnect,
   onAdd,
   onRemove,
@@ -491,28 +511,29 @@ function FoodScreen({
   target: number;
   mode: NutritionMode;
   isConnecting: boolean;
+  isAuthenticated: boolean;
   canConnect: boolean;
-  requiresCaptcha: boolean;
   onConnect: () => void;
   onAdd: (meal?: MealKind) => void;
   onRemove: (entry: MealEntry) => void;
 }) {
   const total = entries.reduce((sum, entry) => sum + entry.kcal, 0);
+  const isSynced = mode === 'supabase' && isAuthenticated;
   return (
     <>
       <div className="flux-page-heading flux-page-heading-row"><div><span className="flux-eyebrow">Сегодня</span><h1>Питание</h1></div><Button size="icon-lg" onClick={() => onAdd()} aria-label="Добавить продукт"><Plus /></Button></div>
       <button
-        className={`flux-sync-status ${mode === 'supabase' ? 'is-cloud' : ''} ${canConnect && mode === 'local' ? 'is-actionable' : ''}`}
+        className={`flux-sync-status ${isSynced ? 'is-cloud' : ''} ${canConnect && !isSynced ? 'is-actionable' : ''}`}
         type="button"
-        disabled={isConnecting || mode === 'supabase' || !canConnect}
+        disabled={isConnecting || isSynced || !canConnect}
         onClick={onConnect}
       >
         {isConnecting
           ? <><LoaderCircle className="is-spinning" /> Подключаю данные…</>
-          : mode === 'supabase'
+          : isSynced
             ? <><Cloud /> Синхронизировано с Supabase</>
             : canConnect
-              ? <><Cloud /> {requiresCaptcha ? 'Подключить синхронизацию' : 'Повторить синхронизацию'}</>
+              ? <><Cloud /> {isAuthenticated ? 'Повторить синхронизацию' : 'Войти или создать профиль'}</>
               : 'Сохраняется на этом устройстве'}
       </button>
       <button className="flux-food-search" type="button" onClick={() => onAdd()}><Search /><span>Что вы съели?</span></button>
@@ -571,32 +592,106 @@ function ProgressScreen() {
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('today');
-  const [entries, setEntries] = useState<MealEntry[]>(() => loadLocalEntriesForToday());
-  const initialLocalEntries = useRef(entries);
+  const [diary, setDiary] = useState<{
+    scope: NutritionStorageScope;
+    entries: MealEntry[];
+    hydrated: boolean;
+  }>({ scope: guestNutritionScope, entries: [], hydrated: false });
+  const entries = diary.entries;
+  const nutritionScopeRef = useRef<NutritionStorageScope>(guestNutritionScope);
+  const nutritionGeneration = useRef(0);
+  const nutritionHydratedRef = useRef(false);
   const activeDay = useRef(localDayKey());
   const [catalog, setCatalog] = useState<Product[]>(fallbackProducts);
   const [nutritionMode, setNutritionMode] = useState<NutritionMode>('local');
   const [nutritionConnecting, setNutritionConnecting] = useState(true);
-  const [syncRequiresCaptcha, setSyncRequiresCaptcha] = useState(false);
-  const [syncGateOpen, setSyncGateOpen] = useState(false);
+  const [account, setAccount] = useState<FluxAccount | null>(null);
+  const [authGateOpen, setAuthGateOpen] = useState(false);
+  const [authGateMode, setAuthGateMode] = useState<PhoneAuthMode>('signup');
+  const [guestDiaryEntryCount, setGuestDiaryEntryCount] = useState(() => countGuestDiaryEntries());
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [quickAddProduct, setQuickAddProduct] = useState<Product | null>(null);
   const [quickAddMeal, setQuickAddMeal] = useState<MealKind>(() => currentMeal());
   const [workoutOpen, setWorkoutOpen] = useState(false);
   const calorieTarget = 2000;
 
+  function setEntries(update: MealEntry[] | ((current: MealEntry[]) => MealEntry[])) {
+    setDiary((current) => {
+      if (!current.hydrated) return current;
+      const nextEntries = typeof update === 'function' ? update(current.entries) : update;
+      return { ...current, entries: nextEntries };
+    });
+  }
+
   useEffect(() => {
     let active = true;
-    bootstrapNutrition(initialLocalEntries.current)
-      .then((result) => {
+    let unsubscribe: (() => void) | undefined;
+
+    const hydrateSession = async (sessionAccount: FluxAccount | null) => {
+      const generation = ++nutritionGeneration.current;
+      const scope = sessionAccount ? nutritionScopeForUser(sessionAccount.id) : guestNutritionScope;
+      const localEntries = loadLocalEntriesForToday(scope);
+      nutritionScopeRef.current = scope;
+      nutritionHydratedRef.current = true;
+      setAccount(sessionAccount);
+      setNutritionMode('local');
+      setNutritionConnecting(true);
+      setQuickAddOpen(false);
+      setDiary({ scope, entries: localEntries, hydrated: true });
+
+      if (sessionAccount) {
+        const resolvedAccount = await getCurrentAccount().catch(() => null);
+        if (!active || generation !== nutritionGeneration.current) return;
+        if (!resolvedAccount || resolvedAccount.id !== sessionAccount.id) {
+          await hydrateSession(null);
+          return;
+        }
+        setAccount(resolvedAccount);
+      }
+
+      const result = await bootstrapNutrition(scope, localEntries);
+      if (!active || generation !== nutritionGeneration.current || !isSameNutritionScope(scope, nutritionScopeRef.current)) return;
+      setNutritionMode(result.mode);
+      if (result.products.length) setCatalog(result.products);
+      setDiary({ scope, entries: result.entries, hydrated: true });
+      setNutritionConnecting(false);
+    };
+
+    void getSupabaseClient()
+      .then((client) => {
         if (!active) return;
-        setNutritionMode(result.mode);
-        setSyncRequiresCaptcha(Boolean(result.requiresCaptcha));
-        if (result.products.length) setCatalog(result.products);
-        setEntries(result.entries);
+        if (!client) {
+          void hydrateSession(null);
+          return;
+        }
+
+        const { data } = client.auth.onAuthStateChange((event, session) => {
+          const user = session?.user && !session.user.is_anonymous ? session.user : null;
+          const nextScope = user ? nutritionScopeForUser(user.id) : guestNutritionScope;
+          if (event !== 'INITIAL_SESSION'
+            && nutritionHydratedRef.current
+            && isSameNutritionScope(nextScope, nutritionScopeRef.current)) return;
+
+          const sessionAccount: FluxAccount | null = user ? {
+            id: user.id,
+            displayName: String(user.user_metadata?.display_name ?? '').trim(),
+            login: user.email?.endsWith('@flux.local') ? user.email.slice(0, -('@flux.local'.length)) : '',
+            phone: '',
+          } : null;
+
+          window.setTimeout(() => {
+            if (active) void hydrateSession(sessionAccount);
+          }, 0);
+        });
+        unsubscribe = () => data.subscription.unsubscribe();
       })
-      .finally(() => { if (active) setNutritionConnecting(false); });
-    return () => { active = false; };
+      .catch(() => { if (active) void hydrateSession(null); });
+
+    return () => {
+      active = false;
+      unsubscribe?.();
+      nutritionGeneration.current += 1;
+    };
   }, []);
 
   useEffect(() => {
@@ -607,14 +702,17 @@ export default function App() {
       activeDay.current = nextDay;
       setQuickAddOpen(false);
       setNutritionConnecting(true);
-      const localEntries = loadLocalEntriesForToday();
-      setEntries(localEntries);
-      const result = await bootstrapNutrition(localEntries, true);
-      if (!active || activeDay.current !== nextDay) return;
+      const scope = nutritionScopeRef.current;
+      const generation = nutritionGeneration.current;
+      const localEntries = loadLocalEntriesForToday(scope);
+      setDiary((current) => isSameNutritionScope(current.scope, scope)
+        ? { scope, entries: localEntries, hydrated: true }
+        : current);
+      const result = await bootstrapNutrition(scope, localEntries);
+      if (!active || activeDay.current !== nextDay || generation !== nutritionGeneration.current || !isSameNutritionScope(scope, nutritionScopeRef.current)) return;
       setNutritionMode(result.mode);
-      setSyncRequiresCaptcha(Boolean(result.requiresCaptcha));
       if (result.products.length) setCatalog(result.products);
-      setEntries(result.entries);
+      setDiary({ scope, entries: result.entries, hydrated: true });
       setNutritionConnecting(false);
     }, 30_000);
     return () => {
@@ -624,36 +722,115 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    persistLocalEntriesForToday(entries);
-  }, [entries]);
+    if (diary.hydrated) persistLocalEntriesForToday(diary.scope, diary.entries);
+  }, [diary]);
 
   const totals = useMemo(() => entries.reduce((sum, entry) => ({ kcal: sum.kcal + entry.kcal, protein: sum.protein + entry.protein, fat: sum.fat + entry.fat, carbs: sum.carbs + entry.carbs }), { kcal: 0, protein: 0, fat: 0, carbs: 0 }), [entries]);
 
-  const canConnectNutrition = isSupabaseConfigured && isAnonymousAuthEnabled && isTurnstileConfigured;
+  const canConnectNutrition = isSupabaseConfigured && isTurnstileConfigured;
+  const firstName = account?.displayName.split(/\s+/)[0];
+  const avatarLabel = account?.displayName
+    ? account.displayName.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toLocaleUpperCase('ru-RU')
+    : '+';
 
-  async function connectNutrition(captchaToken?: string) {
+  async function connectNutrition() {
+    const scope = diary.scope;
+    const localEntries = diary.entries;
+    const generation = nutritionGeneration.current;
     setNutritionConnecting(true);
-    const result = await bootstrapNutrition(entries, true, captchaToken);
-    setNutritionMode(result.mode);
-    setSyncRequiresCaptcha(Boolean(result.requiresCaptcha));
-    if (result.products.length) setCatalog(result.products);
-    setEntries(result.entries);
-    setNutritionConnecting(false);
-
-    if (result.mode === 'supabase') {
-      setSyncGateOpen(false);
-      toast.add({ title: 'Синхронизация подключена', description: 'Дневник теперь сохраняется в Supabase.', type: 'success' });
-      return;
+    try {
+      const result = await bootstrapNutrition(scope, localEntries);
+      if (generation !== nutritionGeneration.current || !isSameNutritionScope(scope, nutritionScopeRef.current)) {
+        throw new Error('Профиль изменился во время синхронизации');
+      }
+      setNutritionMode(result.mode);
+      if (result.products.length) setCatalog(result.products);
+      setDiary({ scope, entries: result.entries, hydrated: true });
+      if (result.mode !== 'supabase') throw new Error(result.message ?? 'Не удалось подключить синхронизацию');
+    } finally {
+      if (generation === nutritionGeneration.current) setNutritionConnecting(false);
     }
+  }
 
-    throw new Error(result.message ?? 'Не удалось подключить синхронизацию');
+  function openAuth(mode: PhoneAuthMode = 'signup') {
+    setAuthGateMode(mode);
+    setAuthGateOpen(true);
   }
 
   function openSync() {
-    if (syncRequiresCaptcha) setSyncGateOpen(true);
-    else void connectNutrition().catch(() => {
+    if (!account) {
+      openAuth('signup');
+      return;
+    }
+    void connectNutrition().then(() => {
+      toast.add({ title: 'Синхронизация подключена', description: 'Дневник теперь сохраняется в Supabase.', type: 'success' });
+    }).catch(() => {
       toast.add({ title: 'Не удалось подключиться', description: 'Проверьте интернет и попробуйте ещё раз.', type: 'error' });
     });
+  }
+
+  async function authenticate(submission: PhoneAuthSubmission) {
+    const nextAccount = submission.mode === 'signup'
+      ? await registerWithLogin({
+        displayName: submission.displayName,
+        login: submission.login,
+        phone: submission.phone,
+        password: submission.password,
+        captchaToken: submission.captchaToken,
+      })
+      : await signInWithLogin({
+        login: submission.login,
+        password: submission.password,
+        captchaToken: submission.captchaToken,
+      });
+
+    let importedGuestEntries = 0;
+    if (submission.mode === 'signup' && submission.importGuestDiary) {
+      try {
+        importedGuestEntries = await claimGuestDiaryForNewUser(nextAccount.id);
+        setGuestDiaryEntryCount(countGuestDiaryEntries());
+      } catch {
+        toast.add({
+          title: 'Профиль создан',
+          description: 'Гостевой дневник остался на устройстве: перенос можно будет повторить.',
+          type: 'info',
+        });
+      }
+    }
+
+    const scope = nutritionScopeForUser(nextAccount.id);
+    const generation = ++nutritionGeneration.current;
+    const scopedEntries = loadLocalEntriesForToday(scope);
+    nutritionScopeRef.current = scope;
+    setAccount(nextAccount);
+    setNutritionMode('local');
+    setNutritionConnecting(true);
+    setDiary({ scope, entries: scopedEntries, hydrated: true });
+
+    try {
+      const result = await bootstrapNutrition(scope, scopedEntries);
+      if (generation !== nutritionGeneration.current || !isSameNutritionScope(scope, nutritionScopeRef.current)) {
+        return nextAccount;
+      }
+      setNutritionMode(result.mode);
+      if (result.products.length) setCatalog(result.products);
+      setDiary({ scope, entries: result.entries, hydrated: true });
+      if (result.mode !== 'supabase') throw new Error(result.message ?? 'Не удалось подключить синхронизацию');
+    } catch {
+      toast.add({ title: 'Профиль готов', description: 'Данные пока остаются на устройстве — синхронизацию повторим позже.', type: 'info' });
+      return nextAccount;
+    } finally {
+      if (generation === nutritionGeneration.current) setNutritionConnecting(false);
+    }
+
+    toast.add({
+      title: submission.mode === 'signup' ? 'Профиль создан' : 'С возвращением',
+      description: importedGuestEntries > 0
+        ? `Гостевой дневник перенесён: ${importedGuestEntries}.`
+        : `${nextAccount.displayName || 'Ваш профиль'} · данные синхронизированы.`,
+      type: 'success',
+    });
+    return nextAccount;
   }
 
   function openFood(meal: MealKind = currentMeal(), product: Product | null = null) {
@@ -667,6 +844,7 @@ export default function App() {
   }
 
   async function addProduct(product: Product, amount = product.amount, meal: MealKind = currentMeal()) {
+    const scope = diary.scope;
     const scale = amount / product.amount;
     const eatenAt = new Date().toISOString();
     const entry: MealEntry = {
@@ -683,11 +861,17 @@ export default function App() {
       time: new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit' }).format(new Date(eatenAt)),
       eatenAt,
     };
+
+    if (!persistNewLocalEntry(scope, entry)) {
+      toast.add({ title: 'Не удалось сохранить запись', description: 'Локальное хранилище недоступно. Попробуйте ещё раз.', type: 'error' });
+      return;
+    }
+    if (scope.kind === 'guest') setGuestDiaryEntryCount(countGuestDiaryEntries());
     setEntries((current) => [...current, entry]);
 
     if (nutritionMode === 'supabase') {
       try {
-        await addRemoteMealEntry(entry);
+        await addRemoteMealEntry(scope, entry);
       } catch {
         setNutritionMode('local');
         toast.add({ title: 'Сохранили на устройстве', description: 'Supabase временно недоступен — запись не потеряется.', type: 'info' });
@@ -703,21 +887,24 @@ export default function App() {
       return;
     }
 
-    if (isSupabaseConfigured && !queueRemoteMealDeletion(entry)) {
+    const scope = diary.scope;
+    const shouldQueueRemoteDeletion = isSupabaseConfigured && scope.kind === 'user';
+    if (shouldQueueRemoteDeletion && !queueRemoteMealDeletion(scope, entry)) {
       toast.add({ title: 'Не удалось удалить запись', description: 'Локальное хранилище недоступно. Попробуйте ещё раз.', type: 'error' });
       return;
     }
 
-    const removedFromStorage = removeLocalEntryFromStorage(entry.entryId);
-    if (!isSupabaseConfigured && !removedFromStorage) {
+    const removedFromStorage = removeLocalEntryFromStorage(scope, entry.entryId);
+    if (!shouldQueueRemoteDeletion && !removedFromStorage) {
       toast.add({ title: 'Не удалось удалить запись', description: 'Локальное хранилище недоступно. Попробуйте ещё раз.', type: 'error' });
       return;
     }
 
     setEntries((current) => current.filter((candidate) => candidate.entryId !== entry.entryId));
+    if (scope.kind === 'guest') setGuestDiaryEntryCount(countGuestDiaryEntries());
     if (nutritionMode === 'supabase') {
       try {
-        await deleteRemoteMealEntry(entry);
+        await deleteRemoteMealEntry(scope, entry);
       } catch {
         setNutritionMode('local');
         toast.add({ title: 'Удалено на устройстве', description: 'Синхронизируем удаление, когда Supabase снова станет доступен.', type: 'info' });
@@ -739,10 +926,10 @@ export default function App() {
       <main className="flux-stage">
         <section className="flux-app-shell" aria-label="Приложение FLUX">
           <div className="flux-base-app" aria-hidden={workoutOpen || undefined} inert={workoutOpen || undefined}>
-            <header className="flux-topbar"><button className="flux-brand" type="button" onClick={() => setTab('today')} aria-label="FLUX — главная"><img className="flux-brand-lockup" src={`${import.meta.env.BASE_URL}brand/flux-lockup.png`} alt="" draggable="false" /></button><Button className="flux-avatar" variant="secondary" size="icon" onClick={() => toast.add({ title: 'Профиль появится следующим', description: 'Настройки из онбординга подключим к Supabase.', type: 'info' })} aria-label="Открыть профиль">Д</Button></header>
+            <header className="flux-topbar"><button className="flux-brand" type="button" onClick={() => setTab('today')} aria-label="FLUX — главная"><img className="flux-brand-lockup" src={`${import.meta.env.BASE_URL}brand/flux-lockup.png`} alt="" draggable="false" /></button><Button className="flux-avatar" variant="secondary" size="icon" onClick={() => account ? toast.add({ title: account.displayName || 'Ваш профиль', description: 'Настройки профиля добавим следующим шагом.', type: 'info' }) : openAuth('signup')} aria-label={account ? 'Открыть профиль' : 'Войти или зарегистрироваться'}>{avatarLabel}</Button></header>
             <div className="flux-content" id="top">
-              {tab === 'today' && <TodayScreen totals={totals} target={calorieTarget} products={catalog} onSelectProduct={(product) => openFood(currentMeal(), product)} onOpenFood={() => openFood()} onWorkout={() => setWorkoutOpen(true)} />}
-              {tab === 'food' && <FoodScreen entries={entries} target={calorieTarget} mode={nutritionMode} isConnecting={nutritionConnecting} canConnect={canConnectNutrition} requiresCaptcha={syncRequiresCaptcha} onConnect={openSync} onAdd={(meal) => openFood(meal ?? currentMeal())} onRemove={removeEntry} />}
+              {tab === 'today' && <TodayScreen firstName={firstName} totals={totals} target={calorieTarget} products={catalog} onSelectProduct={(product) => openFood(currentMeal(), product)} onOpenFood={() => openFood()} onWorkout={() => setWorkoutOpen(true)} />}
+              {tab === 'food' && <FoodScreen entries={entries} target={calorieTarget} mode={nutritionMode} isConnecting={nutritionConnecting} isAuthenticated={Boolean(account)} canConnect={canConnectNutrition} onConnect={openSync} onAdd={(meal) => openFood(meal ?? currentMeal())} onRemove={removeEntry} />}
               {tab === 'workouts' && <WorkoutsScreen onStart={() => setWorkoutOpen(true)} />}
               {tab === 'progress' && <ProgressScreen />}
             </div>
@@ -760,7 +947,13 @@ export default function App() {
         initialProduct={quickAddProduct}
         initialMeal={quickAddMeal}
       />
-      <AnonymousSyncGate open={syncGateOpen} onOpenChange={setSyncGateOpen} onVerified={connectNutrition} />
+      <PhonePasswordAuthGate
+        guestDiaryEntryCount={guestDiaryEntryCount}
+        initialMode={authGateMode}
+        open={authGateOpen}
+        onOpenChange={setAuthGateOpen}
+        onAuthenticated={authenticate}
+      />
     </Toaster>
   );
 }
