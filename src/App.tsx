@@ -11,12 +11,14 @@ import {
   Coffee,
   Dumbbell,
   House,
+  LoaderCircle,
   Minus,
   Pause,
   Play,
   Plus,
   Search,
   Sprout,
+  Trash2,
   Utensils,
   Wheat,
   X,
@@ -33,43 +35,45 @@ import {
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Toaster, toast } from '@/components/ui/toast';
+import { fallbackProducts } from './features/nutrition/catalog';
+import {
+  addRemoteMealEntry,
+  bootstrapNutrition,
+  deleteRemoteMealEntry,
+  loadLocalEntriesForToday,
+  persistLocalEntriesForToday,
+  queueRemoteMealDeletion,
+  removeLocalEntryFromStorage,
+  type NutritionMode,
+} from './features/nutrition/repository';
+import { isSupabaseConfigured } from './lib/supabase';
+import {
+  MEAL_KINDS,
+  type MealEntry,
+  type MealKind,
+  type NutritionTotals,
+  type Product,
+} from './features/nutrition/types';
 
 type Tab = 'today' | 'food' | 'workouts' | 'progress';
-type MealKind = 'Завтрак' | 'Обед' | 'Перекус' | 'Ужин';
-
-type Product = {
-  id: string;
-  name: string;
-  brand: string;
-  amount: number;
-  unit: 'г' | 'шт';
-  kcal: number;
-  protein: number;
-  fat: number;
-  carbs: number;
-  icon: 'wheat' | 'curd' | 'banana' | 'coffee';
-};
-
-type MealEntry = Product & {
-  entryId: string;
-  meal: MealKind;
-  time: string;
-};
-
-const products: Product[] = [
-  { id: 'oatmeal', name: 'Овсянка на молоке', brand: 'Домашнее блюдо', amount: 180, unit: 'г', kcal: 190, protein: 7, fat: 5, carbs: 29, icon: 'wheat' },
-  { id: 'curd', name: 'Творог 5%', brand: 'Простоквашино', amount: 180, unit: 'г', kcal: 218, protein: 30, fat: 9, carbs: 5, icon: 'curd' },
-  { id: 'banana', name: 'Банан', brand: 'Обычный', amount: 1, unit: 'шт', kcal: 105, protein: 1, fat: 0, carbs: 27, icon: 'banana' },
-  { id: 'coffee', name: 'Капучино', brand: 'Без сахара', amount: 250, unit: 'г', kcal: 120, protein: 6, fat: 6, carbs: 10, icon: 'coffee' },
-];
-
-const initialEntries: MealEntry[] = [
-  { ...products[0], entryId: 'breakfast-oat', name: 'Овсянка, банан, кофе', amount: 1, unit: 'шт', kcal: 410, protein: 18, fat: 11, carbs: 60, meal: 'Завтрак', time: '08:40' },
-  { ...products[0], entryId: 'lunch', name: 'Курица, рис, овощи', amount: 1, unit: 'шт', kcal: 620, protein: 46, fat: 18, carbs: 71, meal: 'Обед', time: '13:15' },
-  { ...products[1], entryId: 'snack', name: 'Творог, ягоды', amount: 1, unit: 'шт', kcal: 350, protein: 30, fat: 9, carbs: 25, meal: 'Перекус', time: '16:30' },
-];
 
 const macroTargets = { protein: 110, fat: 70, carbs: 230 };
+
+function localDayKey(date = new Date()) {
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+function currentMeal(): MealKind {
+  const hour = new Date().getHours();
+  if (hour < 11) return 'Завтрак';
+  if (hour < 16) return 'Обед';
+  if (hour < 19) return 'Перекус';
+  return 'Ужин';
+}
+
+function mealInSentence(meal: MealKind) {
+  return meal.toLocaleLowerCase('ru');
+}
 
 function ProductIcon({ type }: { type: Product['icon'] }) {
   const Icon = type === 'wheat' ? Wheat : type === 'banana' ? Banana : type === 'coffee' ? Coffee : Utensils;
@@ -101,16 +105,51 @@ function QuickAddDrawer({
   open,
   onOpenChange,
   onAdd,
+  products,
+  entries,
+  initialProduct,
+  initialMeal,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAdd: (product: Product, amount: number) => void;
+  onAdd: (product: Product, amount: number, meal: MealKind) => Promise<void>;
+  products: Product[];
+  entries: MealEntry[];
+  initialProduct: Product | null;
+  initialMeal: MealKind;
 }) {
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<Product | null>(null);
-  const [amount, setAmount] = useState(180);
+  const [amount, setAmount] = useState<number | ''>(180);
+  const [meal, setMeal] = useState<MealKind>(initialMeal);
+  const [isAdding, setIsAdding] = useState(false);
 
-  const filtered = products.filter((product) => `${product.name} ${product.brand}`.toLocaleLowerCase('ru').includes(query.toLocaleLowerCase('ru')));
+  useEffect(() => {
+    if (!open) return;
+    setMeal(initialMeal);
+    setSelected(initialProduct);
+    setAmount(initialProduct?.amount ?? 180);
+  }, [initialMeal, initialProduct, open]);
+
+  const recentIds = [...entries]
+    .sort((a, b) => b.eatenAt.localeCompare(a.eatenAt))
+    .map((entry) => entry.productId)
+    .filter((id): id is string => Boolean(id));
+  const filtered = products
+    .filter((product) => `${product.name} ${product.brand}`.toLocaleLowerCase('ru').includes(query.trim().toLocaleLowerCase('ru')))
+    .sort((a, b) => {
+      if (query.trim()) return a.name.localeCompare(b.name, 'ru');
+      const aIndex = recentIds.indexOf(a.id);
+      const bIndex = recentIds.indexOf(b.id);
+      if (aIndex === -1 && bIndex === -1) return 0;
+      if (aIndex === -1) return 1;
+      if (bIndex === -1) return -1;
+      return aIndex - bIndex;
+    });
+  const repeatEntry = [...entries].sort((a, b) => b.eatenAt.localeCompare(a.eatenAt))[0];
+  const repeatProduct = repeatEntry
+    ? products.find((product) => product.id === repeatEntry.productId) ?? repeatEntry
+    : null;
 
   function choose(product: Product) {
     setSelected(product);
@@ -122,6 +161,7 @@ function QuickAddDrawer({
     window.setTimeout(() => {
       setSelected(null);
       setQuery('');
+      setIsAdding(false);
     }, 250);
   }
 
@@ -131,42 +171,80 @@ function QuickAddDrawer({
       window.setTimeout(() => {
         setSelected(null);
         setQuery('');
+        setIsAdding(false);
       }, 250);
     }
   }
 
-  const scale = selected ? amount / selected.amount : 1;
+  async function submit(product: Product, quantity: number) {
+    if (isAdding || quantity <= 0) return;
+    setIsAdding(true);
+    try {
+      await onAdd(product, quantity, meal);
+      close();
+    } finally {
+      setIsAdding(false);
+    }
+  }
+
+  const numericAmount = typeof amount === 'number' ? amount : 0;
+  const scale = selected ? numericAmount / selected.amount : 1;
+  const amountStep = selected?.unit === 'шт' ? 1 : 10;
+  const amountMinimum = selected?.unit === 'шт' ? 1 : 10;
+  const portionPresets = selected
+    ? [...new Set(selected.unit === 'шт' ? [1, 2, 3] : selected.unit === 'мл' ? [200, 250, selected.amount] : [100, 150, selected.amount])]
+    : [];
 
   return (
     <Drawer open={open} onOpenChange={handleOpenChange} showSwipeHandle>
       <DrawerContent className="flux-drawer">
         <DrawerHeader className="flux-drawer-header">
           <DrawerTitle>{selected ? selected.name : 'Добавить еду'}</DrawerTitle>
-          <DrawerDescription>{selected ? selected.brand : 'Сегодня · Завтрак'}</DrawerDescription>
+          <DrawerDescription>{selected ? selected.brand : `Сегодня · ${meal}`}</DrawerDescription>
         </DrawerHeader>
+        <div className="flux-meal-picker" role="group" aria-label="Приём пищи">
+          {MEAL_KINDS.map((kind) => (
+            <button key={kind} type="button" className={meal === kind ? 'is-active' : ''} onClick={() => setMeal(kind)}>
+              {kind}
+            </button>
+          ))}
+        </div>
         {selected ? (
           <div className="flux-portion-view">
             <div className="flux-portion-caption"><span>Количество</span><span>Обычно: {selected.amount} {selected.unit}</span></div>
             <div className="flux-portion-stepper">
-              <Button variant="secondary" size="icon-lg" onClick={() => setAmount((value) => Math.max(selected.unit === 'шт' ? 1 : 10, value - (selected.unit === 'шт' ? 1 : 10)))} aria-label="Уменьшить количество"><Minus /></Button>
-              <div><MorphNumber value={amount} /><span>{selected.unit}</span></div>
-              <Button variant="secondary" size="icon-lg" onClick={() => setAmount((value) => value + (selected.unit === 'шт' ? 1 : 10))} aria-label="Увеличить количество"><Plus /></Button>
+              <Button variant="secondary" size="icon-lg" onClick={() => setAmount((value) => Math.max(amountMinimum, (Number(value) || selected.amount) - amountStep))} aria-label="Уменьшить количество"><Minus /></Button>
+              <label>
+                <input
+                  className="flux-portion-input"
+                  type="number"
+                  inputMode="decimal"
+                  min={amountMinimum}
+                  step={amountStep}
+                  value={amount}
+                  onChange={(event) => setAmount(event.target.value === '' ? '' : Math.max(0, Number(event.target.value)))}
+                  onBlur={() => { if (!numericAmount) setAmount(selected.amount); }}
+                  aria-label={`Количество, ${selected.unit}`}
+                />
+                <span>{selected.unit}</span>
+              </label>
+              <Button variant="secondary" size="icon-lg" onClick={() => setAmount((value) => (Number(value) || selected.amount) + amountStep)} aria-label="Увеличить количество"><Plus /></Button>
             </div>
             <div className="flux-portion-presets">
-              {(selected.unit === 'шт' ? [1, 2, 3] : [100, 150, selected.amount]).map((preset, index) => (
-                <button type="button" key={`${preset}-${index}`} className={amount === preset ? 'is-active' : ''} onClick={() => setAmount(preset)}>
-                  {index === 2 ? 'Обычно · ' : ''}{preset} {selected.unit}
+              {portionPresets.map((preset) => (
+                <button type="button" key={preset} className={numericAmount === preset ? 'is-active' : ''} onClick={() => setAmount(preset)}>
+                  {preset === selected.amount ? 'Обычно · ' : ''}{preset} {selected.unit}
                 </button>
               ))}
             </div>
             <div className="flux-nutrient-grid">
-              <div><span>Калории</span><strong>{Math.round(selected.kcal * scale)}</strong><small>ккал</small></div>
-              <div><span>Белки</span><strong>{Math.round(selected.protein * scale)}</strong><small>г</small></div>
-              <div><span>Жиры</span><strong>{Math.round(selected.fat * scale)}</strong><small>г</small></div>
-              <div><span>Углеводы</span><strong>{Math.round(selected.carbs * scale)}</strong><small>г</small></div>
+              <div><span>Калории</span><strong><MorphNumber value={Math.round(selected.kcal * scale)} /></strong><small>ккал</small></div>
+              <div><span>Белки</span><strong><MorphNumber value={Math.round(selected.protein * scale)} /></strong><small>г</small></div>
+              <div><span>Жиры</span><strong><MorphNumber value={Math.round(selected.fat * scale)} /></strong><small>г</small></div>
+              <div><span>Углеводы</span><strong><MorphNumber value={Math.round(selected.carbs * scale)} /></strong><small>г</small></div>
             </div>
-            <Button className="flux-main-button" size="lg" onClick={() => { onAdd(selected, amount); close(); }}>
-              <span>Добавить к завтраку</span><strong>{Math.round(selected.kcal * scale)} ккал</strong>
+            <Button className="flux-main-button" size="lg" disabled={isAdding || numericAmount <= 0} onClick={() => submit(selected, numericAmount)}>
+              <span>{isAdding ? 'Сохраняю…' : `Добавить в ${mealInSentence(meal)}`}</span><strong>{Math.round(selected.kcal * scale)} ккал</strong>
             </Button>
             <button type="button" className="flux-text-button" onClick={() => setSelected(null)}><ArrowLeft /> Назад к продуктам</button>
           </div>
@@ -174,25 +252,21 @@ function QuickAddDrawer({
           <div className="flux-quick-add-view">
             <label className="flux-search-field">
               <Search aria-hidden="true" />
-              <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Найти продукт или блюдо" aria-label="Найти продукт или блюдо" />
+              <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Найти продукт или бренд" aria-label="Найти продукт или бренд" />
               {query && <button type="button" onClick={() => setQuery('')} aria-label="Очистить поиск"><X /></button>}
             </label>
-            {!query && (
+            {!query && repeatEntry && repeatProduct && (
               <section className="flux-usual-meal">
-                <div><span>Обычно в это время</span><strong>Ваш привычный завтрак</strong></div>
+                <div><span>Добавляли недавно</span><strong>Повторить в один тап</strong></div>
                 <div className="flux-usual-row">
-                  <span className="flux-food-stack"><i><Wheat /></i><i><Banana /></i><i><Coffee /></i></span>
-                  <span><strong>Овсянка, банан, кофе</strong><small>Обычная порция · 410 ккал</small></span>
+                  <span className="flux-food-icon"><ProductIcon type={repeatProduct.icon} /></span>
+                  <span><strong>{repeatProduct.name}</strong><small>{repeatEntry.amount} {repeatEntry.unit} · {repeatEntry.kcal} ккал</small></span>
                 </div>
-                <Button variant="secondary" onClick={() => {
-                  const usual = { ...products[0], id: 'usual-breakfast', name: 'Овсянка, банан, кофе', amount: 1, unit: 'шт' as const, kcal: 410, protein: 18, fat: 11, carbs: 60 };
-                  onAdd(usual, 1);
-                  close();
-                }}><Plus /> Добавить всё</Button>
+                <Button variant="secondary" disabled={isAdding} onClick={() => submit(repeatProduct, repeatEntry.amount)}><Plus /> Добавить снова</Button>
               </section>
             )}
             <section className="flux-product-results">
-              <div className="flux-section-heading"><h2>{query ? 'Результаты поиска' : 'Часто добавляете'}</h2></div>
+              <div className="flux-section-heading"><h2>{query ? 'Результаты поиска' : recentIds.length ? 'Недавние и частые' : 'Популярные продукты'}</h2></div>
               {filtered.map((product) => (
                 <button key={product.id} type="button" className="flux-product-row" onClick={() => choose(product)}>
                   <span className="flux-food-icon"><ProductIcon type={product.icon} /></span>
@@ -201,7 +275,7 @@ function QuickAddDrawer({
                   <ChevronRight aria-hidden="true" />
                 </button>
               ))}
-              {filtered.length === 0 && <p className="flux-empty">Ничего не нашли. Попробуйте другое название.</p>}
+              {filtered.length === 0 && <div className="flux-empty"><strong>Ничего не нашли</strong><span>Проверьте название — создание своего продукта добавим следующим шагом.</span></div>}
             </section>
           </div>
         )}
@@ -367,13 +441,15 @@ function WorkoutFlow({ onClose }: { onClose: () => void }) {
 function TodayScreen({
   totals,
   target,
-  onAdd,
+  products,
+  onSelectProduct,
   onOpenFood,
   onWorkout,
 }: {
-  totals: { kcal: number; protein: number; fat: number; carbs: number };
+  totals: NutritionTotals;
   target: number;
-  onAdd: (product: Product) => void;
+  products: Product[];
+  onSelectProduct: (product: Product) => void;
   onOpenFood: () => void;
   onWorkout: () => void;
 }) {
@@ -387,26 +463,66 @@ function TodayScreen({
 
   return (
     <>
-      <section className="flux-greeting"><p>Доброе утро, Алексей</p><h1>Сегодня достаточно<br />просто продолжить.</h1></section>
+      <section className="flux-greeting"><p>Доброе утро, Данил</p><h1>Сегодня достаточно<br />просто продолжить.</h1></section>
       <section className="flux-balance-card" aria-label="Баланс питания на сегодня">
         <div className="flux-balance-heading"><div><span className="flux-eyebrow">Баланс на сегодня</span><strong><MorphNumber value={remaining.toLocaleString('ru-RU')} /> <small>ккал осталось</small></strong></div><div className="flux-ring" style={{ '--flux-progress': `${progress * 3.6}deg` } as CSSProperties}><span>{progress}%</span></div></div>
         <div className="flux-macro-grid">{macros.map((macro) => <div key={macro.label}><span>{macro.label}</span><strong>{macro.value} / {macro.target} г</strong><Progress value={(macro.value / macro.target) * 100} aria-label={`${macro.label}: ${macro.value} из ${macro.target} грамм`} /></div>)}</div>
       </section>
-      <section className="flux-section"><div className="flux-section-heading"><h2>Быстро добавить</h2><button type="button" onClick={onOpenFood}>Все продукты</button></div><div className="flux-quick-grid">{products.slice(0, 2).map((product) => <button type="button" className="flux-quick-food" key={product.id} onClick={() => onAdd(product)}><span className={`flux-food-icon ${product.id === 'curd' ? 'flux-food-icon-warm' : ''}`}><ProductIcon type={product.icon} /></span><span><strong>{product.id === 'oatmeal' ? 'Овсянка' : 'Творог'}</strong><small>{product.amount} {product.unit}</small></span><Plus /></button>)}</div></section>
+      <section className="flux-section"><div className="flux-section-heading"><h2>Быстро добавить</h2><button type="button" onClick={onOpenFood}>Все продукты</button></div><div className="flux-quick-grid">{products.slice(0, 2).map((product) => <button type="button" className="flux-quick-food" key={product.id} onClick={() => onSelectProduct(product)}><span className={`flux-food-icon ${product.icon === 'curd' ? 'flux-food-icon-warm' : ''}`}><ProductIcon type={product.icon} /></span><span><strong>{product.name.replace(' на молоке', '')}</strong><small>{product.amount} {product.unit}</small></span><Plus /></button>)}</div></section>
       <section className="flux-workout-card"><span className="flux-workout-icon"><Activity /></span><div><span className="flux-eyebrow">Тренировка дня</span><h2>Всё тело · 28 мин</h2><p>6 упражнений, спокойный темп</p></div><Button size="icon" aria-label="Открыть тренировку" onClick={onWorkout}><ArrowRight /></Button></section>
     </>
   );
 }
 
-function FoodScreen({ entries, target, onAdd }: { entries: MealEntry[]; target: number; onAdd: () => void }) {
+function FoodScreen({
+  entries,
+  target,
+  mode,
+  isConnecting,
+  onAdd,
+  onRemove,
+}: {
+  entries: MealEntry[];
+  target: number;
+  mode: NutritionMode;
+  isConnecting: boolean;
+  onAdd: (meal?: MealKind) => void;
+  onRemove: (entry: MealEntry) => void;
+}) {
   const total = entries.reduce((sum, entry) => sum + entry.kcal, 0);
   return (
     <>
-      <div className="flux-page-heading flux-page-heading-row"><div><span className="flux-eyebrow">Сегодня</span><h1>Питание</h1></div><Button size="icon-lg" onClick={onAdd} aria-label="Добавить продукт"><Plus /></Button></div>
-      <button className="flux-food-search" type="button" onClick={onAdd}><Search /><span>Что вы съели?</span></button>
+      <div className="flux-page-heading flux-page-heading-row"><div><span className="flux-eyebrow">Сегодня</span><h1>Питание</h1></div><Button size="icon-lg" onClick={() => onAdd()} aria-label="Добавить продукт"><Plus /></Button></div>
+      <div className={`flux-sync-status ${mode === 'supabase' ? 'is-cloud' : ''}`}>
+        {isConnecting ? <><LoaderCircle className="is-spinning" /> Подключаю данные…</> : mode === 'supabase' ? 'Синхронизировано с Supabase' : 'Сохраняется на этом устройстве'}
+      </div>
+      <button className="flux-food-search" type="button" onClick={() => onAdd()}><Search /><span>Что вы съели?</span></button>
       <div className="flux-calorie-line"><span>{total.toLocaleString('ru-RU')} из {target.toLocaleString('ru-RU')} ккал</span><strong>{Math.round((total / target) * 100)}%</strong></div><Progress value={(total / target) * 100} />
-      <section className="flux-meal-list"><div className="flux-section-heading"><h2>Приёмы пищи</h2></div>{entries.map((entry) => <div className="flux-meal-row" key={entry.entryId}><span>{entry.time}</span><p><strong>{entry.meal}</strong><small>{entry.name}</small></p><b>{entry.kcal}</b><ChevronRight /></div>)}</section>
-      <Button className="flux-main-button" size="lg" onClick={onAdd}><Plus /> Добавить приём пищи</Button>
+      <section className="flux-meal-list">
+        <div className="flux-section-heading"><h2>Приёмы пищи</h2></div>
+        {entries.length === 0 && <div className="flux-diary-empty"><Sprout /><strong>Дневник пока пуст</strong><span>Добавьте первый продукт — баланс пересчитается сразу.</span></div>}
+        {MEAL_KINDS.map((meal) => {
+          const mealEntries = entries.filter((entry) => entry.meal === meal);
+          const mealCalories = mealEntries.reduce((sum, entry) => sum + entry.kcal, 0);
+          return (
+            <article className="flux-meal-group" key={meal}>
+              <header>
+                <div><strong>{meal}</strong><span>{mealCalories ? `${mealCalories} ккал` : 'Пока пусто'}</span></div>
+                <button type="button" onClick={() => onAdd(meal)} aria-label={`Добавить в ${mealInSentence(meal)}`}><Plus /></button>
+              </header>
+              {mealEntries.map((entry) => (
+                <div className="flux-meal-row" key={entry.entryId}>
+                  <span>{entry.time}</span>
+                  <p><strong>{entry.name}</strong><small>{entry.amount} {entry.unit} · {entry.brand}</small></p>
+                  <b>{entry.kcal}</b>
+                  <button type="button" className="flux-remove-entry" onClick={() => onRemove(entry)} aria-label={`Удалить ${entry.name}`}><Trash2 /></button>
+                </div>
+              ))}
+            </article>
+          );
+        })}
+      </section>
+      <Button className="flux-main-button" size="lg" onClick={() => onAdd()}><Plus /> Добавить продукт</Button>
     </>
   );
 }
@@ -436,15 +552,73 @@ function ProgressScreen() {
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('today');
-  const [entries, setEntries] = useState<MealEntry[]>(initialEntries);
+  const [entries, setEntries] = useState<MealEntry[]>(() => loadLocalEntriesForToday());
+  const initialLocalEntries = useRef(entries);
+  const activeDay = useRef(localDayKey());
+  const [catalog, setCatalog] = useState<Product[]>(fallbackProducts);
+  const [nutritionMode, setNutritionMode] = useState<NutritionMode>('local');
+  const [nutritionConnecting, setNutritionConnecting] = useState(true);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [quickAddProduct, setQuickAddProduct] = useState<Product | null>(null);
+  const [quickAddMeal, setQuickAddMeal] = useState<MealKind>(() => currentMeal());
   const [workoutOpen, setWorkoutOpen] = useState(false);
   const calorieTarget = 2000;
 
+  useEffect(() => {
+    let active = true;
+    bootstrapNutrition(initialLocalEntries.current)
+      .then((result) => {
+        if (!active) return;
+        setNutritionMode(result.mode);
+        if (result.products.length) setCatalog(result.products);
+        setEntries(result.entries);
+      })
+      .finally(() => { if (active) setNutritionConnecting(false); });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const timer = window.setInterval(async () => {
+      const nextDay = localDayKey();
+      if (nextDay === activeDay.current) return;
+      activeDay.current = nextDay;
+      setQuickAddOpen(false);
+      setNutritionConnecting(true);
+      const localEntries = loadLocalEntriesForToday();
+      setEntries(localEntries);
+      const result = await bootstrapNutrition(localEntries, true);
+      if (!active || activeDay.current !== nextDay) return;
+      setNutritionMode(result.mode);
+      if (result.products.length) setCatalog(result.products);
+      setEntries(result.entries);
+      setNutritionConnecting(false);
+    }, 30_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    persistLocalEntriesForToday(entries);
+  }, [entries]);
+
   const totals = useMemo(() => entries.reduce((sum, entry) => ({ kcal: sum.kcal + entry.kcal, protein: sum.protein + entry.protein, fat: sum.fat + entry.fat, carbs: sum.carbs + entry.carbs }), { kcal: 0, protein: 0, fat: 0, carbs: 0 }), [entries]);
 
-  function addProduct(product: Product, amount = product.amount) {
+  function openFood(meal: MealKind = currentMeal(), product: Product | null = null) {
+    if (nutritionConnecting) {
+      toast.add({ title: 'Подключаю дневник', description: 'Ещё мгновение — и можно добавлять продукты.', type: 'info' });
+      return;
+    }
+    setQuickAddMeal(meal);
+    setQuickAddProduct(product);
+    setQuickAddOpen(true);
+  }
+
+  async function addProduct(product: Product, amount = product.amount, meal: MealKind = currentMeal()) {
     const scale = amount / product.amount;
+    const eatenAt = new Date().toISOString();
     const entry: MealEntry = {
       ...product,
       amount,
@@ -452,12 +626,55 @@ export default function App() {
       protein: Math.round(product.protein * scale),
       fat: Math.round(product.fat * scale),
       carbs: Math.round(product.carbs * scale),
-      entryId: `${product.id}-${Date.now()}`,
-      meal: 'Завтрак',
-      time: new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit' }).format(new Date()),
+      entryId: crypto.randomUUID(),
+      mealId: crypto.randomUUID(),
+      productId: product.id,
+      meal,
+      time: new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit' }).format(new Date(eatenAt)),
+      eatenAt,
     };
     setEntries((current) => [...current, entry]);
-    toast.add({ title: `${product.name} добавлено`, description: `${amount} ${product.unit} · ${entry.kcal} ккал`, type: 'success' });
+
+    if (nutritionMode === 'supabase') {
+      try {
+        await addRemoteMealEntry(entry);
+      } catch {
+        setNutritionMode('local');
+        toast.add({ title: 'Сохранили на устройстве', description: 'Supabase временно недоступен — запись не потеряется.', type: 'info' });
+      }
+    }
+
+    toast.add({ title: `Добавлено в ${mealInSentence(meal)}`, description: `${product.name} · ${amount} ${product.unit} · ${entry.kcal} ккал`, type: 'success' });
+  }
+
+  async function removeEntry(entry: MealEntry) {
+    if (nutritionConnecting) {
+      toast.add({ title: 'Подключаю дневник', description: 'Дождитесь завершения синхронизации.', type: 'info' });
+      return;
+    }
+
+    if (isSupabaseConfigured && !queueRemoteMealDeletion(entry)) {
+      toast.add({ title: 'Не удалось удалить запись', description: 'Локальное хранилище недоступно. Попробуйте ещё раз.', type: 'error' });
+      return;
+    }
+
+    const removedFromStorage = removeLocalEntryFromStorage(entry.entryId);
+    if (!isSupabaseConfigured && !removedFromStorage) {
+      toast.add({ title: 'Не удалось удалить запись', description: 'Локальное хранилище недоступно. Попробуйте ещё раз.', type: 'error' });
+      return;
+    }
+
+    setEntries((current) => current.filter((candidate) => candidate.entryId !== entry.entryId));
+    if (nutritionMode === 'supabase') {
+      try {
+        await deleteRemoteMealEntry(entry);
+      } catch {
+        setNutritionMode('local');
+        toast.add({ title: 'Удалено на устройстве', description: 'Синхронизируем удаление, когда Supabase снова станет доступен.', type: 'info' });
+        return;
+      }
+    }
+    toast.add({ title: 'Запись удалена', description: `${entry.name} · ${entry.kcal} ккал`, type: 'info' });
   }
 
   const navItems: { id: Tab; label: string; icon: typeof House }[] = [
@@ -472,10 +689,10 @@ export default function App() {
       <main className="flux-stage">
         <section className="flux-app-shell" aria-label="Приложение FLUX">
           <div className="flux-base-app" aria-hidden={workoutOpen || undefined} inert={workoutOpen || undefined}>
-            <header className="flux-topbar"><button className="flux-brand" type="button" onClick={() => setTab('today')} aria-label="FLUX — главная"><img className="flux-brand-lockup" src={`${import.meta.env.BASE_URL}brand/flux-lockup.png`} alt="" draggable="false" /></button><Button className="flux-avatar" variant="secondary" size="icon" onClick={() => toast.add({ title: 'Профиль появится следующим', description: 'Настройки из онбординга подключим к Supabase.', type: 'info' })} aria-label="Открыть профиль">АК</Button></header>
+            <header className="flux-topbar"><button className="flux-brand" type="button" onClick={() => setTab('today')} aria-label="FLUX — главная"><img className="flux-brand-lockup" src={`${import.meta.env.BASE_URL}brand/flux-lockup.png`} alt="" draggable="false" /></button><Button className="flux-avatar" variant="secondary" size="icon" onClick={() => toast.add({ title: 'Профиль появится следующим', description: 'Настройки из онбординга подключим к Supabase.', type: 'info' })} aria-label="Открыть профиль">Д</Button></header>
             <div className="flux-content" id="top">
-              {tab === 'today' && <TodayScreen totals={totals} target={calorieTarget} onAdd={(product) => addProduct(product)} onOpenFood={() => setQuickAddOpen(true)} onWorkout={() => setWorkoutOpen(true)} />}
-              {tab === 'food' && <FoodScreen entries={entries} target={calorieTarget} onAdd={() => setQuickAddOpen(true)} />}
+              {tab === 'today' && <TodayScreen totals={totals} target={calorieTarget} products={catalog} onSelectProduct={(product) => openFood(currentMeal(), product)} onOpenFood={() => openFood()} onWorkout={() => setWorkoutOpen(true)} />}
+              {tab === 'food' && <FoodScreen entries={entries} target={calorieTarget} mode={nutritionMode} isConnecting={nutritionConnecting} onAdd={(meal) => openFood(meal ?? currentMeal())} onRemove={removeEntry} />}
               {tab === 'workouts' && <WorkoutsScreen onStart={() => setWorkoutOpen(true)} />}
               {tab === 'progress' && <ProgressScreen />}
             </div>
@@ -484,7 +701,15 @@ export default function App() {
           {workoutOpen && <WorkoutFlow onClose={() => setWorkoutOpen(false)} />}
         </section>
       </main>
-      <QuickAddDrawer open={quickAddOpen} onOpenChange={setQuickAddOpen} onAdd={addProduct} />
+      <QuickAddDrawer
+        open={quickAddOpen}
+        onOpenChange={(nextOpen) => { setQuickAddOpen(nextOpen); if (!nextOpen) setQuickAddProduct(null); }}
+        onAdd={addProduct}
+        products={catalog}
+        entries={entries}
+        initialProduct={quickAddProduct}
+        initialMeal={quickAddMeal}
+      />
     </Toaster>
   );
 }
