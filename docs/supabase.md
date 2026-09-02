@@ -1,6 +1,6 @@
 # Supabase для FLUX
 
-Миграция `supabase/migrations/0001_initial_schema.sql` создаёт основу MVP:
+Миграции в `supabase/migrations` создают основу MVP:
 
 - профиль пользователя и автоматическое создание профиля после регистрации;
 - текущие цели и настройки питания;
@@ -8,6 +8,8 @@
 - приёмы пищи и позиции дневника со снимком КБЖУ на момент добавления;
 - личные упражнения, планы тренировок и порядок упражнений по дням;
 - тренировочные сессии и выполненные подходы.
+
+`0002_nutrition_catalog_and_rpc.sql` добавляет стартовый каталог продуктов, удобные единицы порций и атомарную функцию записи продукта в дневник.
 
 ## Локальный запуск
 
@@ -24,7 +26,7 @@ supabase start
 supabase db reset
 ```
 
-`db reset` применит все файлы из `supabase/migrations`. Миграция рассчитана на PostgreSQL 15+ (актуальный локальный стек Supabase). Значения локальных `API URL` и `anon key` выводятся командой `supabase status`. Скопируйте `.env.example` в `.env.local` и замените оба значения. Файлы `.env.local` и ключ `service_role` нельзя коммитить или передавать во фронтенд.
+`db reset` применит все файлы из `supabase/migrations`. Миграции рассчитаны на PostgreSQL 15+ (актуальный локальный стек Supabase). Значения локальных `API URL` и publishable key выводятся командой `supabase status`. Скопируйте `.env.example` в `.env.local` и замените оба значения. Файлы `.env.local`, secret key и legacy `service_role` нельзя коммитить или передавать во фронтенд.
 
 Для удалённого проекта:
 
@@ -33,6 +35,10 @@ supabase login
 supabase link --project-ref YOUR_PROJECT_REF
 supabase db push
 ```
+
+В Dashboard включите **Anonymous Sign-Ins** и настройте CAPTCHA/Turnstile по [официальной инструкции Supabase](https://supabase.com/docs/guides/auth/auth-anonymous). Анонимных пользователей Supabase автоматически не удаляет, поэтому до включения публичной синхронизации также нужен план периодической очистки неактивных аккаунтов. Клиент сначала восстанавливает существующую сессию, а на новом устройстве создаёт анонимного пользователя. Такая сессия использует роль `authenticated`, поэтому существующие RLS-политики изолируют дневники разных пользователей.
+
+Для GitHub Pages добавьте repository variables `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` и, после настройки защиты, `VITE_SUPABASE_ANONYMOUS_AUTH_ENABLED=true`. URL и publishable key — публичные значения браузерного клиента; безопасность данных обеспечивает RLS. Secret key во frontend добавлять нельзя. Без флага анонимного входа приложение безопасно остаётся в локальном режиме.
 
 ## Модель доступа
 
