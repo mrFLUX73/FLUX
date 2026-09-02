@@ -36,9 +36,11 @@ supabase link --project-ref YOUR_PROJECT_REF
 supabase db push
 ```
 
-В Dashboard включите **Anonymous Sign-Ins** и настройте CAPTCHA/Turnstile по [официальной инструкции Supabase](https://supabase.com/docs/guides/auth/auth-anonymous). Анонимных пользователей Supabase автоматически не удаляет, поэтому до включения публичной синхронизации также нужен план периодической очистки неактивных аккаунтов. Клиент сначала восстанавливает существующую сессию, а на новом устройстве создаёт анонимного пользователя. Такая сессия использует роль `authenticated`, поэтому существующие RLS-политики изолируют дневники разных пользователей.
+В Cloudflare Turnstile создайте Managed-виджет для домена `mrflux73.github.io`. Публичный site key передаётся во фронтенд через `VITE_TURNSTILE_SITE_KEY`; secret key хранится только в настройках **Authentication → Attack Protection** Supabase. В Dashboard включите **Anonymous Sign-Ins** и Turnstile по [официальной инструкции Supabase](https://supabase.com/docs/guides/auth/auth-anonymous). Клиент сначала восстанавливает существующую сессию без CAPTCHA. На новом устройстве пользователь явно подключает синхронизацию, проходит Turnstile, и одноразовый токен передаётся в `signInAnonymously`. Токен не сохраняется.
 
-Для GitHub Pages добавьте repository variables `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` и, после настройки защиты, `VITE_SUPABASE_ANONYMOUS_AUTH_ENABLED=true`. URL и publishable key — публичные значения браузерного клиента; безопасность данных обеспечивает RLS. Secret key во frontend добавлять нельзя. Без флага анонимного входа приложение безопасно остаётся в локальном режиме.
+Анонимных пользователей Supabase автоматически не удаляет, поэтому до включения публичной синхронизации также нужен план периодической очистки неактивных аккаунтов. Анонимная сессия использует роль `authenticated`, поэтому существующие RLS-политики изолируют дневники разных пользователей.
+
+Для GitHub Pages добавьте repository variables `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_TURNSTILE_SITE_KEY` и, после настройки защиты, `VITE_SUPABASE_ANONYMOUS_AUTH_ENABLED=true`. URL, publishable key и Turnstile site key — публичные значения браузерного клиента; безопасность данных обеспечивает RLS. Secret key во frontend добавлять нельзя. Без флага анонимного входа приложение безопасно остаётся в локальном режиме.
 
 ## Модель доступа
 

@@ -46,6 +46,7 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          VITE_TURNSTILE_SITE_KEY: ${{ vars.VITE_TURNSTILE_SITE_KEY }}
           VITE_SUPABASE_ANONYMOUS_AUTH_ENABLED: ${{ vars.VITE_SUPABASE_ANONYMOUS_AUTH_ENABLED }}
 
       - name: Upload Pages artifact

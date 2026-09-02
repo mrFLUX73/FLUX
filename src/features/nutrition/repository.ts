@@ -12,7 +12,15 @@ export type NutritionBootstrap = {
   products: Product[];
   entries: MealEntry[];
   message?: string;
+  requiresCaptcha?: boolean;
 };
+
+class CaptchaRequiredError extends Error {
+  constructor() {
+    super('Нужна защитная проверка для подключения синхронизации');
+    this.name = 'CaptchaRequiredError';
+  }
+}
 
 let userPromise: Promise<string> | null = null;
 let bootstrapPromise: Promise<NutritionBootstrap> | null = null;
@@ -123,7 +131,7 @@ function formatTime(isoDate: string) {
   return new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit' }).format(new Date(isoDate));
 }
 
-async function ensureUserId() {
+async function ensureUserId(captchaToken?: string) {
   const client = await getSupabaseClient();
   if (!client) throw new Error('Supabase не настроен');
   if (!userPromise) {
@@ -136,18 +144,23 @@ async function ensureUserId() {
         throw new Error('Анонимная синхронизация ещё не включена');
       }
 
+      if (!captchaToken) throw new CaptchaRequiredError();
+
       const { data, error } = await client.auth.signInAnonymously({
-        options: { data: { display_name: 'Данил' } },
+        options: { captchaToken, data: { display_name: 'Данил' } },
       });
       if (error) throw error;
       if (!data.user?.id) throw new Error('Supabase не вернул пользователя');
       return data.user.id;
-    })().catch((error) => {
-      userPromise = null;
-      throw error;
-    });
+    })();
   }
-  return userPromise;
+
+  const pendingUser = userPromise;
+  try {
+    return await pendingUser;
+  } finally {
+    if (userPromise === pendingUser) userPromise = null;
+  }
 }
 
 async function loadRemoteProducts() {
@@ -233,7 +246,7 @@ async function flushPendingDeletions() {
   }
 }
 
-export function bootstrapNutrition(localEntries: MealEntry[], forceRefresh = false): Promise<NutritionBootstrap> {
+export function bootstrapNutrition(localEntries: MealEntry[], forceRefresh = false, captchaToken?: string): Promise<NutritionBootstrap> {
   if (!isSupabaseConfigured) {
     return Promise.resolve({ mode: 'local', products: fallbackProducts, entries: localEntries });
   }
@@ -245,7 +258,7 @@ export function bootstrapNutrition(localEntries: MealEntry[], forceRefresh = fal
       const pendingEntryIds = new Set(readPendingDeletions().map((entry) => entry.entryId));
       const activeLocalEntries = localEntries.filter((entry) => !pendingEntryIds.has(entry.entryId));
       try {
-        const userId = await ensureUserId();
+        const userId = await ensureUserId(captchaToken);
         for (const entryId of pendingEntryIds) {
           if (!removeLocalEntryFromStorage(entryId)) {
             throw new Error('Не удалось обновить локальный дневник');
@@ -269,7 +282,13 @@ export function bootstrapNutrition(localEntries: MealEntry[], forceRefresh = fal
         };
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Не удалось подключиться к Supabase';
-        return { mode: 'local' as const, products: fallbackProducts, entries: activeLocalEntries, message };
+        return {
+          mode: 'local' as const,
+          products: fallbackProducts,
+          entries: activeLocalEntries,
+          message,
+          requiresCaptcha: error instanceof CaptchaRequiredError,
+        };
       }
     })();
   }

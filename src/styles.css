@@ -126,7 +126,19 @@ button { cursor: pointer; }
 .flux-food-search svg { width: 17px; height: 17px; }
 .flux-sync-status { width: fit-content; min-height: 25px; margin: -13px 0 13px 2px; padding: 5px 9px; border-radius: 999px; background: #f0f3ed; color: #718071; display: flex; align-items: center; gap: 5px; font-size: 9px; }
 .flux-sync-status.is-cloud { background: #e3efdd; color: #365f3b; }
+.flux-sync-status.is-actionable { border: 0; background: #e3efdd; color: #365f3b; cursor: pointer; }
+.flux-sync-status:disabled { border: 0; opacity: 1; }
 .flux-sync-status svg { width: 12px; height: 12px; }
+
+.flux-sync-drawer { padding-bottom: max(24px, env(safe-area-inset-bottom)); }
+.flux-sync-drawer [data-slot='drawer-content'] > [data-slot='button'] { margin: 0 20px; }
+.flux-sync-shield { width: 44px; height: 44px; margin-bottom: 10px; border-radius: 15px; background: #e3efdd; color: #365f3b; display: grid; place-items: center; }
+.flux-sync-shield svg { width: 22px; height: 22px; }
+.flux-turnstile-area { min-height: 92px; margin: 0 10px 16px; display: grid; place-items: center; }
+.flux-turnstile-widget { width: 100%; min-height: 65px; display: grid; place-items: center; }
+.flux-turnstile-progress { color: #718071; display: flex; align-items: center; gap: 8px; font-size: 11px; }
+.flux-turnstile-progress svg { width: 16px; height: 16px; }
+.flux-turnstile-error { margin: 8px 0 0; color: #9c493f; font-size: 10px; line-height: 1.45; text-align: center; }
 .is-spinning { animation: flux-spin .9s linear infinite; }
 .flux-meal-list { margin-top: 25px; }
 .flux-diary-empty { min-height: 130px; margin-bottom: 14px; padding: 20px; border-radius: 21px; background: #edf4e9; color: #718071; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }

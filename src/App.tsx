@@ -8,6 +8,7 @@ import {
   Check,
   ChevronRight,
   Clock3,
+  Cloud,
   Coffee,
   Dumbbell,
   House,
@@ -25,6 +26,7 @@ import {
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { AnonymousSyncGate, isTurnstileConfigured } from './features/auth/AnonymousSyncGate';
 import {
   Drawer,
   DrawerContent,
@@ -46,7 +48,7 @@ import {
   removeLocalEntryFromStorage,
   type NutritionMode,
 } from './features/nutrition/repository';
-import { isSupabaseConfigured } from './lib/supabase';
+import { isAnonymousAuthEnabled, isSupabaseConfigured } from './lib/supabase';
 import {
   MEAL_KINDS,
   type MealEntry,
@@ -479,6 +481,9 @@ function FoodScreen({
   target,
   mode,
   isConnecting,
+  canConnect,
+  requiresCaptcha,
+  onConnect,
   onAdd,
   onRemove,
 }: {
@@ -486,6 +491,9 @@ function FoodScreen({
   target: number;
   mode: NutritionMode;
   isConnecting: boolean;
+  canConnect: boolean;
+  requiresCaptcha: boolean;
+  onConnect: () => void;
   onAdd: (meal?: MealKind) => void;
   onRemove: (entry: MealEntry) => void;
 }) {
@@ -493,9 +501,20 @@ function FoodScreen({
   return (
     <>
       <div className="flux-page-heading flux-page-heading-row"><div><span className="flux-eyebrow">Сегодня</span><h1>Питание</h1></div><Button size="icon-lg" onClick={() => onAdd()} aria-label="Добавить продукт"><Plus /></Button></div>
-      <div className={`flux-sync-status ${mode === 'supabase' ? 'is-cloud' : ''}`}>
-        {isConnecting ? <><LoaderCircle className="is-spinning" /> Подключаю данные…</> : mode === 'supabase' ? 'Синхронизировано с Supabase' : 'Сохраняется на этом устройстве'}
-      </div>
+      <button
+        className={`flux-sync-status ${mode === 'supabase' ? 'is-cloud' : ''} ${canConnect && mode === 'local' ? 'is-actionable' : ''}`}
+        type="button"
+        disabled={isConnecting || mode === 'supabase' || !canConnect}
+        onClick={onConnect}
+      >
+        {isConnecting
+          ? <><LoaderCircle className="is-spinning" /> Подключаю данные…</>
+          : mode === 'supabase'
+            ? <><Cloud /> Синхронизировано с Supabase</>
+            : canConnect
+              ? <><Cloud /> {requiresCaptcha ? 'Подключить синхронизацию' : 'Повторить синхронизацию'}</>
+              : 'Сохраняется на этом устройстве'}
+      </button>
       <button className="flux-food-search" type="button" onClick={() => onAdd()}><Search /><span>Что вы съели?</span></button>
       <div className="flux-calorie-line"><span>{total.toLocaleString('ru-RU')} из {target.toLocaleString('ru-RU')} ккал</span><strong>{Math.round((total / target) * 100)}%</strong></div><Progress value={(total / target) * 100} />
       <section className="flux-meal-list">
@@ -558,6 +577,8 @@ export default function App() {
   const [catalog, setCatalog] = useState<Product[]>(fallbackProducts);
   const [nutritionMode, setNutritionMode] = useState<NutritionMode>('local');
   const [nutritionConnecting, setNutritionConnecting] = useState(true);
+  const [syncRequiresCaptcha, setSyncRequiresCaptcha] = useState(false);
+  const [syncGateOpen, setSyncGateOpen] = useState(false);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [quickAddProduct, setQuickAddProduct] = useState<Product | null>(null);
   const [quickAddMeal, setQuickAddMeal] = useState<MealKind>(() => currentMeal());
@@ -570,6 +591,7 @@ export default function App() {
       .then((result) => {
         if (!active) return;
         setNutritionMode(result.mode);
+        setSyncRequiresCaptcha(Boolean(result.requiresCaptcha));
         if (result.products.length) setCatalog(result.products);
         setEntries(result.entries);
       })
@@ -590,6 +612,7 @@ export default function App() {
       const result = await bootstrapNutrition(localEntries, true);
       if (!active || activeDay.current !== nextDay) return;
       setNutritionMode(result.mode);
+      setSyncRequiresCaptcha(Boolean(result.requiresCaptcha));
       if (result.products.length) setCatalog(result.products);
       setEntries(result.entries);
       setNutritionConnecting(false);
@@ -605,6 +628,33 @@ export default function App() {
   }, [entries]);
 
   const totals = useMemo(() => entries.reduce((sum, entry) => ({ kcal: sum.kcal + entry.kcal, protein: sum.protein + entry.protein, fat: sum.fat + entry.fat, carbs: sum.carbs + entry.carbs }), { kcal: 0, protein: 0, fat: 0, carbs: 0 }), [entries]);
+
+  const canConnectNutrition = isSupabaseConfigured && isAnonymousAuthEnabled && isTurnstileConfigured;
+
+  async function connectNutrition(captchaToken?: string) {
+    setNutritionConnecting(true);
+    const result = await bootstrapNutrition(entries, true, captchaToken);
+    setNutritionMode(result.mode);
+    setSyncRequiresCaptcha(Boolean(result.requiresCaptcha));
+    if (result.products.length) setCatalog(result.products);
+    setEntries(result.entries);
+    setNutritionConnecting(false);
+
+    if (result.mode === 'supabase') {
+      setSyncGateOpen(false);
+      toast.add({ title: 'Синхронизация подключена', description: 'Дневник теперь сохраняется в Supabase.', type: 'success' });
+      return;
+    }
+
+    throw new Error(result.message ?? 'Не удалось подключить синхронизацию');
+  }
+
+  function openSync() {
+    if (syncRequiresCaptcha) setSyncGateOpen(true);
+    else void connectNutrition().catch(() => {
+      toast.add({ title: 'Не удалось подключиться', description: 'Проверьте интернет и попробуйте ещё раз.', type: 'error' });
+    });
+  }
 
   function openFood(meal: MealKind = currentMeal(), product: Product | null = null) {
     if (nutritionConnecting) {
@@ -692,7 +742,7 @@ export default function App() {
             <header className="flux-topbar"><button className="flux-brand" type="button" onClick={() => setTab('today')} aria-label="FLUX — главная"><img className="flux-brand-lockup" src={`${import.meta.env.BASE_URL}brand/flux-lockup.png`} alt="" draggable="false" /></button><Button className="flux-avatar" variant="secondary" size="icon" onClick={() => toast.add({ title: 'Профиль появится следующим', description: 'Настройки из онбординга подключим к Supabase.', type: 'info' })} aria-label="Открыть профиль">Д</Button></header>
             <div className="flux-content" id="top">
               {tab === 'today' && <TodayScreen totals={totals} target={calorieTarget} products={catalog} onSelectProduct={(product) => openFood(currentMeal(), product)} onOpenFood={() => openFood()} onWorkout={() => setWorkoutOpen(true)} />}
-              {tab === 'food' && <FoodScreen entries={entries} target={calorieTarget} mode={nutritionMode} isConnecting={nutritionConnecting} onAdd={(meal) => openFood(meal ?? currentMeal())} onRemove={removeEntry} />}
+              {tab === 'food' && <FoodScreen entries={entries} target={calorieTarget} mode={nutritionMode} isConnecting={nutritionConnecting} canConnect={canConnectNutrition} requiresCaptcha={syncRequiresCaptcha} onConnect={openSync} onAdd={(meal) => openFood(meal ?? currentMeal())} onRemove={removeEntry} />}
               {tab === 'workouts' && <WorkoutsScreen onStart={() => setWorkoutOpen(true)} />}
               {tab === 'progress' && <ProgressScreen />}
             </div>
@@ -710,6 +760,7 @@ export default function App() {
         initialProduct={quickAddProduct}
         initialMeal={quickAddMeal}
       />
+      <AnonymousSyncGate open={syncGateOpen} onOpenChange={setSyncGateOpen} onVerified={connectNutrition} />
     </Toaster>
   );
 }
