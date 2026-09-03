@@ -148,7 +148,9 @@ export function ProfileScreen({
               <Input autoComplete="name" value={draft.displayName} onChange={(event) => set('displayName', event.target.value)} />
             </ProfileField>
             <ProfileField label="Дата рождения" wide>
-              <Input type="date" value={draft.birthDate} onChange={(event) => set('birthDate', event.target.value)} />
+              <span className="flux-profile-date">
+                <Input type="date" value={draft.birthDate} onChange={(event) => set('birthDate', event.target.value)} />
+              </span>
             </ProfileField>
             <ProfileField label="Рост">
               <span className="flux-profile-unit"><Input inputMode="numeric" min="100" max="250" type="number" value={draft.heightCm} onChange={(event) => set('heightCm', event.target.value)} /><i>см</i></span>

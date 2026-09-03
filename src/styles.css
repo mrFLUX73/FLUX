@@ -63,9 +63,13 @@ button { cursor: pointer; }
 .flux-avatar img { width: 100%; height: 100%; display: block; object-fit: cover; }
 .flux-content { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 7px 22px 28px; scrollbar-width: none; }
 .flux-content::-webkit-scrollbar { display: none; }
-.flux-greeting { padding: 14px 2px 23px; }
-.flux-greeting p { margin: 0 0 7px; color: #718071; font-size: 13px; }
-.flux-greeting h1 { margin: 0; color: #202b21; font-size: clamp(27px, 7vw, 31px); font-weight: 500; line-height: 1.23; letter-spacing: -.04em; }
+.flux-topbar.is-home { display: grid; grid-template-columns: max-content minmax(0, 1fr) 80px; grid-template-rows: 26px 54px; column-gap: 14px; align-items: center; padding-inline: 22px; }
+.flux-topbar.is-home .flux-brand { grid-column: 1; grid-row: 1; min-width: 0; min-height: 26px; padding: 0; }
+.flux-topbar.is-home .flux-brand-lockup { height: 26px; }
+.flux-topbar.is-home .flux-avatar { grid-column: 3; grid-row: 1 / 3; align-self: center; }
+.flux-home-kicker { grid-column: 2; grid-row: 1; min-width: 0; margin: 0; overflow: hidden; color: #718071; font-size: 12px; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+.flux-home-title { grid-column: 1 / 3; grid-row: 2; align-self: center; margin: 0; color: #365f3b; font-size: 25px; font-style: italic; font-weight: 600; line-height: 1.08; letter-spacing: -.035em; }
+.flux-home-title span { display: block; white-space: nowrap; }
 .flux-balance-card { padding: 20px; border-radius: 25px; background: #e3efdd; }
 .flux-balance-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .flux-eyebrow { display: block; margin-bottom: 6px; color: #718071; font-size: 11px; }
@@ -153,6 +157,8 @@ button { cursor: pointer; }
 .flux-profile-field > span:first-child { color: #617061; font-size: 8px; }
 .flux-profile-field [data-slot='input'], .flux-profile-select { width: 100%; height: 46px; border: 1px solid #dfe8dc; border-radius: 14px; background: #fbfdf9; color: #202b21; box-shadow: none; }
 .flux-profile-field [data-slot='input'] { padding: 0 12px; font-size: 13px; }
+.flux-profile-date { width: 100%; height: 46px; min-width: 0; display: block; overflow: hidden; padding: 0 12px; border: 1px solid #dfe8dc; border-radius: 14px; background: #fbfdf9; }
+.flux-profile-date [data-slot='input'] { width: 100%; max-width: 100%; min-width: 0; height: 100%; display: block; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
 .flux-profile-select { position: relative; display: block; overflow: hidden; }
 .flux-profile-select select { width: 100%; height: 100%; padding: 0 32px 0 12px; border: 0; outline: 0; appearance: none; background: transparent; color: #202b21; font: inherit; font-size: 11px; }
 .flux-profile-select svg { width: 14px; height: 14px; position: absolute; top: 16px; right: 10px; color: #718071; pointer-events: none; }
@@ -195,6 +201,7 @@ button { cursor: pointer; }
 .flux-auth-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin: 2px 22px 14px; padding: 4px; border-radius: 15px; background: #edf4e9; }
 .flux-auth-tabs button { min-height: 36px; border: 0; border-radius: 12px; background: transparent; color: #718071; font-size: 10px; }
 .flux-auth-tabs button.is-active { background: #fff; color: #365f3b; box-shadow: 0 3px 12px rgb(43 70 42 / 8%); font-weight: 500; }
+.flux-auth-tabs button:disabled { cursor: wait; }
 .flux-auth-form { display: grid; gap: 13px; padding: 0 22px; }
 .flux-auth-field { display: grid; gap: 6px; }
 .flux-auth-field > span:first-child { color: #556455; font-size: 10px; }
@@ -218,6 +225,10 @@ button { cursor: pointer; }
 .flux-auth-submit { width: 100%; min-height: 51px !important; margin-top: 2px; border-radius: 17px !important; font-size: 12px !important; }
 .flux-auth-note { margin: -2px 4px 0; color: #879388; font-size: 8px; line-height: 1.5; text-align: center; }
 .flux-auth-verification { min-height: 150px; margin: 0 10px; padding: 20px 12px 4px; border-radius: 20px; background: #edf4e9; display: grid; place-items: center; align-content: center; }
+.flux-auth-challenge { width: 100%; min-height: 65px; display: grid; place-items: center; }
+.flux-auth-challenge > * { grid-area: 1 / 1; }
+.flux-auth-challenge .flux-turnstile-progress { position: relative; z-index: 1; }
+.flux-auth-challenge .flux-turnstile-widget { position: relative; z-index: 2; }
 .flux-auth-verification .flux-auth-error { width: 100%; margin-top: 10px; text-align: center; }
 .is-spinning { animation: flux-spin .9s linear infinite; }
 .flux-meal-list { margin-top: 25px; }
@@ -401,11 +412,17 @@ button { cursor: pointer; }
 @media (max-width: 480px) {
   html, body, #root, .flux-stage { background: var(--flux-bg); }
   .flux-stage { padding: 0; }
-  .flux-app-shell { width: 100%; height: 100dvh; min-height: 620px; border: 0; border-radius: 0; box-shadow: none; }
+  .flux-app-shell { width: 100%; height: 100dvh; min-height: 0; border: 0; border-radius: 0; box-shadow: none; }
+  .flux-base-app { height: 100%; overflow: hidden; }
   .flux-topbar { height: calc(104px + env(safe-area-inset-top, 0px)); flex-basis: calc(104px + env(safe-area-inset-top, 0px)); padding-top: calc(12px + env(safe-area-inset-top, 0px)); }
   .flux-profile-header { height: calc(76px + env(safe-area-inset-top, 0px)); flex-basis: calc(76px + env(safe-area-inset-top, 0px)); padding-top: calc(18px + env(safe-area-inset-top, 0px)); }
+  .flux-content { flex: 1 1 auto; -webkit-overflow-scrolling: touch; padding-right: max(22px, env(safe-area-inset-right, 0px)); padding-left: max(22px, env(safe-area-inset-left, 0px)); }
   .flux-quick-grid { grid-template-columns: 1fr; }
   .flux-quick-food { min-height: 66px; }
+}
+
+@media (max-width: 370px) {
+  .flux-home-title { font-size: 23px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

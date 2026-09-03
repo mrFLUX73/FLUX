@@ -199,26 +199,35 @@ export function PhonePasswordAuthGate({
   const [showPassword, setShowPassword] = useState(false);
   const [stage, setStage] = useState<'form' | 'captcha'>('form');
   const [error, setError] = useState('');
+  const [isCaptchaPending, setIsCaptchaPending] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
   const submissionRef = useRef<Omit<PhoneAuthSubmission, 'captchaToken'> | null>(null);
+  const authInFlightRef = useRef(false);
+  const isBusy = isCaptchaPending || isSubmitting;
 
   useEffect(() => {
     if (!open) return;
     setMode(initialMode);
     setStage('form');
     setError('');
+    setIsCaptchaPending(false);
     setIsSubmitting(false);
     setImportGuestDiary(false);
     submissionRef.current = null;
+    authInFlightRef.current = false;
   }, [initialMode, open]);
 
   function selectMode(nextMode: PhoneAuthMode) {
     setMode(nextMode);
     setStage('form');
     setError('');
+    setIsCaptchaPending(false);
+    setIsSubmitting(false);
     setPassword('');
     setImportGuestDiary(false);
+    submissionRef.current = null;
+    authInFlightRef.current = false;
   }
 
   function prepareSubmission(event: FormEvent<HTMLFormElement>) {
@@ -243,6 +252,9 @@ export function PhonePasswordAuthGate({
     }
 
     setError('');
+    setIsCaptchaPending(true);
+    setIsSubmitting(false);
+    authInFlightRef.current = false;
     submissionRef.current = {
       mode,
       displayName: normalizedName,
@@ -255,11 +267,18 @@ export function PhonePasswordAuthGate({
     setRetryKey((value) => value + 1);
   }
 
-  const handleTurnstileError = useCallback((message: string) => setError(message), []);
+  const handleTurnstileError = useCallback((message: string) => {
+    authInFlightRef.current = false;
+    setIsCaptchaPending(false);
+    setIsSubmitting(false);
+    setError(message);
+  }, []);
 
   const handleToken = useCallback(async (captchaToken: string) => {
     const pending = submissionRef.current;
-    if (!pending || isSubmitting) return;
+    if (!pending || authInFlightRef.current) return;
+    authInFlightRef.current = true;
+    setIsCaptchaPending(false);
     setIsSubmitting(true);
     setError('');
     try {
@@ -271,9 +290,21 @@ export function PhonePasswordAuthGate({
       setStage('form');
       setRetryKey((value) => value + 1);
     } finally {
+      authInFlightRef.current = false;
+      setIsCaptchaPending(false);
       setIsSubmitting(false);
     }
-  }, [isSubmitting, onAuthenticated, onOpenChange]);
+  }, [onAuthenticated, onOpenChange]);
+
+  function returnToForm() {
+    authInFlightRef.current = false;
+    submissionRef.current = null;
+    setIsCaptchaPending(false);
+    setIsSubmitting(false);
+    setError('');
+    setStage('form');
+    setRetryKey((value) => value + 1);
+  }
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange} showSwipeHandle>
@@ -289,8 +320,8 @@ export function PhonePasswordAuthGate({
         </DrawerHeader>
 
         <div className="flux-auth-tabs" role="tablist" aria-label="Регистрация или вход">
-          <button type="button" role="tab" aria-selected={mode === 'signup'} className={mode === 'signup' ? 'is-active' : ''} onClick={() => selectMode('signup')}>Регистрация</button>
-          <button type="button" role="tab" aria-selected={mode === 'signin'} className={mode === 'signin' ? 'is-active' : ''} onClick={() => selectMode('signin')}>Вход</button>
+          <button type="button" role="tab" aria-selected={mode === 'signup'} className={mode === 'signup' ? 'is-active' : ''} disabled={isBusy} onClick={() => selectMode('signup')}>Регистрация</button>
+          <button type="button" role="tab" aria-selected={mode === 'signin'} className={mode === 'signin' ? 'is-active' : ''} disabled={isBusy} onClick={() => selectMode('signin')}>Вход</button>
         </div>
 
         {stage === 'form' ? (
@@ -382,19 +413,20 @@ export function PhonePasswordAuthGate({
             <p className="flux-auth-note">Нажимая кнопку, вы соглашаетесь сохранить данные профиля в Supabase.</p>
           </form>
         ) : (
-          <div className="flux-auth-verification" aria-busy={isSubmitting}>
-            {isSubmitting ? (
-              <div className="flux-turnstile-progress"><LoaderCircle className="is-spinning" /> {mode === 'signup' ? 'Создаём профиль…' : 'Входим…'}</div>
-            ) : (
-              <TurnstileWidget
-                key={retryKey}
-                action={mode === 'signup' ? 'login_signup' : 'login_signin'}
-                onError={handleTurnstileError}
-                onToken={handleToken}
-              />
-            )}
+          <div className="flux-auth-verification" aria-busy={isBusy}>
+            <div className="flux-auth-challenge">
+              {isBusy && <div className="flux-turnstile-progress" aria-live="polite"><LoaderCircle className="is-spinning" /> {isSubmitting ? (mode === 'signup' ? 'Создаём профиль…' : 'Входим…') : 'Проверяем защиту…'}</div>}
+              {isCaptchaPending && (
+                <TurnstileWidget
+                  key={retryKey}
+                  action={mode === 'signup' ? 'login_signup' : 'login_signin'}
+                  onError={handleTurnstileError}
+                  onToken={handleToken}
+                />
+              )}
+            </div>
             {error && <p className="flux-auth-error" role="alert">{error}</p>}
-            {!isSubmitting && <button className="flux-text-button" type="button" onClick={() => setStage('form')}>Изменить данные</button>}
+            {!isBusy && <button className="flux-text-button" type="button" onClick={returnToForm}>Изменить данные</button>}
           </div>
         )}
       </DrawerContent>

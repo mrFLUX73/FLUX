@@ -466,7 +466,6 @@ function WorkoutFlow({ onClose }: { onClose: () => void }) {
 }
 
 function TodayScreen({
-  firstName,
   totals,
   target,
   products,
@@ -474,7 +473,6 @@ function TodayScreen({
   onOpenFood,
   onWorkout,
 }: {
-  firstName?: string;
   totals: NutritionTotals;
   target: number;
   products: Product[];
@@ -492,12 +490,11 @@ function TodayScreen({
 
   return (
     <>
-      <section className="flux-greeting"><p>Доброе утро{firstName ? `, ${firstName}` : ''}</p><h1>Сегодня достаточно<br />просто продолжить.</h1></section>
       <section className="flux-balance-card" aria-label="Баланс питания на сегодня">
         <div className="flux-balance-heading"><div><span className="flux-eyebrow">Баланс на сегодня</span><strong><MorphNumber value={remaining.toLocaleString('ru-RU')} /> <small>ккал осталось</small></strong></div><div className="flux-ring" style={{ '--flux-progress': `${progress * 3.6}deg` } as CSSProperties}><span>{progress}%</span></div></div>
         <div className="flux-macro-grid">{macros.map((macro) => <div key={macro.label}><span>{macro.label}</span><strong>{macro.value} / {macro.target} г</strong><Progress value={(macro.value / macro.target) * 100} aria-label={`${macro.label}: ${macro.value} из ${macro.target} грамм`} /></div>)}</div>
       </section>
-      <section className="flux-section"><div className="flux-section-heading"><h2>Быстро добавить</h2><button type="button" onClick={onOpenFood}>Все продукты</button></div><div className="flux-quick-grid">{products.slice(0, 2).map((product) => <button type="button" className="flux-quick-food" key={product.id} onClick={() => onSelectProduct(product)}><span className={`flux-food-icon ${product.icon === 'curd' ? 'flux-food-icon-warm' : ''}`}><ProductIcon type={product.icon} /></span><span><strong>{product.name.replace(' на молоке', '')}</strong><small>{product.amount} {product.unit}</small></span><Plus /></button>)}</div></section>
+      <section className="flux-section"><div className="flux-section-heading"><h2>Быстро добавить</h2><button type="button" onClick={onOpenFood}>Все продукты</button></div><div className="flux-quick-grid">{products.slice(0, 3).map((product) => <button type="button" className="flux-quick-food" key={product.id} onClick={() => onSelectProduct(product)}><span className={`flux-food-icon ${product.icon === 'curd' ? 'flux-food-icon-warm' : ''}`}><ProductIcon type={product.icon} /></span><span><strong>{product.name.replace(' на молоке', '')}</strong><small>{product.amount} {product.unit}</small></span><Plus /></button>)}</div></section>
       <section className="flux-workout-card"><span className="flux-workout-icon"><Activity /></span><div><span className="flux-eyebrow">Тренировка дня</span><h2>Всё тело · 28 мин</h2><p>6 упражнений, спокойный темп</p></div><Button size="icon" aria-label="Открыть тренировку" onClick={onWorkout}><ArrowRight /></Button></section>
     </>
   );
@@ -992,9 +989,14 @@ export default function App() {
       <main className="flux-stage">
         <section className="flux-app-shell" aria-label="Приложение FLUX">
           <div className="flux-base-app" aria-hidden={workoutOpen || profileOpen || undefined} inert={workoutOpen || profileOpen || undefined}>
-            <header className="flux-topbar"><button className="flux-brand" type="button" onClick={() => setTab('today')} aria-label="FLUX — главная"><img className="flux-brand-lockup" src={`${import.meta.env.BASE_URL}brand/flux-lockup.png`} alt="" draggable="false" /></button><Button className="flux-avatar" variant="secondary" size="icon" onClick={openProfile} aria-label={account ? 'Открыть профиль' : 'Войти или зарегистрироваться'}>{account ? <img src={avatarSrc} alt="" /> : '+'}</Button></header>
-            <div className="flux-content" id="top">
-              {tab === 'today' && <TodayScreen firstName={firstName} totals={totals} target={calorieTarget} products={catalog} onSelectProduct={(product) => openFood(currentMeal(), product)} onOpenFood={() => openFood()} onWorkout={() => setWorkoutOpen(true)} />}
+            <header className={`flux-topbar${tab === 'today' ? ' is-home' : ''}`}>
+              <button className="flux-brand" type="button" onClick={() => setTab('today')} aria-label="FLUX — главная"><img className="flux-brand-lockup" src={`${import.meta.env.BASE_URL}brand/flux-lockup.png`} alt="" draggable="false" /></button>
+              {tab === 'today' && <p className="flux-home-kicker">Доброе утро{firstName ? `, ${firstName}` : ''}</p>}
+              <Button className="flux-avatar" variant="secondary" size="icon" onClick={openProfile} aria-label={account ? 'Открыть профиль' : 'Войти или зарегистрироваться'}>{account ? <img src={avatarSrc} alt="" /> : '+'}</Button>
+              {tab === 'today' && <h1 className="flux-home-title"><span>Сегодня достаточно</span><span>просто продолжить.</span></h1>}
+            </header>
+            <div key={tab} className="flux-content" id="top">
+              {tab === 'today' && <TodayScreen totals={totals} target={calorieTarget} products={catalog} onSelectProduct={(product) => openFood(currentMeal(), product)} onOpenFood={() => openFood()} onWorkout={() => setWorkoutOpen(true)} />}
               {tab === 'food' && <FoodScreen entries={entries} target={calorieTarget} mode={nutritionMode} isConnecting={nutritionConnecting} isAuthenticated={Boolean(account)} canConnect={canConnectNutrition} onConnect={openSync} onAdd={(meal) => openFood(meal ?? currentMeal())} onRemove={removeEntry} />}
               {tab === 'workouts' && <WorkoutsScreen onStart={() => setWorkoutOpen(true)} />}
               {tab === 'progress' && <ProgressScreen />}
