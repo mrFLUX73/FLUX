@@ -68,6 +68,12 @@ import {
 } from './features/nutrition/repository';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabase';
 import {
+  createProfileDraft,
+  ProfileScreen,
+  type DefaultAvatar,
+  type ProfileDraft,
+} from './features/profile/ProfileScreen';
+import {
   MEAL_KINDS,
   type MealEntry,
   type MealKind,
@@ -613,7 +619,16 @@ export default function App() {
   const [quickAddProduct, setQuickAddProduct] = useState<Product | null>(null);
   const [quickAddMeal, setQuickAddMeal] = useState<MealKind>(() => currentMeal());
   const [workoutOpen, setWorkoutOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profileDraft, setProfileDraft] = useState<ProfileDraft | null>(null);
+  const [defaultAvatar, setDefaultAvatar] = useState<DefaultAvatar>('short-hair');
   const calorieTarget = 2000;
+
+  useEffect(() => {
+    setProfileOpen(false);
+    setProfileDraft(account ? createProfileDraft(account) : null);
+    setDefaultAvatar('short-hair');
+  }, [account?.id]);
 
   function setEntries(update: MealEntry[] | ((current: MealEntry[]) => MealEntry[])) {
     setDiary((current) => {
@@ -729,9 +744,16 @@ export default function App() {
 
   const canConnectNutrition = isSupabaseConfigured && isTurnstileConfigured;
   const firstName = account?.displayName.split(/\s+/)[0];
-  const avatarLabel = account?.displayName
-    ? account.displayName.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toLocaleUpperCase('ru-RU')
-    : '+';
+  const avatarSrc = `${import.meta.env.BASE_URL}avatars/avatar-${defaultAvatar}.png`;
+
+  function openProfile() {
+    if (!account) {
+      openAuth('signup');
+      return;
+    }
+    setProfileDraft((current) => current ?? createProfileDraft(account));
+    setProfileOpen(true);
+  }
 
   async function connectNutrition() {
     const scope = diary.scope;
@@ -925,8 +947,8 @@ export default function App() {
     <Toaster>
       <main className="flux-stage">
         <section className="flux-app-shell" aria-label="Приложение FLUX">
-          <div className="flux-base-app" aria-hidden={workoutOpen || undefined} inert={workoutOpen || undefined}>
-            <header className="flux-topbar"><button className="flux-brand" type="button" onClick={() => setTab('today')} aria-label="FLUX — главная"><img className="flux-brand-lockup" src={`${import.meta.env.BASE_URL}brand/flux-lockup.png`} alt="" draggable="false" /></button><Button className="flux-avatar" variant="secondary" size="icon" onClick={() => account ? toast.add({ title: account.displayName || 'Ваш профиль', description: 'Настройки профиля добавим следующим шагом.', type: 'info' }) : openAuth('signup')} aria-label={account ? 'Открыть профиль' : 'Войти или зарегистрироваться'}>{avatarLabel}</Button></header>
+          <div className="flux-base-app" aria-hidden={workoutOpen || profileOpen || undefined} inert={workoutOpen || profileOpen || undefined}>
+            <header className="flux-topbar"><button className="flux-brand" type="button" onClick={() => setTab('today')} aria-label="FLUX — главная"><img className="flux-brand-lockup" src={`${import.meta.env.BASE_URL}brand/flux-lockup.png`} alt="" draggable="false" /></button><Button className="flux-avatar" variant="secondary" size="icon" onClick={openProfile} aria-label={account ? 'Открыть профиль' : 'Войти или зарегистрироваться'}>{account ? <img src={avatarSrc} alt="" /> : '+'}</Button></header>
             <div className="flux-content" id="top">
               {tab === 'today' && <TodayScreen firstName={firstName} totals={totals} target={calorieTarget} products={catalog} onSelectProduct={(product) => openFood(currentMeal(), product)} onOpenFood={() => openFood()} onWorkout={() => setWorkoutOpen(true)} />}
               {tab === 'food' && <FoodScreen entries={entries} target={calorieTarget} mode={nutritionMode} isConnecting={nutritionConnecting} isAuthenticated={Boolean(account)} canConnect={canConnectNutrition} onConnect={openSync} onAdd={(meal) => openFood(meal ?? currentMeal())} onRemove={removeEntry} />}
@@ -936,6 +958,20 @@ export default function App() {
             <nav className="flux-bottom-nav" aria-label="Основная навигация">{navItems.map((item) => { const Icon = item.icon; return <button key={item.id} type="button" className={tab === item.id ? 'is-active' : ''} onClick={() => setTab(item.id)} aria-current={tab === item.id ? 'page' : undefined}><Icon /><span>{item.label}</span></button>; })}</nav>
           </div>
           {workoutOpen && <WorkoutFlow onClose={() => setWorkoutOpen(false)} />}
+          {profileOpen && account && profileDraft && (
+            <ProfileScreen
+              account={account}
+              avatar={defaultAvatar}
+              draft={profileDraft}
+              onAvatarChange={setDefaultAvatar}
+              onChange={setProfileDraft}
+              onClose={() => setProfileOpen(false)}
+              onDone={() => {
+                setProfileOpen(false);
+                toast.add({ title: 'Профиль подготовлен', description: 'Следующим шагом сохраним данные в Supabase и рассчитаем КБЖУ.', type: 'success' });
+              }}
+            />
+          )}
         </section>
       </main>
       <QuickAddDrawer
