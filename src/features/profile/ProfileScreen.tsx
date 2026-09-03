@@ -66,6 +66,7 @@ export function ProfileScreen({
   onChange,
   onClose,
   onDone,
+  saving,
 }: {
   account: FluxAccount;
   avatar: DefaultAvatar;
@@ -73,7 +74,8 @@ export function ProfileScreen({
   onAvatarChange: (avatar: DefaultAvatar) => void;
   onChange: (draft: ProfileDraft) => void;
   onClose: () => void;
-  onDone: () => void;
+  onDone: () => Promise<void> | void;
+  saving: boolean;
 }) {
   const set = <Key extends keyof ProfileDraft>(key: Key, value: ProfileDraft[Key]) => {
     onChange({ ...draft, [key]: value });
@@ -106,7 +108,7 @@ export function ProfileScreen({
         <span aria-hidden="true" />
       </header>
 
-      <form className="flux-profile-content" onSubmit={(event) => { event.preventDefault(); onDone(); }}>
+      <form className="flux-profile-content" onSubmit={(event) => { event.preventDefault(); void onDone(); }}>
         <section className="flux-profile-hero">
           <img src={selectedAvatar.src} alt="Выбранная аватарка" />
           <div>
@@ -145,7 +147,7 @@ export function ProfileScreen({
             <ProfileField label="Имя и фамилия" wide>
               <Input autoComplete="name" value={draft.displayName} onChange={(event) => set('displayName', event.target.value)} />
             </ProfileField>
-            <ProfileField label="Дата рождения">
+            <ProfileField label="Дата рождения" wide>
               <Input type="date" value={draft.birthDate} onChange={(event) => set('birthDate', event.target.value)} />
             </ProfileField>
             <ProfileField label="Рост">
@@ -180,8 +182,8 @@ export function ProfileScreen({
           </div>
         </section>
 
-        <Button className="flux-profile-done" size="lg" type="submit">Готово</Button>
-        <p className="flux-profile-footnote">На следующем шаге подключим сохранение и персональный расчёт КБЖУ.</p>
+        <Button className="flux-profile-done" disabled={saving} size="lg" type="submit">{saving ? 'Сохраняю…' : 'Сохранить профиль'}</Button>
+        <p className="flux-profile-footnote">Данные сохраняются в вашем профиле FLUX и доступны после входа на другом устройстве.</p>
       </form>
     </section>
   );

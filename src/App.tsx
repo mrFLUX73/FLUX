@@ -73,6 +73,7 @@ import {
   type DefaultAvatar,
   type ProfileDraft,
 } from './features/profile/ProfileScreen';
+import { loadProfileDraft, saveProfileDraft } from './features/profile/repository';
 import {
   MEAL_KINDS,
   type MealEntry,
@@ -621,13 +622,29 @@ export default function App() {
   const [workoutOpen, setWorkoutOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileDraft, setProfileDraft] = useState<ProfileDraft | null>(null);
+  const [profileSaving, setProfileSaving] = useState(false);
   const [defaultAvatar, setDefaultAvatar] = useState<DefaultAvatar>('short-hair');
+  const profileEditRevision = useRef(0);
   const calorieTarget = 2000;
 
   useEffect(() => {
+    let active = true;
+    const baselineRevision = 0;
+    profileEditRevision.current = baselineRevision;
     setProfileOpen(false);
     setProfileDraft(account ? createProfileDraft(account) : null);
+    setProfileSaving(false);
     setDefaultAvatar('short-hair');
+    if (account) {
+      void loadProfileDraft(account.id, account).then((stored) => {
+        if (!active || profileEditRevision.current !== baselineRevision) return;
+        setProfileDraft(stored.draft);
+        setDefaultAvatar(stored.avatar);
+      }).catch(() => {
+        // Keep the editable account-based draft when the network is offline.
+      });
+    }
+    return () => { active = false; };
   }, [account?.id]);
 
   function setEntries(update: MealEntry[] | ((current: MealEntry[]) => MealEntry[])) {
@@ -753,6 +770,33 @@ export default function App() {
     }
     setProfileDraft((current) => current ?? createProfileDraft(account));
     setProfileOpen(true);
+  }
+
+  async function completeProfile() {
+    if (!account || !profileDraft || profileSaving) return;
+    setProfileSaving(true);
+    try {
+      await saveProfileDraft(account.id, profileDraft);
+      setAccount((current) => current?.id === account.id
+        ? { ...current, displayName: profileDraft.displayName.trim() }
+        : current);
+      setProfileOpen(false);
+      toast.add({
+        title: 'Профиль сохранён',
+        description: 'Данные синхронизированы и будут доступны на других устройствах.',
+        type: 'success',
+      });
+    } catch (error) {
+      toast.add({
+        title: 'Не удалось сохранить профиль',
+        description: error instanceof Error && error.message === 'Укажите имя и фамилию'
+          ? error.message
+          : 'Проверьте интернет и попробуйте ещё раз.',
+        type: 'error',
+      });
+    } finally {
+      setProfileSaving(false);
+    }
   }
 
   async function connectNutrition() {
@@ -964,12 +1008,13 @@ export default function App() {
               avatar={defaultAvatar}
               draft={profileDraft}
               onAvatarChange={setDefaultAvatar}
-              onChange={setProfileDraft}
-              onClose={() => setProfileOpen(false)}
-              onDone={() => {
-                setProfileOpen(false);
-                toast.add({ title: 'Профиль подготовлен', description: 'Следующим шагом сохраним данные в Supabase и рассчитаем КБЖУ.', type: 'success' });
+              onChange={(nextDraft) => {
+                profileEditRevision.current += 1;
+                setProfileDraft(nextDraft);
               }}
+              onClose={() => setProfileOpen(false)}
+              onDone={completeProfile}
+              saving={profileSaving}
             />
           )}
         </section>
