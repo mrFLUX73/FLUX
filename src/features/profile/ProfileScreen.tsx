@@ -35,9 +35,9 @@ export function createProfileDraft(account: FluxAccount): ProfileDraft {
   };
 }
 
-const avatarOptions: { id: DefaultAvatar; label: string; src: string }[] = [
-  { id: 'short-hair', label: 'Аватар с короткой стрижкой', src: `${import.meta.env.BASE_URL}avatars/avatar-short-hair.png` },
-  { id: 'bun', label: 'Аватар с пучком', src: `${import.meta.env.BASE_URL}avatars/avatar-bun.png` },
+const sexOptions: { sex: Exclude<ProfileDraft['calculationSex'], ''>; avatar: DefaultAvatar; label: string; src: string }[] = [
+  { sex: 'male', avatar: 'short-hair', label: 'Мужской', src: `${import.meta.env.BASE_URL}avatars/avatar-short-hair.png` },
+  { sex: 'female', avatar: 'bun', label: 'Женский', src: `${import.meta.env.BASE_URL}avatars/avatar-bun.png` },
 ];
 
 function maskPhone(phone: string) {
@@ -91,7 +91,12 @@ export function ProfileScreen({
   ];
   const completed = requiredValues.filter(Boolean).length;
   const completeness = Math.round((completed / requiredValues.length) * 100);
-  const selectedAvatar = avatarOptions.find((option) => option.id === avatar) ?? avatarOptions[0];
+  const selectedAvatar = sexOptions.find((option) => option.avatar === avatar) ?? sexOptions[0];
+
+  const selectSex = (sex: Exclude<ProfileDraft['calculationSex'], ''>, nextAvatar: DefaultAvatar) => {
+    onChange({ ...draft, calculationSex: sex });
+    onAvatarChange(nextAvatar);
+  };
 
   return (
     <section className="flux-profile-flow" aria-label="Профиль пользователя">
@@ -116,19 +121,19 @@ export function ProfileScreen({
         </section>
 
         <section className="flux-profile-card">
-          <div className="flux-profile-card-heading"><div><span>Аватар</span><strong>Как вас показывать в FLUX</strong></div><Check aria-hidden="true" /></div>
-          <div className="flux-avatar-options">
-            {avatarOptions.map((option) => (
+          <div className="flux-profile-card-heading"><div><span>Пол</span><strong>Выберите подходящий вариант</strong></div></div>
+          <div className="flux-sex-options">
+            {sexOptions.map((option) => (
               <button
-                aria-label={option.label}
-                aria-pressed={avatar === option.id}
-                className={avatar === option.id ? 'is-selected' : ''}
-                key={option.id}
-                onClick={() => onAvatarChange(option.id)}
+                aria-pressed={draft.calculationSex === option.sex}
+                className={draft.calculationSex === option.sex ? 'is-selected' : ''}
+                key={option.sex}
+                onClick={() => selectSex(option.sex, option.avatar)}
                 type="button"
               >
                 <img src={option.src} alt="" />
-                <span>{avatar === option.id ? 'Выбрано' : 'Выбрать'}</span>
+                <span><strong>{option.label}</strong><small>{draft.calculationSex === option.sex ? 'Выбрано' : 'Выбрать'}</small></span>
+                {draft.calculationSex === option.sex && <Check aria-hidden="true" />}
               </button>
             ))}
           </div>
@@ -142,9 +147,6 @@ export function ProfileScreen({
             </ProfileField>
             <ProfileField label="Дата рождения">
               <Input type="date" value={draft.birthDate} onChange={(event) => set('birthDate', event.target.value)} />
-            </ProfileField>
-            <ProfileField label="Пол для расчёта">
-              <span className="flux-profile-select"><select value={draft.calculationSex} onChange={(event) => set('calculationSex', event.target.value as ProfileDraft['calculationSex'])}><option value="">Выберите</option><option value="female">Женский</option><option value="male">Мужской</option></select><ChevronDown aria-hidden="true" /></span>
             </ProfileField>
             <ProfileField label="Рост">
               <span className="flux-profile-unit"><Input inputMode="numeric" min="100" max="250" type="number" value={draft.heightCm} onChange={(event) => set('heightCm', event.target.value)} /><i>см</i></span>
