@@ -1,5 +1,25 @@
 import type { Product, ProductIconName, ProductUnit } from './types';
 
+export const barcodeDemoProduct: Product = {
+  id: 'barcode-demo-4601751007674',
+  barcode: '4601751007674',
+  name: 'Творог обезжиренный 0,3%',
+  brand: 'Волжские Просторы',
+  amount: 180,
+  unit: 'г',
+  servingSizeG: 180,
+  kcal: 153,
+  protein: 32.4,
+  fat: 0,
+  carbs: 5.9,
+  icon: 'curd',
+};
+
+export const barcodeDemoAlternatives: Product[] = [
+  { id: 'barcode-demo-curd-05', name: 'Творог 0,5%', brand: 'Волжские Просторы', amount: 180, unit: 'г', servingSizeG: 180, kcal: 153, protein: 32, fat: 0.9, carbs: 5.8, icon: 'curd' },
+  { id: 'barcode-demo-curd-5', name: 'Творог 5%', brand: 'Волжские Просторы', amount: 180, unit: 'г', servingSizeG: 180, kcal: 218, protein: 30, fat: 9, carbs: 5, icon: 'curd' },
+];
+
 export const fallbackProducts: Product[] = [
   { id: '10000000-0000-4000-8000-000000000001', name: 'Овсянка на молоке', brand: 'Домашнее блюдо', amount: 180, unit: 'г', servingSizeG: 180, kcal: 190, protein: 7, fat: 5, carbs: 29, icon: 'wheat' },
   { id: '10000000-0000-4000-8000-000000000002', name: 'Творог 5%', brand: 'Простоквашино', amount: 180, unit: 'г', servingSizeG: 180, kcal: 218, protein: 30, fat: 9, carbs: 5, icon: 'curd' },
@@ -66,4 +86,3 @@ export function productFromRow(row: ProductRow): Product {
     icon: iconForCategory(row.category),
   };
 }
-
