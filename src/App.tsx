@@ -17,6 +17,7 @@ import {
   Pause,
   Play,
   Plus,
+  ScanBarcode,
   Search,
   Sprout,
   Trash2,
@@ -48,7 +49,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Toaster, toast } from '@/components/ui/toast';
-import { fallbackProducts } from './features/nutrition/catalog';
+import { barcodeDemoAlternatives, barcodeDemoProduct, fallbackProducts } from './features/nutrition/catalog';
 import {
   addRemoteMealEntry,
   bootstrapNutrition,
@@ -102,6 +103,10 @@ function mealInSentence(meal: MealKind) {
   return meal.toLocaleLowerCase('ru');
 }
 
+function formatMacro(value: number) {
+  return (Math.round(value * 10) / 10).toLocaleString('ru-RU', { maximumFractionDigits: 1 });
+}
+
 function ProductIcon({ type }: { type: Product['icon'] }) {
   const Icon = type === 'wheat' ? Wheat : type === 'banana' ? Banana : type === 'coffee' ? Coffee : Utensils;
   return <Icon aria-hidden="true" />;
@@ -150,20 +155,38 @@ function QuickAddDrawer({
   const [amount, setAmount] = useState<number | ''>(180);
   const [meal, setMeal] = useState<MealKind>(initialMeal);
   const [isAdding, setIsAdding] = useState(false);
+  const [scannerOpen, setScannerOpen] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setMeal(initialMeal);
     setSelected(initialProduct);
     setAmount(initialProduct?.amount ?? 180);
+    setScannerOpen(false);
   }, [initialMeal, initialProduct, open]);
+
+  useEffect(() => {
+    if (!open || !scannerOpen) return;
+    const detectionTimer = window.setTimeout(() => {
+      setQuery(barcodeDemoProduct.barcode ?? '');
+      setScannerOpen(false);
+    }, 2200);
+    return () => window.clearTimeout(detectionTimer);
+  }, [open, scannerOpen]);
 
   const recentIds = [...entries]
     .sort((a, b) => b.eatenAt.localeCompare(a.eatenAt))
     .map((entry) => entry.productId)
     .filter((id): id is string => Boolean(id));
-  const filtered = products
-    .filter((product) => `${product.name} ${product.brand}`.toLocaleLowerCase('ru').includes(query.trim().toLocaleLowerCase('ru')))
+  const normalizedQuery = query.trim().toLocaleLowerCase('ru');
+  const barcodeQuery = query.replace(/\D/g, '');
+  const isBarcodeQuery = /^\d{8,14}$/.test(barcodeQuery);
+  const demoProducts = [barcodeDemoProduct, ...barcodeDemoAlternatives];
+  const searchableProducts = query.trim()
+    ? [...products, ...demoProducts.filter((demo) => !products.some((product) => product.id === demo.id))]
+    : products;
+  const filtered = searchableProducts
+    .filter((product) => `${product.name} ${product.brand} ${product.barcode ?? ''}`.toLocaleLowerCase('ru').includes(normalizedQuery))
     .sort((a, b) => {
       if (query.trim()) return a.name.localeCompare(b.name, 'ru');
       const aIndex = recentIds.indexOf(a.id);
@@ -181,6 +204,7 @@ function QuickAddDrawer({
   function choose(product: Product) {
     setSelected(product);
     setAmount(product.amount);
+    setScannerOpen(false);
   }
 
   function close() {
@@ -189,6 +213,7 @@ function QuickAddDrawer({
       setSelected(null);
       setQuery('');
       setIsAdding(false);
+      setScannerOpen(false);
     }, 250);
   }
 
@@ -199,6 +224,7 @@ function QuickAddDrawer({
         setSelected(null);
         setQuery('');
         setIsAdding(false);
+        setScannerOpen(false);
       }, 250);
     }
   }
@@ -219,26 +245,46 @@ function QuickAddDrawer({
   const amountStep = selected?.unit === 'шт' ? 1 : 10;
   const amountMinimum = selected?.unit === 'шт' ? 1 : 10;
   const portionPresets = selected
-    ? [...new Set(selected.unit === 'шт' ? [1, 2, 3] : selected.unit === 'мл' ? [200, 250, selected.amount] : [100, 150, selected.amount])]
+    ? [...new Set(selected.unit === 'шт'
+      ? [1, 2, 3]
+      : selected.unit === 'мл'
+        ? [200, 250, selected.amount]
+        : selected.barcode
+          ? [100, selected.amount, selected.amount / 2]
+          : [100, 150, selected.amount])]
     : [];
 
   return (
     <Drawer open={open} onOpenChange={handleOpenChange} showSwipeHandle>
       <DrawerContent className="flux-drawer">
-        <DrawerHeader className="flux-drawer-header">
-          <DrawerTitle>{selected ? selected.name : 'Добавить еду'}</DrawerTitle>
-          <DrawerDescription>{selected ? selected.brand : `Сегодня · ${meal}`}</DrawerDescription>
+        <DrawerHeader className={`flux-drawer-header ${scannerOpen ? 'is-scanner' : ''}`}>
+          {scannerOpen && <button type="button" className="flux-drawer-back" onClick={() => setScannerOpen(false)} aria-label="Назад к поиску"><ArrowLeft /></button>}
+          <div>
+            <DrawerTitle>{scannerOpen ? 'Сканировать штрихкод' : selected ? selected.name : 'Добавить еду'}</DrawerTitle>
+            <DrawerDescription>{scannerOpen ? 'Наведите камеру на код упаковки' : selected ? selected.brand : `Сегодня · ${meal}`}</DrawerDescription>
+          </div>
         </DrawerHeader>
-        <div className="flux-meal-picker" role="group" aria-label="Приём пищи">
+        {!scannerOpen && <div className="flux-meal-picker" role="group" aria-label="Приём пищи">
           {MEAL_KINDS.map((kind) => (
             <button key={kind} type="button" className={meal === kind ? 'is-active' : ''} onClick={() => setMeal(kind)}>
               {kind}
             </button>
           ))}
-        </div>
-        {selected ? (
+        </div>}
+        {scannerOpen ? (
+          <div className="flux-scanner-view">
+            <div className="flux-camera-preview" aria-label="Демонстрация сканирования штрихкода">
+              <span className="flux-camera-corner is-top-left" /><span className="flux-camera-corner is-top-right" />
+              <span className="flux-camera-corner is-bottom-left" /><span className="flux-camera-corner is-bottom-right" />
+              <span className="flux-demo-barcode" aria-hidden="true">{Array.from({ length: 11 }, (_, index) => <i key={index} />)}</span>
+              <span className="flux-scan-line" />
+            </div>
+            <div className="flux-scanning-status"><LoaderCircle className="is-spinning" /> Ищем штрихкод…</div>
+            <button type="button" className="flux-text-button" onClick={() => setScannerOpen(false)}>Ввести штрихкод вручную</button>
+          </div>
+        ) : selected ? (
           <div className="flux-portion-view">
-            <div className="flux-portion-caption"><span>Количество</span><span>Обычно: {selected.amount} {selected.unit}</span></div>
+            <div className="flux-portion-caption"><span>Количество</span><span>{selected.barcode ? 'Упаковка' : 'Обычно'}: {selected.amount} {selected.unit}</span></div>
             <div className="flux-portion-stepper">
               <Button variant="secondary" size="icon-lg" onClick={() => setAmount((value) => Math.max(amountMinimum, (Number(value) || selected.amount) - amountStep))} aria-label="Уменьшить количество"><Minus /></Button>
               <label>
@@ -260,15 +306,17 @@ function QuickAddDrawer({
             <div className="flux-portion-presets">
               {portionPresets.map((preset) => (
                 <button type="button" key={preset} className={numericAmount === preset ? 'is-active' : ''} onClick={() => setAmount(preset)}>
-                  {preset === selected.amount ? 'Обычно · ' : ''}{preset} {selected.unit}
+                  {selected.barcode && preset === selected.amount / 2
+                    ? '½ упаковки'
+                    : `${preset === selected.amount ? `${selected.barcode ? 'Упаковка' : 'Обычно'} · ` : ''}${preset} ${selected.unit}`}
                 </button>
               ))}
             </div>
             <div className="flux-nutrient-grid">
               <div><span>Калории</span><strong><MorphNumber value={Math.round(selected.kcal * scale)} /></strong><small>ккал</small></div>
-              <div><span>Белки</span><strong><MorphNumber value={Math.round(selected.protein * scale)} /></strong><small>г</small></div>
-              <div><span>Жиры</span><strong><MorphNumber value={Math.round(selected.fat * scale)} /></strong><small>г</small></div>
-              <div><span>Углеводы</span><strong><MorphNumber value={Math.round(selected.carbs * scale)} /></strong><small>г</small></div>
+              <div><span>Белки</span><strong><MorphNumber value={formatMacro(selected.protein * scale)} /></strong><small>г</small></div>
+              <div><span>Жиры</span><strong><MorphNumber value={formatMacro(selected.fat * scale)} /></strong><small>г</small></div>
+              <div><span>Углеводы</span><strong><MorphNumber value={formatMacro(selected.carbs * scale)} /></strong><small>г</small></div>
             </div>
             <Button className="flux-main-button" size="lg" disabled={isAdding || numericAmount <= 0} onClick={() => submit(selected, numericAmount)}>
               <span>{isAdding ? 'Сохраняю…' : `Добавить в ${mealInSentence(meal)}`}</span><strong>{Math.round(selected.kcal * scale)} ккал</strong>
@@ -277,10 +325,11 @@ function QuickAddDrawer({
           </div>
         ) : (
           <div className="flux-quick-add-view">
-            <label className="flux-search-field">
+            <label className={`flux-search-field ${query ? 'has-clear' : ''}`}>
               <Search aria-hidden="true" />
-              <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Найти продукт или бренд" aria-label="Найти продукт или бренд" />
+              <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Продукт, бренд или штрихкод" aria-label="Найти продукт, бренд или штрихкод" />
               {query && <button type="button" onClick={() => setQuery('')} aria-label="Очистить поиск"><X /></button>}
+              <button type="button" className="flux-scan-button" onClick={(event) => { event.preventDefault(); setScannerOpen(true); }} aria-label="Сканировать штрихкод"><ScanBarcode /></button>
             </label>
             {!query && repeatEntry && repeatProduct && (
               <section className="flux-usual-meal">
@@ -293,15 +342,36 @@ function QuickAddDrawer({
               </section>
             )}
             <section className="flux-product-results">
-              <div className="flux-section-heading"><h2>{query ? 'Результаты поиска' : recentIds.length ? 'Недавние и частые' : 'Популярные продукты'}</h2></div>
-              {filtered.map((product) => (
-                <button key={product.id} type="button" className="flux-product-row" onClick={() => choose(product)}>
-                  <span className="flux-food-icon"><ProductIcon type={product.icon} /></span>
-                  <span><strong>{product.name}</strong><small>{product.brand} · обычно {product.amount} {product.unit}</small></span>
-                  <span><strong>{product.kcal}</strong><small>ккал</small></span>
-                  <ChevronRight aria-hidden="true" />
-                </button>
-              ))}
+              <div className={`flux-section-heading ${isBarcodeQuery && filtered.length ? 'flux-results-heading' : ''}`}>
+                <h2>{isBarcodeQuery ? 'Результат по штрихкоду' : query ? 'Результаты поиска' : recentIds.length ? 'Недавние и частые' : 'Популярные продукты'}</h2>
+                {isBarcodeQuery && filtered.length > 0 && <span className="flux-found-pill">Найдено</span>}
+              </div>
+              {filtered.map((product) => {
+                const isBarcodeMatch = isBarcodeQuery && product.barcode === barcodeQuery;
+                const kcalPer100 = Math.round(product.kcal / product.servingSizeG * 100);
+                return (
+                  <div key={product.id} className={isBarcodeMatch ? 'flux-product-match' : undefined}>
+                    <button type="button" className={`flux-product-row ${isBarcodeMatch ? 'is-barcode-match' : ''}`} onClick={() => choose(product)}>
+                      <span className="flux-food-icon"><ProductIcon type={product.icon} /></span>
+                      <span><strong>{product.name}</strong><small>{product.brand} · {isBarcodeMatch ? product.amount : 'обычно ' + product.amount} {product.unit}</small>{isBarcodeMatch && <em>{kcalPer100} ккал на 100 г</em>}</span>
+                      {!isBarcodeMatch && <span><strong>{product.kcal}</strong><small>ккал</small></span>}
+                      <ChevronRight aria-hidden="true" />
+                    </button>
+                    {isBarcodeMatch && <div className="flux-product-note"><span><Check /></span><p><strong>Наиболее подходящий вариант</strong>Жирность 0,3% совпадает с товаром по штрихкоду. Проверьте цифры на упаковке перед первым сохранением.</p></div>}
+                  </div>
+                );
+              })}
+              {isBarcodeQuery && filtered.some((product) => product.barcode === barcodeQuery) && (
+                <div className="flux-alternative-products">
+                  <h3>Другие варианты</h3>
+                  {barcodeDemoAlternatives.map((product) => (
+                    <button type="button" key={product.id} onClick={() => choose(product)}>
+                      <span><strong>{product.name}</strong><small>{product.brand}</small></span>
+                      <span><strong>{Math.round(product.kcal / product.servingSizeG * 100)}</strong><small> ккал</small></span>
+                    </button>
+                  ))}
+                </div>
+              )}
               {filtered.length === 0 && <div className="flux-empty"><strong>Ничего не нашли</strong><span>Проверьте название — создание своего продукта добавим следующим шагом.</span></div>}
             </section>
           </div>
@@ -914,9 +984,9 @@ export default function App() {
       ...product,
       amount,
       kcal: Math.round(product.kcal * scale),
-      protein: Math.round(product.protein * scale),
-      fat: Math.round(product.fat * scale),
-      carbs: Math.round(product.carbs * scale),
+      protein: Math.round(product.protein * scale * 10) / 10,
+      fat: Math.round(product.fat * scale * 10) / 10,
+      carbs: Math.round(product.carbs * scale * 10) / 10,
       entryId: crypto.randomUUID(),
       mealId: crypto.randomUUID(),
       productId: product.id,
