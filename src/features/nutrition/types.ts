@@ -6,6 +6,7 @@ export type ProductIconName = 'wheat' | 'curd' | 'banana' | 'coffee';
 
 export type Product = {
   id: string;
+  barcode?: string;
   name: string;
   brand: string;
   amount: number;
@@ -33,4 +34,3 @@ export type NutritionTotals = {
   fat: number;
   carbs: number;
 };
-
