@@ -374,6 +374,30 @@ button { cursor: pointer; }
 .flux-empty strong, .flux-empty span { display: block; }
 .flux-empty strong { color: #202b21; font-size: 13px; font-weight: 500; }
 .flux-empty span { margin-top: 5px; line-height: 1.5; }
+.flux-empty [data-slot='button'] { min-height: 42px; margin-top: 16px; border-radius: 14px; }
+.flux-manual-product-view { min-height: 0; overflow-y: auto; padding: 10px 22px 24px; }
+.flux-manual-intro { display: grid; grid-template-columns: 38px 1fr; gap: 11px; align-items: center; padding: 13px; border-radius: 18px; background: #edf4e9; }
+.flux-manual-intro > span { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 13px; background: #dcebd8; color: #365f3b; }
+.flux-manual-intro svg { width: 18px; height: 18px; }
+.flux-manual-intro p { margin: 0; color: #718071; font-size: 8.5px; line-height: 1.45; }
+.flux-manual-intro strong { display: block; margin-bottom: 2px; color: #263427; font-size: 11px; font-weight: 600; }
+.flux-manual-fields { display: grid; grid-template-columns: 1fr 94px; gap: 12px 9px; margin-top: 17px; }
+.flux-manual-fields .is-wide { grid-column: 1 / -1; }
+.flux-manual-fields label > span, .flux-manual-macros label > span { display: block; margin: 0 0 6px 2px; color: #718071; font-size: 8.5px; }
+.flux-manual-fields [data-slot='input'], .flux-manual-macros [data-slot='input'] { height: 46px; border-color: #dfe8dc; border-radius: 15px; background: #fff; box-shadow: none; font-size: 14px; }
+.flux-manual-unit { align-self: end; height: 46px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: 15px; background: #edf4e9; }
+.flux-manual-unit button { border: 0; border-radius: 11px; background: transparent; color: #718071; font-size: 11px; }
+.flux-manual-unit button.is-active { background: #fff; color: #365f3b; box-shadow: 0 2px 7px rgb(43 74 46 / 8%); }
+.flux-manual-macro-title { display: flex; align-items: baseline; justify-content: space-between; margin-top: 20px; }
+.flux-manual-macro-title strong { font-size: 11px; font-weight: 600; }
+.flux-manual-macro-title span { color: #829084; font-size: 8px; }
+.flux-manual-macros { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 10px; }
+.flux-manual-macros label { position: relative; }
+.flux-manual-macros [data-slot='input'] { padding-right: 42px; font-size: 16px; }
+.flux-manual-macros small { position: absolute; right: 13px; bottom: 15px; color: #849085; font-size: 8px; pointer-events: none; }
+.flux-manual-product-view > .flux-main-button { margin-top: 20px; }
+.flux-manual-product-view > .flux-main-button svg { width: 17px; height: 17px; }
+.flux-manual-hint { margin: 9px 0 0; color: #829084; font-size: 8px; text-align: center; }
 .flux-portion-caption { display: flex; justify-content: space-between; color: #718071; font-size: 9px; }
 .flux-portion-caption span:last-child { color: #365f3b; }
 .flux-portion-stepper { display: grid; grid-template-columns: 48px 1fr 48px; gap: 15px; align-items: center; margin-top: 10px; }

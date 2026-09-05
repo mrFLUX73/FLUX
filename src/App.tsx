@@ -87,6 +87,16 @@ import {
 
 type Tab = 'today' | 'food' | 'workouts' | 'progress';
 type ScannerState = 'idle' | 'requesting' | 'scanning' | 'error';
+type ManualProductDraft = {
+  name: string;
+  brand: string;
+  amount: string;
+  unit: 'г' | 'мл';
+  kcal: string;
+  protein: string;
+  fat: string;
+  carbs: string;
+};
 
 const macroTargets = { protein: 110, fat: 70, carbs: 230 };
 
@@ -108,6 +118,16 @@ function mealInSentence(meal: MealKind) {
 
 function formatMacro(value: number) {
   return (Math.round(value * 10) / 10).toLocaleString('ru-RU', { maximumFractionDigits: 1 });
+}
+
+function emptyManualProduct(name = ''): ManualProductDraft {
+  return { name, brand: '', amount: '', unit: 'г', kcal: '', protein: '', fat: '', carbs: '' };
+}
+
+function draftNumber(value: string) {
+  if (!value.trim()) return null;
+  const parsed = Number.parseFloat(value.replace(',', '.'));
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
 function ProductIcon({ type }: { type: Product['icon'] }) {
@@ -144,6 +164,7 @@ function QuickAddDrawer({
   entries,
   initialProduct,
   initialMeal,
+  syncsProducts,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -152,6 +173,7 @@ function QuickAddDrawer({
   entries: MealEntry[];
   initialProduct: Product | null;
   initialMeal: MealKind;
+  syncsProducts: boolean;
 }) {
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<Product | null>(null);
@@ -162,9 +184,12 @@ function QuickAddDrawer({
   const [scannerState, setScannerState] = useState<ScannerState>('idle');
   const [scannerMessage, setScannerMessage] = useState('');
   const [scannerAttempt, setScannerAttempt] = useState(0);
+  const [manualProductOpen, setManualProductOpen] = useState(false);
+  const [manualProduct, setManualProduct] = useState<ManualProductDraft>(() => emptyManualProduct());
   const [barcodeProducts, setBarcodeProducts] = useState<Product[]>([]);
   const [lookupState, setLookupState] = useState<'idle' | 'loading' | 'found' | 'not_found' | 'incomplete' | 'error'>('idle');
   const [lookupMessage, setLookupMessage] = useState('');
+  const [lookupProductName, setLookupProductName] = useState('');
   const barcodeQuery = query.replace(/\D/g, '');
   const isBarcodeQuery = /^\d{8,14}$/.test(barcodeQuery);
   const scannerVideoRef = useRef<HTMLVideoElement>(null);
@@ -180,9 +205,12 @@ function QuickAddDrawer({
     setScannerState('idle');
     setScannerMessage('');
     setScannerAttempt(0);
+    setManualProductOpen(false);
+    setManualProduct(emptyManualProduct());
     setBarcodeProducts([]);
     setLookupState('idle');
     setLookupMessage('');
+    setLookupProductName('');
   }, [initialMeal, initialProduct, open]);
 
   useEffect(() => {
@@ -284,6 +312,7 @@ function QuickAddDrawer({
       setBarcodeProducts([]);
       setLookupState('idle');
       setLookupMessage('');
+      setLookupProductName('');
       return;
     }
 
@@ -292,6 +321,7 @@ function QuickAddDrawer({
     setBarcodeProducts([]);
     setLookupState('loading');
     setLookupMessage('');
+    setLookupProductName('');
     const searchTimer = window.setTimeout(async () => {
       const requestTimer = window.setTimeout(() => controller.abort(), 8000);
       try {
@@ -300,6 +330,7 @@ function QuickAddDrawer({
         if (result.status === 'found') {
           setBarcodeProducts([result.product]);
           setLookupState('found');
+          setLookupProductName(result.product.name);
           return;
         }
         if (barcodeQuery === barcodeDemoProduct.barcode) {
@@ -308,6 +339,7 @@ function QuickAddDrawer({
           return;
         }
         setLookupState(result.status);
+        setLookupProductName(result.status === 'incomplete' ? result.name : '');
         setLookupMessage(result.status === 'incomplete'
           ? `${result.name} найден, но в источнике нет полного КБЖУ.`
           : result.status === 'error' ? result.message : 'Такого штрихкода пока нет в подключённой базе.');
@@ -362,6 +394,49 @@ function QuickAddDrawer({
     setSelected(product);
     setAmount(product.amount);
     setScannerOpen(false);
+    setManualProductOpen(false);
+  }
+
+  function updateManualProduct(field: keyof ManualProductDraft, value: string) {
+    setManualProduct((draft) => ({ ...draft, [field]: value }));
+  }
+
+  function openManualProduct() {
+    setManualProduct(emptyManualProduct(lookupProductName));
+    setManualProductOpen(true);
+  }
+
+  const manualAmount = draftNumber(manualProduct.amount);
+  const manualKcal = draftNumber(manualProduct.kcal);
+  const manualProtein = draftNumber(manualProduct.protein);
+  const manualFat = draftNumber(manualProduct.fat);
+  const manualCarbs = draftNumber(manualProduct.carbs);
+  const manualProductIsValid = Boolean(
+    manualProduct.name.trim()
+    && manualAmount !== null && manualAmount > 0
+    && manualKcal !== null
+    && manualProtein !== null
+    && manualFat !== null
+    && manualCarbs !== null,
+  );
+
+  function continueWithManualProduct() {
+    if (!manualProductIsValid || manualAmount === null || manualKcal === null || manualProtein === null || manualFat === null || manualCarbs === null) return;
+    const scale = manualAmount / 100;
+    choose({
+      id: `manual-barcode:${barcodeQuery}:${Date.now()}`,
+      barcode: barcodeQuery,
+      name: manualProduct.name.trim(),
+      brand: manualProduct.brand.trim() || 'Без бренда',
+      amount: manualAmount,
+      unit: manualProduct.unit,
+      servingSizeG: manualAmount,
+      kcal: Math.round(manualKcal * scale),
+      protein: Math.round(manualProtein * scale * 10) / 10,
+      fat: Math.round(manualFat * scale * 10) / 10,
+      carbs: Math.round(manualCarbs * scale * 10) / 10,
+      icon: manualProduct.unit === 'мл' ? 'coffee' : 'curd',
+    });
   }
 
   function close() {
@@ -373,6 +448,8 @@ function QuickAddDrawer({
       setScannerOpen(false);
       setScannerState('idle');
       setScannerMessage('');
+      setManualProductOpen(false);
+      setManualProduct(emptyManualProduct());
       setBarcodeProducts([]);
       setLookupState('idle');
       setLookupMessage('');
@@ -389,6 +466,8 @@ function QuickAddDrawer({
         setScannerOpen(false);
         setScannerState('idle');
         setScannerMessage('');
+        setManualProductOpen(false);
+        setManualProduct(emptyManualProduct());
         setBarcodeProducts([]);
         setLookupState('idle');
         setLookupMessage('');
@@ -424,14 +503,14 @@ function QuickAddDrawer({
   return (
     <Drawer open={open} onOpenChange={handleOpenChange} showSwipeHandle>
       <DrawerContent className="flux-drawer">
-        <DrawerHeader className={`flux-drawer-header ${scannerOpen ? 'is-scanner' : ''}`}>
-          {scannerOpen && <button type="button" className="flux-drawer-back" onClick={() => setScannerOpen(false)} aria-label="Назад к поиску"><ArrowLeft /></button>}
+        <DrawerHeader className={`flux-drawer-header ${scannerOpen || manualProductOpen ? 'is-scanner' : ''}`}>
+          {(scannerOpen || manualProductOpen) && <button type="button" className="flux-drawer-back" onClick={() => scannerOpen ? setScannerOpen(false) : setManualProductOpen(false)} aria-label="Назад к поиску"><ArrowLeft /></button>}
           <div>
-            <DrawerTitle>{scannerOpen ? 'Сканировать штрихкод' : selected ? selected.name : 'Добавить еду'}</DrawerTitle>
-            <DrawerDescription>{scannerOpen ? 'Наведите камеру на код упаковки' : selected ? selected.brand : `Сегодня · ${meal}`}</DrawerDescription>
+            <DrawerTitle>{scannerOpen ? 'Сканировать штрихкод' : manualProductOpen ? 'Новый продукт' : selected ? selected.name : 'Добавить еду'}</DrawerTitle>
+            <DrawerDescription>{scannerOpen ? 'Наведите камеру на код упаковки' : manualProductOpen ? `Штрихкод ${barcodeQuery}` : selected ? selected.brand : `Сегодня · ${meal}`}</DrawerDescription>
           </div>
         </DrawerHeader>
-        {!scannerOpen && <div className="flux-meal-picker" role="group" aria-label="Приём пищи">
+        {!scannerOpen && !manualProductOpen && <div className="flux-meal-picker" role="group" aria-label="Приём пищи">
           {MEAL_KINDS.map((kind) => (
             <button key={kind} type="button" className={meal === kind ? 'is-active' : ''} onClick={() => setMeal(kind)}>
               {kind}
@@ -459,6 +538,34 @@ function QuickAddDrawer({
               </Button>
             )}
             <button type="button" className="flux-text-button" onClick={() => setScannerOpen(false)}>Ввести штрихкод вручную</button>
+          </div>
+        ) : manualProductOpen ? (
+          <div className="flux-manual-product-view">
+            <div className="flux-manual-intro">
+              <span><Plus /></span>
+              <p><strong>Добавим продукт в FLUX</strong>Перепишите значения с упаковки. КБЖУ обычно указаны на 100 г или 100 мл.</p>
+            </div>
+            <div className="flux-manual-fields">
+              <label className="is-wide"><span>Название продукта</span><Input value={manualProduct.name} onChange={(event) => updateManualProduct('name', event.target.value)} placeholder="Например, творог обезжиренный" autoFocus /></label>
+              <label className="is-wide"><span>Бренд</span><Input value={manualProduct.brand} onChange={(event) => updateManualProduct('brand', event.target.value)} placeholder="Можно не указывать" /></label>
+              <label><span>В упаковке</span><Input value={manualProduct.amount} onChange={(event) => updateManualProduct('amount', event.target.value)} inputMode="decimal" placeholder="180" /></label>
+              <div className="flux-manual-unit" role="group" aria-label="Единица упаковки">
+                {(['г', 'мл'] as const).map((unit) => <button type="button" key={unit} className={manualProduct.unit === unit ? 'is-active' : ''} onClick={() => setManualProduct((draft) => ({ ...draft, unit }))}>{unit}</button>)}
+              </div>
+            </div>
+            <div className="flux-manual-macro-title"><strong>КБЖУ на 100 {manualProduct.unit}</strong><span>с этикетки</span></div>
+            <div className="flux-manual-macros">
+              <label><span>Калории</span><Input value={manualProduct.kcal} onChange={(event) => updateManualProduct('kcal', event.target.value)} inputMode="decimal" placeholder="0" /><small>ккал</small></label>
+              <label><span>Белки</span><Input value={manualProduct.protein} onChange={(event) => updateManualProduct('protein', event.target.value)} inputMode="decimal" placeholder="0" /><small>г</small></label>
+              <label><span>Жиры</span><Input value={manualProduct.fat} onChange={(event) => updateManualProduct('fat', event.target.value)} inputMode="decimal" placeholder="0" /><small>г</small></label>
+              <label><span>Углеводы</span><Input value={manualProduct.carbs} onChange={(event) => updateManualProduct('carbs', event.target.value)} inputMode="decimal" placeholder="0" /><small>г</small></label>
+            </div>
+            <Button className="flux-main-button" size="lg" disabled={!manualProductIsValid} onClick={continueWithManualProduct}>
+              <span>Продолжить</span><ArrowRight />
+            </Button>
+            <p className="flux-manual-hint">{syncsProducts
+              ? 'Сохраним в вашем каталоге — продукт появится и на других устройствах.'
+              : 'Пока сохраним на этом устройстве. После входа данные можно синхронизировать.'}</p>
           </div>
         ) : selected ? (
           <div className="flux-portion-view">
@@ -558,6 +665,7 @@ function QuickAddDrawer({
                 <div className="flux-empty">
                   <strong>{isBarcodeQuery && lookupState === 'incomplete' ? 'Нужно дополнить КБЖУ' : 'Ничего не нашли'}</strong>
                   <span>{isBarcodeQuery ? lookupMessage || 'Введите от 8 до 14 цифр штрихкода.' : 'Проверьте название — создание своего продукта добавим следующим шагом.'}</span>
+                  {isBarcodeQuery && ['not_found', 'incomplete', 'error'].includes(lookupState) && <Button variant="secondary" onClick={openManualProduct}><Plus /> Добавить вручную</Button>}
                 </div>
               )}
             </section>
@@ -1188,6 +1296,11 @@ export default function App() {
     }
     if (scope.kind === 'guest') setGuestDiaryEntryCount(countGuestDiaryEntries());
     setEntries((current) => [...current, entry]);
+    if (product.barcode) {
+      setCatalog((current) => current.some((candidate) => candidate.barcode === product.barcode)
+        ? current
+        : [...current, product]);
+    }
 
     if (nutritionMode === 'supabase') {
       try {
@@ -1286,6 +1399,7 @@ export default function App() {
         entries={entries}
         initialProduct={quickAddProduct}
         initialMeal={quickAddMeal}
+        syncsProducts={nutritionMode === 'supabase' && Boolean(account)}
       />
       <PhonePasswordAuthGate
         guestDiaryEntryCount={guestDiaryEntryCount}
