@@ -1480,7 +1480,7 @@ export default function App() {
           {startupVisible ? <InitializationScreen /> : <>
           {!isOnline && <div className="flux-offline-pill" role="status"><WifiOff /> Офлайн · изменения сохраняются</div>}
           <div className="flux-base-app" aria-hidden={workoutOpen || profileOpen || undefined} inert={workoutOpen || profileOpen || undefined}>
-            <header className={`flux-topbar${tab === 'today' ? ' is-home' : ''}`}>
+            <header key={`header-${tab}`} className={`flux-topbar${tab === 'today' ? ' is-home' : ''}`}>
               <button className="flux-brand" type="button" onClick={() => setTab('today')} aria-label="FLUX — главная"><img className="flux-brand-lockup" src={`${import.meta.env.BASE_URL}brand/flux-lockup.png`} alt="" draggable="false" /></button>
               {tab === 'today' && <p className="flux-home-kicker">Доброе утро{firstName ? `, ${firstName}` : ''}</p>}
               <Button className="flux-avatar" variant="secondary" size="icon" onClick={openProfile} aria-label={account ? 'Открыть профиль' : 'Войти или зарегистрироваться'}>{account ? <ProfileAvatar avatar={defaultAvatar} /> : '+'}</Button>

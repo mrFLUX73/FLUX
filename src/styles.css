@@ -251,7 +251,8 @@
 html { background: var(--flux-stage-bg); }
 body { margin: 0; background: var(--flux-stage-bg); color: var(--foreground); font-family: Manrope, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-weight: 400; }
 button, input { font: inherit; }
-button { cursor: pointer; }
+button { cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform .18s cubic-bezier(.22,.75,.25,1), background-color .24s ease, color .24s ease, border-color .24s ease, box-shadow .24s ease; }
+button:active { transform: scale(.97); }
 .flux-stage { min-height: 100dvh; display: grid; place-items: start center; padding: 22px 12px; }
 .flux-app-shell { width: min(100%, 402px); height: 874px; min-height: 874px; position: relative; overflow: hidden; border: 1px solid color-mix(in srgb, var(--flux-primary) 12%, transparent); border-radius: 34px; background: var(--flux-bg); box-shadow: 0 24px 70px color-mix(in srgb, var(--flux-primary) 13%, transparent); display: flex; flex-direction: column; transition: background-color .32s ease, border-color .32s ease; }
 .flux-initialization { position: absolute; inset: 0; z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: max(28px, env(safe-area-inset-top)) 28px max(28px, env(safe-area-inset-bottom)); overflow: hidden; background: var(--flux-bg); color: var(--flux-primary); animation: flux-initialization-in .42s ease both; }
@@ -268,25 +269,30 @@ button { cursor: pointer; }
 .flux-initialization-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--flux-accent); animation: flux-initialization-dot 1.15s ease-in-out infinite; }
 .flux-initialization-dots i:nth-child(2) { animation-delay: .13s; }
 .flux-initialization-dots i:nth-child(3) { animation-delay: .26s; }
-.flux-offline-pill { position: absolute; left: 50%; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); z-index: 45; display: flex; align-items: center; gap: 6px; padding: 7px 11px; border: 1px solid var(--flux-border); border-radius: 999px; background: color-mix(in srgb, var(--flux-card) 94%, transparent); color: var(--flux-muted); box-shadow: 0 5px 20px color-mix(in srgb, var(--flux-ink) 9%, transparent); font-size: 8px; white-space: nowrap; transform: translateX(-50%); backdrop-filter: blur(10px); }
+.flux-offline-pill { position: absolute; left: 50%; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); z-index: 45; display: flex; align-items: center; gap: 6px; padding: 7px 11px; border: 1px solid var(--flux-border); border-radius: 999px; background: color-mix(in srgb, var(--flux-card) 94%, transparent); color: var(--flux-muted); box-shadow: 0 5px 20px color-mix(in srgb, var(--flux-ink) 9%, transparent); font-size: 8px; white-space: nowrap; transform: translateX(-50%); backdrop-filter: blur(10px); animation: flux-pill-enter .36s cubic-bezier(.22,.75,.25,1) both; }
 .flux-offline-pill svg { width: 12px; height: 12px; color: var(--flux-primary); }
 @keyframes flux-initialization-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes flux-initialization-orbit { 0%, 100% { transform: rotate(0deg) scale(.94); opacity: .35; } 50% { transform: rotate(90deg) scale(1); opacity: .8; } }
 @keyframes flux-initialization-breathe { 0%, 100% { transform: scale(.94); } 50% { transform: scale(1.04); } }
 @keyframes flux-initialization-dot { 0%, 70%, 100% { opacity: .28; transform: translateY(0); } 35% { opacity: 1; transform: translateY(-4px); } }
 .flux-base-app { min-height: 0; flex: 1; display: flex; flex-direction: column; }
-.flux-topbar { height: 104px; flex: 0 0 104px; padding: 12px 23px; display: flex; align-items: center; justify-content: space-between; }
+.flux-topbar { height: 104px; flex: 0 0 104px; padding: 12px 23px; display: flex; align-items: center; justify-content: space-between; animation: flux-header-enter .34s cubic-bezier(.22,.75,.25,1) both; }
 .flux-brand { min-width: 92px; min-height: 40px; display: inline-flex; align-items: center; padding: 4px 0; border: 0; background: transparent; }
 .flux-brand-lockup { width: auto; height: 30px; display: block; object-fit: contain; user-select: none; }
 :root[data-flux-theme='night'] .flux-brand-lockup,
 :root[data-flux-theme='night'] .flux-initialization-lockup,
 :root[data-flux-theme='night'] .flux-initialization-mark img { filter: brightness(1.9) saturate(.85); }
 .flux-avatar { width: 80px !important; height: 80px !important; padding: 0 !important; overflow: hidden; border-radius: 50% !important; font-size: 11px !important; }
+.flux-avatar:hover .flux-avatar-art { transform: scale(1.035); }
 .flux-avatar .flux-avatar-art { width: 100%; height: 100%; }
-.flux-avatar-art { width: 58px; height: 58px; flex: 0 0 auto; position: relative; display: block; overflow: hidden; border-radius: 50%; background: var(--flux-avatar-bg); color: var(--flux-primary); }
+.flux-avatar-art { width: 58px; height: 58px; flex: 0 0 auto; position: relative; display: block; overflow: hidden; border-radius: 50%; background: var(--flux-avatar-bg); color: var(--flux-primary); transition: transform .32s cubic-bezier(.22,.75,.25,1), background-color .38s ease, color .38s ease; }
 .flux-avatar-art::after { content: ''; position: absolute; inset: 3%; background: currentColor; -webkit-mask: var(--flux-avatar-mask) center / contain no-repeat; mask: var(--flux-avatar-mask) center / contain no-repeat; }
-.flux-content { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 7px 22px 28px; scrollbar-width: none; }
+.flux-content { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 7px 22px 28px; scrollbar-width: none; animation: flux-page-enter .4s cubic-bezier(.22,.75,.25,1) both; }
 .flux-content::-webkit-scrollbar { display: none; }
+.flux-content > * { animation: flux-block-enter .46s cubic-bezier(.22,.75,.25,1) both; }
+.flux-content > :nth-child(2) { animation-delay: .045s; }
+.flux-content > :nth-child(3) { animation-delay: .09s; }
+.flux-content > :nth-child(4) { animation-delay: .135s; }
 .flux-topbar.is-home { display: grid; grid-template-columns: max-content minmax(0, 1fr) 80px; grid-template-rows: 26px 54px; column-gap: 14px; align-items: center; padding-inline: 22px; }
 .flux-topbar.is-home .flux-brand { grid-column: 1; grid-row: 1; min-width: 0; min-height: 26px; padding: 0; }
 .flux-topbar.is-home .flux-brand-lockup { height: 26px; }
@@ -299,7 +305,8 @@ button { cursor: pointer; }
 .flux-eyebrow { display: block; margin-bottom: 6px; color: var(--flux-muted); font-size: 11px; }
 .flux-balance-heading strong { display: block; color: var(--flux-ink); font-size: 27px; font-weight: 500; letter-spacing: -.04em; }
 .flux-balance-heading strong small { color: var(--flux-muted); font-size: 12px; font-weight: 400; letter-spacing: 0; }
-.flux-ring { width: 68px; height: 68px; flex: 0 0 68px; position: relative; display: grid; place-items: center; border-radius: 50%; background: conic-gradient(var(--flux-primary) 0 var(--flux-progress), color-mix(in srgb, var(--flux-primary) 12%, transparent) var(--flux-progress) 360deg); }
+.flux-ring { width: 68px; height: 68px; flex: 0 0 68px; position: relative; display: grid; place-items: center; border-radius: 50%; background: conic-gradient(var(--flux-primary) 0 var(--flux-progress), color-mix(in srgb, var(--flux-primary) 12%, transparent) var(--flux-progress) 360deg); transition: --flux-progress .7s cubic-bezier(.22,.75,.25,1), transform .3s ease; }
+.flux-ring:hover { transform: scale(1.035); }
 .flux-ring::after { content: ''; position: absolute; inset: 7px; border-radius: 50%; background: var(--flux-soft); }
 .flux-ring span { position: relative; z-index: 1; font-size: 12px; font-weight: 500; }
 .flux-macro-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 22px; }
@@ -310,6 +317,7 @@ button { cursor: pointer; }
 .flux-macro-grid [data-slot='progress'] { margin-top: 7px; gap: 0; }
 .flux-macro-grid [data-slot='progress-track'] { background: color-mix(in srgb, var(--flux-primary) 12%, transparent); }
 .flux-macro-grid [data-slot='progress-indicator'] { background: var(--flux-accent); }
+[data-slot='progress-indicator'] { transition: width .72s cubic-bezier(.22,.75,.25,1), transform .72s cubic-bezier(.22,.75,.25,1), background-color .32s ease !important; }
 .flux-section { margin-top: 25px; }
 .flux-section-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .flux-section h2, .flux-workout-card h2 { margin: 0; color: inherit; font-size: 15px; font-weight: 500; line-height: 1.35; }
@@ -326,7 +334,8 @@ button { cursor: pointer; }
 .flux-food-icon { width: 39px; height: 39px; display: grid; place-items: center; border-radius: 13px; background: var(--flux-soft); color: var(--flux-primary); }
 .flux-food-icon svg { width: 17px; height: 17px; }
 .flux-food-icon-warm { background: #f4efdb; color: #756838; }
-.flux-workout-card { margin-top: 16px; display: grid; grid-template-columns: 43px 1fr 38px; gap: 12px; align-items: center; padding: 17px; border-radius: 22px; background: var(--flux-primary); color: var(--flux-on-primary); }
+.flux-workout-card { margin-top: 16px; display: grid; grid-template-columns: 43px 1fr 38px; gap: 12px; align-items: center; padding: 17px; border-radius: 22px; background: var(--flux-primary); color: var(--flux-on-primary); transition: transform .22s cubic-bezier(.22,.75,.25,1), box-shadow .22s ease, background-color .32s ease; }
+.flux-workout-card:hover { transform: translateY(-2px); box-shadow: 0 10px 24px color-mix(in srgb, var(--flux-primary) 16%, transparent); }
 .flux-workout-card .flux-eyebrow { color: color-mix(in srgb, var(--flux-on-primary) 65%, transparent); }
 .flux-workout-card p { margin: 4px 0 0; color: color-mix(in srgb, var(--flux-on-primary) 65%, transparent); font-size: 10px; }
 .flux-workout-icon { width: 43px; height: 43px; display: grid; place-items: center; border-radius: 15px; background: rgb(255 255 255 / 13%); }
@@ -334,10 +343,11 @@ button { cursor: pointer; }
 .flux-workout-card [data-slot='button'] { width: 38px; height: 38px; border-radius: 50%; background: var(--flux-cta-soft); color: var(--flux-primary); }
 .flux-bottom-nav { position: relative; flex: 0 0 84px; min-height: 84px; display: grid; grid-template-columns: repeat(4, 1fr); padding: 10px 12px 13px; border-top: 1px solid var(--flux-border); background: color-mix(in srgb, var(--flux-bg) 97%, transparent); }
 .flux-bottom-nav button { min-height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; border: 0; border-radius: 16px; background: transparent; color: var(--flux-nav-muted); font-size: 9px; }
-.flux-bottom-nav button svg { width: 18px; height: 18px; }
+.flux-bottom-nav button svg { width: 18px; height: 18px; transition: transform .28s cubic-bezier(.2,.9,.3,1.35), stroke-width .28s ease; }
 .flux-bottom-nav button.is-active { background: var(--flux-soft); color: var(--flux-primary); }
+.flux-bottom-nav button.is-active svg { transform: translateY(-1px) scale(1.12); stroke-width: 2.25; animation: flux-nav-pop .38s cubic-bezier(.2,.9,.3,1.35) both; }
 
-.flux-profile-flow { position: absolute; inset: 0; z-index: 22; min-height: 0; display: flex; flex-direction: column; background: var(--flux-bg); }
+.flux-profile-flow { position: absolute; inset: 0; z-index: 22; min-height: 0; display: flex; flex-direction: column; background: var(--flux-bg); animation: flux-flow-enter .4s cubic-bezier(.22,.75,.25,1) both; }
 .flux-profile-header { height: 76px; flex: 0 0 76px; padding: 18px 20px 11px; display: grid; grid-template-columns: 40px 1fr 40px; gap: 12px; align-items: center; border-bottom: 1px solid var(--flux-divider); }
 .flux-profile-header [data-slot='button'] { width: 40px; height: 40px; border-radius: 50%; }
 .flux-profile-header svg { width: 17px; height: 17px; }
@@ -665,7 +675,7 @@ button { cursor: pointer; }
 
 @keyframes flux-spin { to { transform: rotate(360deg); } }
 
-.flux-workout-flow { position: absolute; inset: 0; z-index: 20; display: flex; flex-direction: column; background: var(--flux-bg); }
+.flux-workout-flow { position: absolute; inset: 0; z-index: 20; display: flex; flex-direction: column; background: var(--flux-bg); animation: flux-flow-enter .4s cubic-bezier(.22,.75,.25,1) both; }
 .flux-flow-header { height: 76px; flex: 0 0 76px; padding: 18px 20px 11px; display: grid; grid-template-columns: 40px 1fr 40px; gap: 12px; align-items: center; }
 .flux-flow-header [data-slot='button'] { width: 40px; height: 40px; border-radius: 50%; }
 .flux-flow-header > div { text-align: center; }
@@ -727,6 +737,34 @@ button { cursor: pointer; }
 .flux-morph-new { animation: flux-number-in .32s cubic-bezier(.22,.75,.25,1) both; }
 @keyframes flux-number-out { from { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); } to { opacity: 0; transform: translateY(-45%) scale(.94); filter: blur(3px); } }
 @keyframes flux-number-in { from { opacity: 0; transform: translateY(45%) scale(.94); filter: blur(3px); } to { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); } }
+@keyframes flux-page-enter { from { opacity: 0; transform: translateX(8px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes flux-header-enter { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes flux-block-enter { from { opacity: 0; transform: translateY(9px) scale(.992); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes flux-flow-enter { from { opacity: 0; transform: translateY(12px) scale(.992); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes flux-nav-pop { 0% { transform: translateY(0) scale(.88); } 70% { transform: translateY(-2px) scale(1.16); } 100% { transform: translateY(-1px) scale(1.12); } }
+@keyframes flux-pill-enter { from { opacity: 0; transform: translate(-50%, 8px) scale(.96); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
+
+@property --flux-progress {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+:where(
+  .flux-base-app,
+  .flux-topbar,
+  .flux-content,
+  .flux-bottom-nav,
+  .flux-balance-card,
+  .flux-quick-food,
+  .flux-food-icon,
+  .flux-profile-flow,
+  .flux-profile-card,
+  .flux-workout-flow,
+  .flux-workout-page-hero,
+  .flux-meal-group,
+  .flux-stat-grid > div
+) { transition: background-color .38s ease, color .38s ease, border-color .38s ease; }
 
 @media (max-width: 480px) {
   html, body, #root, .flux-stage { background: var(--flux-bg); }
