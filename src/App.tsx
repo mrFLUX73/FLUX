@@ -72,11 +72,13 @@ import {
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabase';
 import {
   createProfileDraft,
+  ProfileAvatar,
   ProfileScreen,
   type DefaultAvatar,
+  type FluxTheme,
   type ProfileDraft,
 } from './features/profile/ProfileScreen';
-import { loadProfileDraft, saveProfileDraft } from './features/profile/repository';
+import { loadCachedProfileTheme, loadProfileDraft, saveProfileDraft } from './features/profile/repository';
 import {
   MEAL_KINDS,
   type MealEntry,
@@ -87,7 +89,6 @@ import {
 
 type Tab = 'today' | 'food' | 'workouts' | 'progress';
 type ScannerState = 'idle' | 'requesting' | 'scanning' | 'error';
-type FluxTheme = 'base' | 'male' | 'female';
 type ManualProductDraft = {
   name: string;
   brand: string;
@@ -100,6 +101,14 @@ type ManualProductDraft = {
 };
 
 const macroTargets = { protein: 110, fat: 70, carbs: 230 };
+const themeBrowserColors: Record<FluxTheme, string> = {
+  sage: '#fbfdf9',
+  storm: '#f8f9f8',
+  ocean: '#f9fcfc',
+  bloom: '#fdfafb',
+  sand: '#fdfbf7',
+  night: '#111714',
+};
 
 function localDayKey(date = new Date()) {
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
@@ -1013,7 +1022,13 @@ export default function App() {
     const baselineRevision = 0;
     profileEditRevision.current = baselineRevision;
     setProfileOpen(false);
-    setProfileDraft(account ? createProfileDraft(account) : null);
+    if (account) {
+      const initialDraft = createProfileDraft(account);
+      const cachedTheme = loadCachedProfileTheme(account.id);
+      setProfileDraft(cachedTheme ? { ...initialDraft, theme: cachedTheme } : initialDraft);
+    } else {
+      setProfileDraft(null);
+    }
     setProfileSaving(false);
     setDefaultAvatar('short-hair');
     setProfileHydratedUserId(null);
@@ -1160,16 +1175,17 @@ export default function App() {
 
   const canConnectNutrition = isSupabaseConfigured && isTurnstileConfigured;
   const firstName = account?.displayName.split(/\s+/)[0];
-  const avatarSrc = `${import.meta.env.BASE_URL}avatars/avatar-${defaultAvatar}.png`;
-  const fluxTheme: FluxTheme = profileDraft?.calculationSex === 'female'
-    ? 'female'
-    : profileDraft?.calculationSex === 'male'
-      ? 'male'
-      : 'base';
+  const fluxTheme: FluxTheme = profileDraft?.theme ?? 'sage';
 
   useEffect(() => {
     document.documentElement.dataset.fluxTheme = fluxTheme;
-    return () => { delete document.documentElement.dataset.fluxTheme; };
+    const themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    const previousThemeColor = themeColor?.content;
+    if (themeColor) themeColor.content = themeBrowserColors[fluxTheme];
+    return () => {
+      delete document.documentElement.dataset.fluxTheme;
+      if (themeColor && previousThemeColor) themeColor.content = previousThemeColor;
+    };
   }, [fluxTheme]);
 
   function openProfile() {
@@ -1410,7 +1426,7 @@ export default function App() {
             <header className={`flux-topbar${tab === 'today' ? ' is-home' : ''}`}>
               <button className="flux-brand" type="button" onClick={() => setTab('today')} aria-label="FLUX — главная"><img className="flux-brand-lockup" src={`${import.meta.env.BASE_URL}brand/flux-lockup.png`} alt="" draggable="false" /></button>
               {tab === 'today' && <p className="flux-home-kicker">Доброе утро{firstName ? `, ${firstName}` : ''}</p>}
-              <Button className="flux-avatar" variant="secondary" size="icon" onClick={openProfile} aria-label={account ? 'Открыть профиль' : 'Войти или зарегистрироваться'}>{account ? <img src={avatarSrc} alt="" /> : '+'}</Button>
+              <Button className="flux-avatar" variant="secondary" size="icon" onClick={openProfile} aria-label={account ? 'Открыть профиль' : 'Войти или зарегистрироваться'}>{account ? <ProfileAvatar avatar={defaultAvatar} /> : '+'}</Button>
               {tab === 'today' && <h1 className="flux-home-title"><span>Сегодня достаточно</span><span>просто продолжить.</span></h1>}
             </header>
             <div key={tab} className="flux-content" id="top">

@@ -2,7 +2,10 @@ import { getSupabaseClientForUser } from '../../lib/supabase';
 import type { FluxAccount } from '../auth/phonePasswordAuth';
 import {
   createProfileDraft,
+  defaultThemeForSex,
+  isFluxTheme,
   type DefaultAvatar,
+  type FluxTheme,
   type ProfileDraft,
 } from './ProfileScreen';
 
@@ -49,9 +52,30 @@ function paceFromDatabase(value: number | null | undefined): ProfileDraft['paceK
   return pace === '0.25' || pace === '0.5' || pace === '0.75' ? pace : '';
 }
 
+function themeCacheKey(userId: string) {
+  return `flux.profile-theme.${userId}`;
+}
+
+export function loadCachedProfileTheme(userId: string): FluxTheme | null {
+  try {
+    const value = window.localStorage.getItem(themeCacheKey(userId));
+    return isFluxTheme(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function cacheProfileTheme(userId: string, theme: FluxTheme) {
+  try {
+    window.localStorage.setItem(themeCacheKey(userId), theme);
+  } catch {
+    // Theme still works for this session when private storage is unavailable.
+  }
+}
+
 export async function loadProfileDraft(userId: string, account: FluxAccount) {
   const client = await getSupabaseClientForUser(userId);
-  const [profileResult, goalResult] = await Promise.all([
+  const [profileResult, goalResult, userResult] = await Promise.all([
     client
       .from('profiles')
       .select('display_name,birth_date,biological_sex,height_cm,current_weight_kg')
@@ -62,19 +86,24 @@ export async function loadProfileDraft(userId: string, account: FluxAccount) {
       .select('goal_type,activity_level,target_weight_kg,weight_change_pace_kg_per_week,workouts_per_week')
       .eq('user_id', userId)
       .maybeSingle<StoredNutritionGoal>(),
+    client.auth.getUser(),
   ]);
 
   if (profileResult.error) throw profileResult.error;
   if (goalResult.error) throw goalResult.error;
-
   const initial = createProfileDraft(account);
   const profile = profileResult.data;
   const goal = goalResult.data;
   const calculationSex = profile.biological_sex === 'female' || profile.biological_sex === 'male'
     ? profile.biological_sex
     : '';
+  const storedTheme = userResult.data.user?.user_metadata?.theme_id;
+  const theme = isFluxTheme(storedTheme)
+    ? storedTheme
+    : loadCachedProfileTheme(userId) ?? defaultThemeForSex(calculationSex);
   const draft: ProfileDraft = {
     displayName: profile.display_name?.trim() || initial.displayName,
+    theme,
     birthDate: profile.birth_date ?? '',
     calculationSex,
     heightCm: profile.height_cm == null ? '' : String(Number(profile.height_cm)),
@@ -87,12 +116,16 @@ export async function loadProfileDraft(userId: string, account: FluxAccount) {
   };
   const avatar: DefaultAvatar = calculationSex === 'female' ? 'bun' : 'short-hair';
 
+  cacheProfileTheme(userId, theme);
+
   return { avatar, draft };
 }
 
 export async function saveProfileDraft(userId: string, draft: ProfileDraft) {
   const displayName = draft.displayName.trim();
   if (!displayName) throw new Error('Укажите имя и фамилию');
+
+  cacheProfileTheme(userId, draft.theme);
 
   const client = await getSupabaseClientForUser(userId);
   const { error: profileError } = await client
@@ -121,4 +154,9 @@ export async function saveProfileDraft(userId: string, draft: ProfileDraft) {
       workouts_per_week: optionalNumber(draft.workoutsPerWeek),
     }, { onConflict: 'user_id' });
   if (goalError) throw goalError;
+
+  const { error: themeError } = await client.auth.updateUser({
+    data: { theme_id: draft.theme },
+  });
+  if (themeError) throw themeError;
 }

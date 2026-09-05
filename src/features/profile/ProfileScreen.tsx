@@ -1,4 +1,5 @@
 import { ArrowLeft, Check, ChevronDown } from 'lucide-react';
+import type { CSSProperties } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,9 +7,11 @@ import { Progress } from '@/components/ui/progress';
 import type { FluxAccount } from '../auth/phonePasswordAuth';
 
 export type DefaultAvatar = 'short-hair' | 'bun';
+export type FluxTheme = 'sage' | 'storm' | 'ocean' | 'bloom' | 'sand' | 'night';
 
 export type ProfileDraft = {
   displayName: string;
+  theme: FluxTheme;
   birthDate: string;
   calculationSex: '' | 'female' | 'male';
   heightCm: string;
@@ -23,6 +26,7 @@ export type ProfileDraft = {
 export function createProfileDraft(account: FluxAccount): ProfileDraft {
   return {
     displayName: account.displayName,
+    theme: 'sage',
     birthDate: '',
     calculationSex: '',
     heightCm: '',
@@ -35,10 +39,41 @@ export function createProfileDraft(account: FluxAccount): ProfileDraft {
   };
 }
 
-const sexOptions: { sex: Exclude<ProfileDraft['calculationSex'], ''>; avatar: DefaultAvatar; label: string; src: string }[] = [
-  { sex: 'male', avatar: 'short-hair', label: 'Мужской', src: `${import.meta.env.BASE_URL}avatars/avatar-short-hair.png` },
-  { sex: 'female', avatar: 'bun', label: 'Женский', src: `${import.meta.env.BASE_URL}avatars/avatar-bun.png` },
+const sexOptions: { sex: Exclude<ProfileDraft['calculationSex'], ''>; avatar: DefaultAvatar; label: string }[] = [
+  { sex: 'male', avatar: 'short-hair', label: 'Мужской' },
+  { sex: 'female', avatar: 'bun', label: 'Женский' },
 ];
+
+export const fluxThemes: {
+  id: FluxTheme;
+  label: string;
+  description: string;
+  colors: [string, string, string];
+}[] = [
+  { id: 'sage', label: 'Sage', description: 'Фирменная зелёная', colors: ['#fbfdf9', '#e3efdd', '#365f3b'] },
+  { id: 'storm', label: 'Storm', description: 'Спокойная серая', colors: ['#f8f9f8', '#e2e7e8', '#465158'] },
+  { id: 'ocean', label: 'Ocean', description: 'Глубокая синяя', colors: ['#f9fcfc', '#dcebea', '#315f66'] },
+  { id: 'bloom', label: 'Bloom', description: 'Мягкая пудровая', colors: ['#fdfafb', '#f0e2e8', '#775268'] },
+  { id: 'sand', label: 'Sand', description: 'Тёплая бежевая', colors: ['#fdfbf7', '#efe6d4', '#6f5d42'] },
+  { id: 'night', label: 'Night', description: 'Тёмная и спокойная', colors: ['#121816', '#24342a', '#7fc38e'] },
+];
+
+export function isFluxTheme(value: unknown): value is FluxTheme {
+  return fluxThemes.some((theme) => theme.id === value);
+}
+
+export function defaultThemeForSex(sex: ProfileDraft['calculationSex']): FluxTheme {
+  if (sex === 'male') return 'ocean';
+  if (sex === 'female') return 'bloom';
+  return 'sage';
+}
+
+export function ProfileAvatar({ avatar, label }: { avatar: DefaultAvatar; label?: string }) {
+  const style = {
+    '--flux-avatar-mask': `url("${import.meta.env.BASE_URL}avatars/avatar-${avatar}-mask.png")`,
+  } as CSSProperties;
+  return <span className="flux-avatar-art" style={style} role={label ? 'img' : undefined} aria-label={label} aria-hidden={label ? undefined : true} />;
+}
 
 function maskPhone(phone: string) {
   const digits = phone.replace(/\D/g, '');
@@ -96,7 +131,7 @@ export function ProfileScreen({
   const selectedAvatar = sexOptions.find((option) => option.avatar === avatar) ?? sexOptions[0];
 
   const selectSex = (sex: Exclude<ProfileDraft['calculationSex'], ''>, nextAvatar: DefaultAvatar) => {
-    onChange({ ...draft, calculationSex: sex });
+    onChange({ ...draft, calculationSex: sex, theme: defaultThemeForSex(sex) });
     onAvatarChange(nextAvatar);
   };
 
@@ -110,7 +145,7 @@ export function ProfileScreen({
 
       <form className="flux-profile-content" onSubmit={(event) => { event.preventDefault(); void onDone(); }}>
         <section className="flux-profile-hero">
-          <img src={selectedAvatar.src} alt="Выбранная аватарка" />
+          <ProfileAvatar avatar={selectedAvatar.avatar} label="Выбранная аватарка" />
           <div>
             <span>Ваш профиль</span>
             <strong>{draft.displayName || account.displayName}</strong>
@@ -122,22 +157,55 @@ export function ProfileScreen({
           </div>
         </section>
 
+        {draft.calculationSex === '' ? (
+          <section className="flux-profile-card">
+            <div className="flux-profile-card-heading"><div><span>Пол для расчёта</span><strong>Выберите один раз</strong></div></div>
+            <div className="flux-sex-options">
+              {sexOptions.map((option) => (
+                <button
+                  aria-pressed={false}
+                  key={option.sex}
+                  onClick={() => selectSex(option.sex, option.avatar)}
+                  type="button"
+                >
+                  <ProfileAvatar avatar={option.avatar} />
+                  <span><strong>{option.label}</strong><small>Выбрать</small></span>
+                </button>
+              ))}
+            </div>
+            <p className="flux-profile-card-note">Пол влияет только на формулы расчёта и аватар по умолчанию. Тему можно менять отдельно.</p>
+          </section>
+        ) : (
+          <section className="flux-profile-card flux-profile-sex-locked">
+            <div><span>Пол для расчёта</span><strong>{draft.calculationSex === 'female' ? 'Женский' : 'Мужской'}</strong></div>
+            <small>Сохранён в профиле</small>
+          </section>
+        )}
+
         <section className="flux-profile-card">
-          <div className="flux-profile-card-heading"><div><span>Пол</span><strong>Выберите подходящий вариант</strong></div></div>
-          <div className="flux-sex-options">
-            {sexOptions.map((option) => (
-              <button
-                aria-pressed={draft.calculationSex === option.sex}
-                className={draft.calculationSex === option.sex ? 'is-selected' : ''}
-                key={option.sex}
-                onClick={() => selectSex(option.sex, option.avatar)}
-                type="button"
-              >
-                <img src={option.src} alt="" />
-                <span><strong>{option.label}</strong><small>{draft.calculationSex === option.sex ? 'Выбрано' : 'Выбрать'}</small></span>
-                {draft.calculationSex === option.sex && <Check aria-hidden="true" />}
-              </button>
-            ))}
+          <div className="flux-profile-card-heading"><div><span>Оформление</span><strong>Выберите настроение FLUX</strong></div></div>
+          <div className="flux-theme-options">
+            {fluxThemes.map((theme) => {
+              const previewStyle = {
+                '--flux-theme-preview-bg': theme.colors[0],
+                '--flux-theme-preview-soft': theme.colors[1],
+                '--flux-theme-preview-primary': theme.colors[2],
+              } as CSSProperties;
+              return (
+                <button
+                  aria-pressed={draft.theme === theme.id}
+                  className={draft.theme === theme.id ? 'is-selected' : ''}
+                  key={theme.id}
+                  onClick={() => set('theme', theme.id)}
+                  style={previewStyle}
+                  type="button"
+                >
+                  <span className="flux-theme-preview" aria-hidden="true"><i /><i /><i /></span>
+                  <span><strong>{theme.label}</strong><small>{theme.description}</small></span>
+                  {draft.theme === theme.id && <Check aria-hidden="true" />}
+                </button>
+              );
+            })}
           </div>
         </section>
 
