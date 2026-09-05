@@ -24,6 +24,7 @@ import {
   Trash2,
   Utensils,
   Wheat,
+  WifiOff,
   X,
 } from 'lucide-react';
 
@@ -36,6 +37,9 @@ import {
 } from './features/auth/PhonePasswordAuthGate';
 import {
   getCurrentAccount,
+  cacheAccount,
+  clearCachedAccount,
+  loadCachedAccount,
   registerWithLogin,
   signInWithLogin,
   type FluxAccount,
@@ -78,7 +82,7 @@ import {
   type FluxTheme,
   type ProfileDraft,
 } from './features/profile/ProfileScreen';
-import { loadCachedProfileTheme, loadProfileDraft, saveProfileDraft } from './features/profile/repository';
+import { loadCachedProfileDraft, loadCachedProfileTheme, loadProfileDraft, saveProfileDraft } from './features/profile/repository';
 import {
   MEAL_KINDS,
   type MealEntry,
@@ -984,25 +988,41 @@ function InitializationScreen() {
 }
 
 export default function App() {
+  const startupAccountRef = useRef<FluxAccount | null>(loadCachedAccount());
+  const startupProfileRef = useRef(startupAccountRef.current
+    ? loadCachedProfileDraft(startupAccountRef.current.id, startupAccountRef.current)
+    : null);
+  const startupScope = startupAccountRef.current
+    ? nutritionScopeForUser(startupAccountRef.current.id)
+    : guestNutritionScope;
   const [tab, setTab] = useState<Tab>('today');
   const [diary, setDiary] = useState<{
     scope: NutritionStorageScope;
     entries: MealEntry[];
     hydrated: boolean;
-  }>({ scope: guestNutritionScope, entries: [], hydrated: false });
+  }>(() => ({
+    scope: startupScope,
+    entries: loadLocalEntriesForToday(startupScope),
+    hydrated: true,
+  }));
   const entries = diary.entries;
-  const nutritionScopeRef = useRef<NutritionStorageScope>(guestNutritionScope);
+  const nutritionScopeRef = useRef<NutritionStorageScope>(startupScope);
   const nutritionGeneration = useRef(0);
-  const nutritionHydratedRef = useRef(false);
+  const nutritionEditRevision = useRef(0);
+  const nutritionHydratedRef = useRef(true);
   const activeDay = useRef(localDayKey());
   const [catalog, setCatalog] = useState<Product[]>(fallbackProducts);
   const [nutritionMode, setNutritionMode] = useState<NutritionMode>('local');
   const [nutritionConnecting, setNutritionConnecting] = useState(true);
-  const [account, setAccount] = useState<FluxAccount | null>(null);
+  const [account, setAccount] = useState<FluxAccount | null>(startupAccountRef.current);
   const [sessionResolved, setSessionResolved] = useState(false);
-  const [profileHydratedUserId, setProfileHydratedUserId] = useState<string | null>(null);
+  const [profileHydratedUserId, setProfileHydratedUserId] = useState<string | null>(
+    startupProfileRef.current && startupAccountRef.current ? startupAccountRef.current.id : null,
+  );
   const [startupVisible, setStartupVisible] = useState(true);
   const startupStartedAt = useRef(Date.now());
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine);
+  const wasOnline = useRef(navigator.onLine);
   const [authGateOpen, setAuthGateOpen] = useState(false);
   const [authGateMode, setAuthGateMode] = useState<PhoneAuthMode>('signup');
   const [guestDiaryEntryCount, setGuestDiaryEntryCount] = useState(() => countGuestDiaryEntries());
@@ -1011,9 +1031,9 @@ export default function App() {
   const [quickAddMeal, setQuickAddMeal] = useState<MealKind>(() => currentMeal());
   const [workoutOpen, setWorkoutOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [profileDraft, setProfileDraft] = useState<ProfileDraft | null>(null);
+  const [profileDraft, setProfileDraft] = useState<ProfileDraft | null>(startupProfileRef.current?.draft ?? null);
   const [profileSaving, setProfileSaving] = useState(false);
-  const [defaultAvatar, setDefaultAvatar] = useState<DefaultAvatar>('short-hair');
+  const [defaultAvatar, setDefaultAvatar] = useState<DefaultAvatar>(startupProfileRef.current?.avatar ?? 'short-hair');
   const profileEditRevision = useRef(0);
   const calorieTarget = 2000;
 
@@ -1024,14 +1044,17 @@ export default function App() {
     setProfileOpen(false);
     if (account) {
       const initialDraft = createProfileDraft(account);
+      const cachedProfile = loadCachedProfileDraft(account.id, account);
       const cachedTheme = loadCachedProfileTheme(account.id);
-      setProfileDraft(cachedTheme ? { ...initialDraft, theme: cachedTheme } : initialDraft);
+      setProfileDraft(cachedProfile?.draft ?? (cachedTheme ? { ...initialDraft, theme: cachedTheme } : initialDraft));
+      setDefaultAvatar(cachedProfile?.avatar ?? 'short-hair');
+      setProfileHydratedUserId(account.id);
     } else {
       setProfileDraft(null);
+      setDefaultAvatar('short-hair');
+      setProfileHydratedUserId(null);
     }
     setProfileSaving(false);
-    setDefaultAvatar('short-hair');
-    setProfileHydratedUserId(null);
     if (account) {
       void loadProfileDraft(account.id, account).then((stored) => {
         if (!active || profileEditRevision.current !== baselineRevision) return;
@@ -1059,39 +1082,53 @@ export default function App() {
   useEffect(() => {
     let active = true;
     let unsubscribe: (() => void) | undefined;
+    let initialSessionStarted = false;
 
     const hydrateSession = async (sessionAccount: FluxAccount | null) => {
       const generation = ++nutritionGeneration.current;
+      const editRevision = nutritionEditRevision.current;
       const scope = sessionAccount ? nutritionScopeForUser(sessionAccount.id) : guestNutritionScope;
       const localEntries = loadLocalEntriesForToday(scope);
       nutritionScopeRef.current = scope;
       nutritionHydratedRef.current = true;
       setAccount(sessionAccount);
+      if (sessionAccount) cacheAccount(sessionAccount);
+      else clearCachedAccount();
       setNutritionMode('local');
       setNutritionConnecting(true);
       setQuickAddOpen(false);
       setDiary({ scope, entries: localEntries, hydrated: true });
+      setSessionResolved(true);
 
       if (sessionAccount) {
-        const resolvedAccount = await getCurrentAccount().catch(() => null);
+        const resolvedAccount = await Promise.race([
+          getCurrentAccount().catch(() => sessionAccount),
+          new Promise<FluxAccount>((resolve) => window.setTimeout(() => resolve(sessionAccount), 2_500)),
+        ]);
         if (!active || generation !== nutritionGeneration.current) return;
         if (!resolvedAccount || resolvedAccount.id !== sessionAccount.id) {
           await hydrateSession(null);
           return;
         }
         setAccount(resolvedAccount);
-        setSessionResolved(true);
-      } else {
-        setSessionResolved(true);
+        cacheAccount(resolvedAccount);
       }
 
       const result = await bootstrapNutrition(scope, localEntries);
       if (!active || generation !== nutritionGeneration.current || !isSameNutritionScope(scope, nutritionScopeRef.current)) return;
       setNutritionMode(result.mode);
       if (result.products.length) setCatalog(result.products);
-      setDiary({ scope, entries: result.entries, hydrated: true });
+      if (editRevision === nutritionEditRevision.current) {
+        setDiary({ scope, entries: result.entries, hydrated: true });
+      }
       setNutritionConnecting(false);
     };
+
+    const localSessionFallback = window.setTimeout(() => {
+      if (!active || initialSessionStarted) return;
+      initialSessionStarted = true;
+      void hydrateSession(loadCachedAccount());
+    }, 1_800);
 
     void getSupabaseClient()
       .then((client) => {
@@ -1102,6 +1139,7 @@ export default function App() {
         }
 
         const { data } = client.auth.onAuthStateChange((event, session) => {
+          initialSessionStarted = true;
           const user = session?.user && !session.user.is_anonymous ? session.user : null;
           const nextScope = user ? nutritionScopeForUser(user.id) : guestNutritionScope;
           if (event !== 'INITIAL_SESSION'
@@ -1121,14 +1159,24 @@ export default function App() {
         });
         unsubscribe = () => data.subscription.unsubscribe();
       })
-      .catch(() => { if (active) void hydrateSession(null); });
+      .catch(() => { if (active) void hydrateSession(loadCachedAccount()); });
 
     return () => {
       active = false;
+      window.clearTimeout(localSessionFallback);
       unsubscribe?.();
       nutritionGeneration.current += 1;
     };
   }, []);
+
+  useEffect(() => {
+    const connectionWasRestored = isOnline && !wasOnline.current;
+    wasOnline.current = isOnline;
+    if (!connectionWasRestored || !sessionResolved) return;
+    void connectNutrition().catch(() => {
+      // The next browser online event or a manual retry will try again.
+    });
+  }, [isOnline, sessionResolved]);
 
   const startupDataReady = sessionResolved && (!account || profileHydratedUserId === account.id);
 
@@ -1139,6 +1187,17 @@ export default function App() {
     const timer = window.setTimeout(() => setStartupVisible(false), remaining);
     return () => window.clearTimeout(timer);
   }, [startupDataReady, startupVisible]);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -1228,6 +1287,7 @@ export default function App() {
     const scope = diary.scope;
     const localEntries = diary.entries;
     const generation = nutritionGeneration.current;
+    const editRevision = nutritionEditRevision.current;
     setNutritionConnecting(true);
     try {
       const result = await bootstrapNutrition(scope, localEntries);
@@ -1236,7 +1296,9 @@ export default function App() {
       }
       setNutritionMode(result.mode);
       if (result.products.length) setCatalog(result.products);
-      setDiary({ scope, entries: result.entries, hydrated: true });
+      if (editRevision === nutritionEditRevision.current) {
+        setDiary({ scope, entries: result.entries, hydrated: true });
+      }
       if (result.mode !== 'supabase') throw new Error(result.message ?? 'Не удалось подключить синхронизацию');
     } finally {
       if (generation === nutritionGeneration.current) setNutritionConnecting(false);
@@ -1293,6 +1355,7 @@ export default function App() {
     const generation = ++nutritionGeneration.current;
     const scopedEntries = loadLocalEntriesForToday(scope);
     nutritionScopeRef.current = scope;
+    cacheAccount(nextAccount);
     setAccount(nextAccount);
     setNutritionMode('local');
     setNutritionConnecting(true);
@@ -1325,10 +1388,6 @@ export default function App() {
   }
 
   function openFood(meal: MealKind = currentMeal(), product: Product | null = null) {
-    if (nutritionConnecting) {
-      toast.add({ title: 'Подключаю дневник', description: 'Ещё мгновение — и можно добавлять продукты.', type: 'info' });
-      return;
-    }
     setQuickAddMeal(meal);
     setQuickAddProduct(product);
     setQuickAddOpen(true);
@@ -1357,6 +1416,7 @@ export default function App() {
       toast.add({ title: 'Не удалось сохранить запись', description: 'Локальное хранилище недоступно. Попробуйте ещё раз.', type: 'error' });
       return;
     }
+    nutritionEditRevision.current += 1;
     if (scope.kind === 'guest') setGuestDiaryEntryCount(countGuestDiaryEntries());
     setEntries((current) => [...current, entry]);
     if (product.barcode) {
@@ -1378,11 +1438,6 @@ export default function App() {
   }
 
   async function removeEntry(entry: MealEntry) {
-    if (nutritionConnecting) {
-      toast.add({ title: 'Подключаю дневник', description: 'Дождитесь завершения синхронизации.', type: 'info' });
-      return;
-    }
-
     const scope = diary.scope;
     const shouldQueueRemoteDeletion = isSupabaseConfigured && scope.kind === 'user';
     if (shouldQueueRemoteDeletion && !queueRemoteMealDeletion(scope, entry)) {
@@ -1396,6 +1451,7 @@ export default function App() {
       return;
     }
 
+    nutritionEditRevision.current += 1;
     setEntries((current) => current.filter((candidate) => candidate.entryId !== entry.entryId));
     if (scope.kind === 'guest') setGuestDiaryEntryCount(countGuestDiaryEntries());
     if (nutritionMode === 'supabase') {
@@ -1422,6 +1478,7 @@ export default function App() {
       <main className="flux-stage" data-theme={fluxTheme}>
         <section className="flux-app-shell" aria-label="Приложение FLUX">
           {startupVisible ? <InitializationScreen /> : <>
+          {!isOnline && <div className="flux-offline-pill" role="status"><WifiOff /> Офлайн · изменения сохраняются</div>}
           <div className="flux-base-app" aria-hidden={workoutOpen || profileOpen || undefined} inert={workoutOpen || profileOpen || undefined}>
             <header className={`flux-topbar${tab === 'today' ? ' is-home' : ''}`}>
               <button className="flux-brand" type="button" onClick={() => setTab('today')} aria-label="FLUX — главная"><img className="flux-brand-lockup" src={`${import.meta.env.BASE_URL}brand/flux-lockup.png`} alt="" draggable="false" /></button>

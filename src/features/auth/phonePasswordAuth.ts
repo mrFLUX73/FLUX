@@ -21,6 +21,38 @@ export type RegistrationCredentials = LoginPasswordCredentials & {
 };
 
 const LOGIN_DOMAIN = 'flux.local';
+const ACCOUNT_CACHE_KEY = 'flux.account.v1';
+
+export function loadCachedAccount(): FluxAccount | null {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(ACCOUNT_CACHE_KEY) ?? 'null') as Partial<FluxAccount> | null;
+    if (!parsed || typeof parsed.id !== 'string' || !parsed.id) return null;
+    return {
+      id: parsed.id,
+      displayName: typeof parsed.displayName === 'string' ? parsed.displayName : '',
+      login: typeof parsed.login === 'string' ? parsed.login : '',
+      phone: typeof parsed.phone === 'string' ? parsed.phone : '',
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function cacheAccount(account: FluxAccount) {
+  try {
+    window.localStorage.setItem(ACCOUNT_CACHE_KEY, JSON.stringify(account));
+  } catch {
+    // The active session still works when private storage is unavailable.
+  }
+}
+
+export function clearCachedAccount() {
+  try {
+    window.localStorage.removeItem(ACCOUNT_CACHE_KEY);
+  } catch {
+    // Nothing else to clear when private storage is unavailable.
+  }
+}
 
 function technicalEmail(login: string) {
   return `${login}@${LOGIN_DOMAIN}`;

@@ -56,6 +56,10 @@ function themeCacheKey(userId: string) {
   return `flux.profile-theme.${userId}`;
 }
 
+function profileCacheKey(userId: string) {
+  return `flux.profile.${userId}.v1`;
+}
+
 export function loadCachedProfileTheme(userId: string): FluxTheme | null {
   try {
     const value = window.localStorage.getItem(themeCacheKey(userId));
@@ -70,6 +74,44 @@ function cacheProfileTheme(userId: string, theme: FluxTheme) {
     window.localStorage.setItem(themeCacheKey(userId), theme);
   } catch {
     // Theme still works for this session when private storage is unavailable.
+  }
+}
+
+export function loadCachedProfileDraft(userId: string, account: FluxAccount) {
+  try {
+    const value = JSON.parse(window.localStorage.getItem(profileCacheKey(userId)) ?? 'null') as Partial<ProfileDraft> | null;
+    if (!value || !isFluxTheme(value.theme)) return null;
+    const initial = createProfileDraft(account);
+    const calculationSex = value.calculationSex === 'female' || value.calculationSex === 'male'
+      ? value.calculationSex
+      : '';
+    const stringValue = <Key extends keyof ProfileDraft>(key: Key) => typeof value[key] === 'string'
+      ? value[key] as ProfileDraft[Key]
+      : initial[key];
+    const draft: ProfileDraft = {
+      displayName: stringValue('displayName'),
+      theme: value.theme,
+      birthDate: stringValue('birthDate'),
+      calculationSex,
+      heightCm: stringValue('heightCm'),
+      currentWeightKg: stringValue('currentWeightKg'),
+      goal: stringValue('goal'),
+      targetWeightKg: stringValue('targetWeightKg'),
+      paceKgPerWeek: stringValue('paceKgPerWeek'),
+      activity: stringValue('activity'),
+      workoutsPerWeek: stringValue('workoutsPerWeek'),
+    };
+    return { draft, avatar: (calculationSex === 'female' ? 'bun' : 'short-hair') as DefaultAvatar };
+  } catch {
+    return null;
+  }
+}
+
+function cacheProfileDraft(userId: string, draft: ProfileDraft) {
+  try {
+    window.localStorage.setItem(profileCacheKey(userId), JSON.stringify(draft));
+  } catch {
+    // The remote profile remains the source of truth when local storage fails.
   }
 }
 
@@ -122,6 +164,7 @@ export async function loadProfileDraft(userId: string, account: FluxAccount) {
   const avatar: DefaultAvatar = calculationSex === 'female' ? 'bun' : 'short-hair';
 
   cacheProfileTheme(userId, theme);
+  cacheProfileDraft(userId, draft);
 
   return { avatar, draft };
 }
@@ -131,6 +174,7 @@ export async function saveProfileDraft(userId: string, draft: ProfileDraft) {
   if (!displayName) throw new Error('Укажите имя и фамилию');
 
   cacheProfileTheme(userId, draft.theme);
+  cacheProfileDraft(userId, draft);
 
   const [client, authClient] = await Promise.all([
     getSupabaseClientForUser(userId),

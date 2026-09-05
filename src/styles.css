@@ -268,6 +268,8 @@ button { cursor: pointer; }
 .flux-initialization-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--flux-accent); animation: flux-initialization-dot 1.15s ease-in-out infinite; }
 .flux-initialization-dots i:nth-child(2) { animation-delay: .13s; }
 .flux-initialization-dots i:nth-child(3) { animation-delay: .26s; }
+.flux-offline-pill { position: absolute; left: 50%; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); z-index: 45; display: flex; align-items: center; gap: 6px; padding: 7px 11px; border: 1px solid var(--flux-border); border-radius: 999px; background: color-mix(in srgb, var(--flux-card) 94%, transparent); color: var(--flux-muted); box-shadow: 0 5px 20px color-mix(in srgb, var(--flux-ink) 9%, transparent); font-size: 8px; white-space: nowrap; transform: translateX(-50%); backdrop-filter: blur(10px); }
+.flux-offline-pill svg { width: 12px; height: 12px; color: var(--flux-primary); }
 @keyframes flux-initialization-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes flux-initialization-orbit { 0%, 100% { transform: rotate(0deg) scale(.94); opacity: .35; } 50% { transform: rotate(90deg) scale(1); opacity: .8; } }
 @keyframes flux-initialization-breathe { 0%, 100% { transform: scale(.94); } 50% { transform: scale(1.04); } }
