@@ -400,8 +400,11 @@ button { cursor: pointer; }
 .flux-profile-field > span:first-child { color: var(--flux-muted); font-size: 8px; }
 .flux-profile-field [data-slot='input'], .flux-profile-select { width: 100%; height: 46px; border: 1px solid var(--flux-border); border-radius: 14px; background: var(--flux-bg); color: var(--flux-ink); box-shadow: none; }
 .flux-profile-field [data-slot='input'] { padding: 0 12px; font-size: 13px; }
-.flux-profile-date { width: 100%; height: 46px; min-width: 0; display: block; overflow: hidden; padding: 0 12px; border: 1px solid var(--flux-border); border-radius: 14px; background: var(--flux-bg); }
-.flux-profile-date [data-slot='input'] { width: 100%; max-width: 100%; min-width: 0; height: 100%; display: block; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.flux-profile-date { width: 100%; height: 46px; min-width: 0; position: relative; display: flex; align-items: center; justify-content: space-between; gap: 10px; overflow: hidden; padding: 0 12px; border: 1px solid var(--flux-border); border-radius: 14px; background: var(--flux-bg); }
+.flux-profile-date-value { min-width: 0; overflow: hidden; color: var(--flux-ink); font-size: 13px; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
+.flux-profile-date-value.is-placeholder { color: var(--flux-muted); }
+.flux-profile-date > svg { width: 15px; height: 15px; flex: 0 0 auto; color: var(--flux-muted); pointer-events: none; }
+.flux-profile-date [data-slot='input'].flux-profile-date-native { width: 100%; max-width: none; min-width: 0; height: 100%; position: absolute; inset: 0; z-index: 1; display: block; padding: 0; border: 0; border-radius: inherit; opacity: 0; background: transparent; box-shadow: none; cursor: pointer; }
 .flux-profile-select { position: relative; display: block; overflow: hidden; }
 .flux-profile-select select { width: 100%; height: 100%; padding: 0 32px 0 12px; border: 0; outline: 0; appearance: none; background: transparent; color: var(--flux-ink); font: inherit; font-size: 11px; }
 .flux-profile-select svg { width: 14px; height: 14px; position: absolute; top: 16px; right: 10px; color: var(--flux-muted); pointer-events: none; }

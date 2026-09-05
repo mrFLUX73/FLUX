@@ -1,4 +1,4 @@
-import { ArrowLeft, Check, ChevronDown } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Check, ChevronDown } from 'lucide-react';
 import type { CSSProperties } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -79,6 +79,19 @@ function maskPhone(phone: string) {
   const digits = phone.replace(/\D/g, '');
   if (digits.length !== 11) return 'Номер сохранён приватно';
   return `+7 ••• •••-${digits.slice(-4, -2)}-${digits.slice(-2)}`;
+}
+
+function formatBirthDate(value: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return 'Выберите дату';
+  const [, year, month, day] = match;
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+  return new Intl.DateTimeFormat('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(date);
 }
 
 function ProfileField({
@@ -217,7 +230,16 @@ export function ProfileScreen({
             </ProfileField>
             <ProfileField label="Дата рождения" wide>
               <span className="flux-profile-date">
-                <Input type="date" value={draft.birthDate} onChange={(event) => set('birthDate', event.target.value)} />
+                <span className={draft.birthDate ? 'flux-profile-date-value' : 'flux-profile-date-value is-placeholder'}>{formatBirthDate(draft.birthDate)}</span>
+                <CalendarDays aria-hidden="true" />
+                <Input
+                  aria-label="Дата рождения"
+                  className="flux-profile-date-native"
+                  max={new Date().toISOString().slice(0, 10)}
+                  type="date"
+                  value={draft.birthDate}
+                  onChange={(event) => set('birthDate', event.target.value)}
+                />
               </span>
             </ProfileField>
             <ProfileField label="Рост">

@@ -1,4 +1,4 @@
-import { getSupabaseClientForUser } from '../../lib/supabase';
+import { getSupabaseClient, getSupabaseClientForUser, SupabaseAuthScopeError } from '../../lib/supabase';
 import type { FluxAccount } from '../auth/phonePasswordAuth';
 import {
   createProfileDraft,
@@ -74,7 +74,10 @@ function cacheProfileTheme(userId: string, theme: FluxTheme) {
 }
 
 export async function loadProfileDraft(userId: string, account: FluxAccount) {
-  const client = await getSupabaseClientForUser(userId);
+  const [client, authClient] = await Promise.all([
+    getSupabaseClientForUser(userId),
+    getSupabaseClient(),
+  ]);
   const [profileResult, goalResult, userResult] = await Promise.all([
     client
       .from('profiles')
@@ -86,7 +89,7 @@ export async function loadProfileDraft(userId: string, account: FluxAccount) {
       .select('goal_type,activity_level,target_weight_kg,weight_change_pace_kg_per_week,workouts_per_week')
       .eq('user_id', userId)
       .maybeSingle<StoredNutritionGoal>(),
-    client.auth.getUser(),
+    authClient?.auth.getUser() ?? Promise.resolve({ data: { user: null }, error: null }),
   ]);
 
   if (profileResult.error) throw profileResult.error;
@@ -97,7 +100,9 @@ export async function loadProfileDraft(userId: string, account: FluxAccount) {
   const calculationSex = profile.biological_sex === 'female' || profile.biological_sex === 'male'
     ? profile.biological_sex
     : '';
-  const storedTheme = userResult.data.user?.user_metadata?.theme_id;
+  const storedTheme = userResult.data.user?.id === userId
+    ? userResult.data.user.user_metadata?.theme_id
+    : null;
   const theme = isFluxTheme(storedTheme)
     ? storedTheme
     : loadCachedProfileTheme(userId) ?? defaultThemeForSex(calculationSex);
@@ -127,7 +132,10 @@ export async function saveProfileDraft(userId: string, draft: ProfileDraft) {
 
   cacheProfileTheme(userId, draft.theme);
 
-  const client = await getSupabaseClientForUser(userId);
+  const [client, authClient] = await Promise.all([
+    getSupabaseClientForUser(userId),
+    getSupabaseClient(),
+  ]);
   const { error: profileError } = await client
     .from('profiles')
     .update({
@@ -155,7 +163,12 @@ export async function saveProfileDraft(userId: string, draft: ProfileDraft) {
     }, { onConflict: 'user_id' });
   if (goalError) throw goalError;
 
-  const { error: themeError } = await client.auth.updateUser({
+  if (!authClient) throw new Error('Supabase не настроен');
+  const { data: sessionData, error: sessionError } = await authClient.auth.getSession();
+  if (sessionError) throw sessionError;
+  if (sessionData.session?.user.id !== userId) throw new SupabaseAuthScopeError();
+
+  const { error: themeError } = await authClient.auth.updateUser({
     data: { theme_id: draft.theme },
   });
   if (themeError) throw themeError;
