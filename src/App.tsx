@@ -87,6 +87,7 @@ import {
 
 type Tab = 'today' | 'food' | 'workouts' | 'progress';
 type ScannerState = 'idle' | 'requesting' | 'scanning' | 'error';
+type FluxTheme = 'base' | 'male' | 'female';
 type ManualProductDraft = {
   name: string;
   brand: string;
@@ -959,6 +960,20 @@ function ProgressScreen() {
   );
 }
 
+function InitializationScreen() {
+  return (
+    <section className="flux-initialization" role="status" aria-live="polite" aria-label="FLUX загружается">
+      <div className="flux-initialization-mark" aria-hidden="true">
+        <i />
+        <img src={`${import.meta.env.BASE_URL}brand/flux-mark.png`} alt="" draggable="false" />
+      </div>
+      <img className="flux-initialization-lockup" src={`${import.meta.env.BASE_URL}brand/flux-lockup.png`} alt="FLUX" draggable="false" />
+      <p>Настраиваем FLUX под вас</p>
+      <div className="flux-initialization-dots" aria-hidden="true"><i /><i /><i /></div>
+    </section>
+  );
+}
+
 export default function App() {
   const [tab, setTab] = useState<Tab>('today');
   const [diary, setDiary] = useState<{
@@ -975,6 +990,10 @@ export default function App() {
   const [nutritionMode, setNutritionMode] = useState<NutritionMode>('local');
   const [nutritionConnecting, setNutritionConnecting] = useState(true);
   const [account, setAccount] = useState<FluxAccount | null>(null);
+  const [sessionResolved, setSessionResolved] = useState(false);
+  const [profileHydratedUserId, setProfileHydratedUserId] = useState<string | null>(null);
+  const [startupVisible, setStartupVisible] = useState(true);
+  const startupStartedAt = useRef(Date.now());
   const [authGateOpen, setAuthGateOpen] = useState(false);
   const [authGateMode, setAuthGateMode] = useState<PhoneAuthMode>('signup');
   const [guestDiaryEntryCount, setGuestDiaryEntryCount] = useState(() => countGuestDiaryEntries());
@@ -997,6 +1016,7 @@ export default function App() {
     setProfileDraft(account ? createProfileDraft(account) : null);
     setProfileSaving(false);
     setDefaultAvatar('short-hair');
+    setProfileHydratedUserId(null);
     if (account) {
       void loadProfileDraft(account.id, account).then((stored) => {
         if (!active || profileEditRevision.current !== baselineRevision) return;
@@ -1004,6 +1024,10 @@ export default function App() {
         setDefaultAvatar(stored.avatar);
       }).catch(() => {
         // Keep the editable account-based draft when the network is offline.
+      }).finally(() => {
+        if (active && profileEditRevision.current === baselineRevision) {
+          setProfileHydratedUserId(account.id);
+        }
       });
     }
     return () => { active = false; };
@@ -1041,6 +1065,9 @@ export default function App() {
           return;
         }
         setAccount(resolvedAccount);
+        setSessionResolved(true);
+      } else {
+        setSessionResolved(true);
       }
 
       const result = await bootstrapNutrition(scope, localEntries);
@@ -1088,6 +1115,16 @@ export default function App() {
     };
   }, []);
 
+  const startupDataReady = sessionResolved && (!account || profileHydratedUserId === account.id);
+
+  useEffect(() => {
+    if (!startupVisible || !startupDataReady) return;
+    const minimumDuration = 850;
+    const remaining = Math.max(0, minimumDuration - (Date.now() - startupStartedAt.current));
+    const timer = window.setTimeout(() => setStartupVisible(false), remaining);
+    return () => window.clearTimeout(timer);
+  }, [startupDataReady, startupVisible]);
+
   useEffect(() => {
     let active = true;
     const timer = window.setInterval(async () => {
@@ -1124,6 +1161,16 @@ export default function App() {
   const canConnectNutrition = isSupabaseConfigured && isTurnstileConfigured;
   const firstName = account?.displayName.split(/\s+/)[0];
   const avatarSrc = `${import.meta.env.BASE_URL}avatars/avatar-${defaultAvatar}.png`;
+  const fluxTheme: FluxTheme = profileDraft?.calculationSex === 'female'
+    ? 'female'
+    : profileDraft?.calculationSex === 'male'
+      ? 'male'
+      : 'base';
+
+  useEffect(() => {
+    document.documentElement.dataset.fluxTheme = fluxTheme;
+    return () => { delete document.documentElement.dataset.fluxTheme; };
+  }, [fluxTheme]);
 
   function openProfile() {
     if (!account) {
@@ -1356,8 +1403,9 @@ export default function App() {
 
   return (
     <Toaster>
-      <main className="flux-stage">
+      <main className="flux-stage" data-theme={fluxTheme}>
         <section className="flux-app-shell" aria-label="Приложение FLUX">
+          {startupVisible ? <InitializationScreen /> : <>
           <div className="flux-base-app" aria-hidden={workoutOpen || profileOpen || undefined} inert={workoutOpen || profileOpen || undefined}>
             <header className={`flux-topbar${tab === 'today' ? ' is-home' : ''}`}>
               <button className="flux-brand" type="button" onClick={() => setTab('today')} aria-label="FLUX — главная"><img className="flux-brand-lockup" src={`${import.meta.env.BASE_URL}brand/flux-lockup.png`} alt="" draggable="false" /></button>
@@ -1389,6 +1437,7 @@ export default function App() {
               saving={profileSaving}
             />
           )}
+          </>}
         </section>
       </main>
       <QuickAddDrawer
