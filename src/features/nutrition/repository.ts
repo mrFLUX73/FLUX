@@ -325,10 +325,75 @@ function formatTime(isoDate: string) {
 async function loadRemoteProducts(client: SupabaseClient) {
   const { data, error } = await client
     .from('products')
-    .select('id,name,brand,category,serving_size_g,serving_unit,default_serving_quantity,energy_kcal_per_100g,protein_g_per_100g,carbohydrates_g_per_100g,fat_g_per_100g')
+    .select('id,barcode,name,brand,category,serving_size_g,serving_unit,default_serving_quantity,energy_kcal_per_100g,protein_g_per_100g,carbohydrates_g_per_100g,fat_g_per_100g')
     .order('name');
   if (error) throw error;
   return data.map(productFromRow);
+}
+
+function databaseUnit(unit: ProductUnit) {
+  if (unit === 'шт') return 'piece';
+  if (unit === 'мл') return 'ml';
+  return 'g';
+}
+
+function isDatabaseProductId(value: string | null) {
+  return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value));
+}
+
+async function ensureRemoteProduct(
+  client: SupabaseClient,
+  scope: Extract<NutritionStorageScope, { kind: 'user' }>,
+  product: Product,
+) {
+  if (isDatabaseProductId(product.id)) return product.id;
+  if (!product.barcode) throw new Error('У продукта нет штрихкода');
+
+  const selection = 'id,barcode,name,brand,category,serving_size_g,serving_unit,default_serving_quantity,energy_kcal_per_100g,protein_g_per_100g,carbohydrates_g_per_100g,fat_g_per_100g';
+  const { data: existing, error: existingError } = await client
+    .from('products')
+    .select(selection)
+    .eq('barcode', product.barcode)
+    .limit(1);
+  if (existingError) throw existingError;
+  if (existing?.[0]) return existing[0].id as string;
+
+  const scale = 100 / product.servingSizeG;
+  const values = {
+    owner_id: scope.userId,
+    barcode: product.barcode,
+    name: product.name,
+    brand: product.brand === 'Без бренда' ? null : product.brand,
+    category: 'Добавлено по штрихкоду',
+    serving_size_g: product.servingSizeG,
+    serving_unit: databaseUnit(product.unit),
+    default_serving_quantity: product.amount,
+    energy_kcal_per_100g: product.kcal * scale,
+    protein_g_per_100g: product.protein * scale,
+    carbohydrates_g_per_100g: product.carbs * scale,
+    fat_g_per_100g: product.fat * scale,
+    is_verified: false,
+  };
+  const { data: inserted, error: insertError } = await client
+    .from('products')
+    .insert(values)
+    .select(selection)
+    .single();
+  if (!insertError) return inserted.id as string;
+
+  // A second device can create the same barcode between the SELECT and INSERT.
+  // In that case the unique index wins and we simply reuse the existing row.
+  if (insertError.code === '23505') {
+    const { data: concurrent, error: concurrentError } = await client
+      .from('products')
+      .select('id')
+      .eq('barcode', product.barcode)
+      .limit(1)
+      .single();
+    if (concurrentError) throw concurrentError;
+    return concurrent.id as string;
+  }
+  throw insertError;
 }
 
 async function loadRemoteEntries(client: SupabaseClient, userId: string, products: Product[]) {
@@ -405,8 +470,9 @@ async function addRemoteMealEntryWithClient(
   entry: MealEntry,
 ) {
   if (!entry.productId) return false;
+  const productId = await ensureRemoteProduct(client, scope, entry);
   const { error } = await client.rpc('add_meal_item', {
-    p_product_id: entry.productId,
+    p_product_id: productId,
     p_meal_type: mealToDatabase(entry.meal),
     p_quantity: entry.amount,
     p_eaten_at: entry.eatenAt,

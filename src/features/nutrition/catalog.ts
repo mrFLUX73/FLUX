@@ -37,6 +37,7 @@ export const fallbackProducts: Product[] = [
 
 type ProductRow = {
   id: string;
+  barcode?: string | null;
   name: string;
   brand: string | null;
   category: string | null;
@@ -74,6 +75,7 @@ export function productFromRow(row: ProductRow): Product {
 
   return {
     id: row.id,
+    barcode: row.barcode || undefined,
     name: row.name,
     brand: row.brand || 'Без бренда',
     amount,
