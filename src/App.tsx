@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
+import type { IScannerControls } from '@zxing/browser';
 import {
   Activity,
   ArrowLeft,
@@ -85,6 +86,7 @@ import {
 } from './features/nutrition/types';
 
 type Tab = 'today' | 'food' | 'workouts' | 'progress';
+type ScannerState = 'idle' | 'requesting' | 'scanning' | 'error';
 
 const macroTargets = { protein: 110, fat: 70, carbs: 230 };
 
@@ -157,11 +159,17 @@ function QuickAddDrawer({
   const [meal, setMeal] = useState<MealKind>(initialMeal);
   const [isAdding, setIsAdding] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [scannerState, setScannerState] = useState<ScannerState>('idle');
+  const [scannerMessage, setScannerMessage] = useState('');
+  const [scannerAttempt, setScannerAttempt] = useState(0);
   const [barcodeProducts, setBarcodeProducts] = useState<Product[]>([]);
   const [lookupState, setLookupState] = useState<'idle' | 'loading' | 'found' | 'not_found' | 'incomplete' | 'error'>('idle');
   const [lookupMessage, setLookupMessage] = useState('');
   const barcodeQuery = query.replace(/\D/g, '');
   const isBarcodeQuery = /^\d{8,14}$/.test(barcodeQuery);
+  const scannerVideoRef = useRef<HTMLVideoElement>(null);
+  const scannerControlsRef = useRef<IScannerControls | null>(null);
+  const detectedBarcodeRef = useRef('');
 
   useEffect(() => {
     if (!open) return;
@@ -169,10 +177,107 @@ function QuickAddDrawer({
     setSelected(initialProduct);
     setAmount(initialProduct?.amount ?? 180);
     setScannerOpen(false);
+    setScannerState('idle');
+    setScannerMessage('');
+    setScannerAttempt(0);
     setBarcodeProducts([]);
     setLookupState('idle');
     setLookupMessage('');
   }, [initialMeal, initialProduct, open]);
+
+  useEffect(() => {
+    if (!open || !scannerOpen) return;
+
+    let active = true;
+    detectedBarcodeRef.current = '';
+    scannerControlsRef.current?.stop();
+    scannerControlsRef.current = null;
+    setScannerState('requesting');
+    setScannerMessage('');
+
+    async function startScanner() {
+      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+        setScannerState('error');
+        setScannerMessage('Камера доступна только в защищённой версии сайта. Откройте FLUX по HTTPS.');
+        return;
+      }
+
+      try {
+        const { BarcodeFormat, BrowserMultiFormatReader } = await import('@zxing/browser');
+        if (!active || !scannerVideoRef.current) return;
+
+        const reader = new BrowserMultiFormatReader(undefined, {
+          delayBetweenScanAttempts: 140,
+          delayBetweenScanSuccess: 500,
+          tryPlayVideoTimeout: 5000,
+        });
+        reader.possibleFormats = [
+          BarcodeFormat.EAN_13,
+          BarcodeFormat.EAN_8,
+          BarcodeFormat.UPC_A,
+          BarcodeFormat.UPC_E,
+        ];
+
+        const controls = await reader.decodeFromConstraints(
+          {
+            audio: false,
+            video: {
+              facingMode: { ideal: 'environment' },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+            },
+          },
+          scannerVideoRef.current,
+          (result, _error, liveControls) => {
+            if (!active || !result || detectedBarcodeRef.current) return;
+            const barcode = result.getText().replace(/\D/g, '');
+            if (!/^\d{8,14}$/.test(barcode)) return;
+
+            detectedBarcodeRef.current = barcode;
+            liveControls.stop();
+            if ('vibrate' in navigator) navigator.vibrate(80);
+            setQuery(barcode);
+            setScannerOpen(false);
+            toast.add({
+              title: 'Штрихкод считан',
+              description: `${barcode} · ищем продукт`,
+              type: 'success',
+            });
+          },
+        );
+
+        if (!active) {
+          controls.stop();
+          return;
+        }
+        scannerControlsRef.current = controls;
+        setScannerState('scanning');
+      } catch (error) {
+        if (!active) return;
+        const name = error instanceof DOMException ? error.name : '';
+        setScannerState('error');
+        setScannerMessage(
+          name === 'NotAllowedError' || name === 'SecurityError'
+            ? 'Доступ к камере запрещён. Разрешите его в настройках Safari для этого сайта.'
+            : name === 'NotFoundError' || name === 'DevicesNotFoundError'
+              ? 'На устройстве не найдена доступная камера.'
+              : name === 'NotReadableError' || name === 'TrackStartError'
+                ? 'Камера занята другим приложением. Закройте его и попробуйте снова.'
+                : 'Не удалось запустить камеру. Можно ввести цифры штрихкода вручную.',
+        );
+      }
+    }
+
+    void startScanner();
+    return () => {
+      active = false;
+      scannerControlsRef.current?.stop();
+      scannerControlsRef.current = null;
+      const stream = scannerVideoRef.current?.srcObject;
+      if (stream instanceof MediaStream) stream.getTracks().forEach((track) => track.stop());
+      if (scannerVideoRef.current) scannerVideoRef.current.srcObject = null;
+    };
+  }, [open, scannerAttempt, scannerOpen]);
 
   useEffect(() => {
     if (!open || !isBarcodeQuery) {
@@ -266,6 +371,8 @@ function QuickAddDrawer({
       setQuery('');
       setIsAdding(false);
       setScannerOpen(false);
+      setScannerState('idle');
+      setScannerMessage('');
       setBarcodeProducts([]);
       setLookupState('idle');
       setLookupMessage('');
@@ -280,6 +387,8 @@ function QuickAddDrawer({
         setQuery('');
         setIsAdding(false);
         setScannerOpen(false);
+        setScannerState('idle');
+        setScannerMessage('');
         setBarcodeProducts([]);
         setLookupState('idle');
         setLookupMessage('');
@@ -331,13 +440,24 @@ function QuickAddDrawer({
         </div>}
         {scannerOpen ? (
           <div className="flux-scanner-view">
-            <div className="flux-camera-preview" aria-label="Демонстрация сканирования штрихкода">
+            <div className={`flux-camera-preview is-${scannerState}`}>
+              <video ref={scannerVideoRef} muted playsInline autoPlay aria-label="Изображение с камеры" />
               <span className="flux-camera-corner is-top-left" /><span className="flux-camera-corner is-top-right" />
               <span className="flux-camera-corner is-bottom-left" /><span className="flux-camera-corner is-bottom-right" />
-              <span className="flux-demo-barcode" aria-hidden="true">{Array.from({ length: 11 }, (_, index) => <i key={index} />)}</span>
               <span className="flux-scan-line" />
+              {scannerState === 'requesting' && <span className="flux-camera-placeholder"><LoaderCircle className="is-spinning" /></span>}
+              {scannerState === 'error' && <span className="flux-camera-placeholder is-error"><ScanBarcode /></span>}
             </div>
-            <div className="flux-scanning-status">Камеру подключим следующим этапом</div>
+            <div className={`flux-scanning-status is-${scannerState}`} role="status" aria-live="polite">
+              {scannerState === 'requesting' && <><LoaderCircle className="is-spinning" /> Запрашиваем доступ к камере…</>}
+              {scannerState === 'scanning' && <><span className="flux-camera-pulse" /> Ищем штрихкод на упаковке…</>}
+              {scannerState === 'error' && scannerMessage}
+            </div>
+            {scannerState === 'error' && (
+              <Button variant="secondary" className="flux-camera-retry" onClick={() => setScannerAttempt((attempt) => attempt + 1)}>
+                Попробовать снова
+              </Button>
+            )}
             <button type="button" className="flux-text-button" onClick={() => setScannerOpen(false)}>Ввести штрихкод вручную</button>
           </div>
         ) : selected ? (
@@ -387,7 +507,7 @@ function QuickAddDrawer({
               <Search aria-hidden="true" />
               <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Продукт, бренд или штрихкод" aria-label="Найти продукт, бренд или штрихкод" />
               {query && <button type="button" onClick={() => setQuery('')} aria-label="Очистить поиск"><X /></button>}
-              <button type="button" className="flux-scan-button" onClick={(event) => { event.preventDefault(); setScannerOpen(true); }} aria-label="Сканировать штрихкод"><ScanBarcode /></button>
+              <button type="button" className="flux-scan-button" onClick={(event) => { event.preventDefault(); setScannerAttempt((attempt) => attempt + 1); setScannerOpen(true); }} aria-label="Сканировать штрихкод"><ScanBarcode /></button>
             </label>
             {!query && repeatEntry && repeatProduct && (
               <section className="flux-usual-meal">

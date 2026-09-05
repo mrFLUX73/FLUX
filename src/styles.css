@@ -348,20 +348,28 @@ button { cursor: pointer; }
 .flux-alternative-products > button small { margin-top: 3px; color: #849085; font-size: 8px; }
 .flux-alternative-products > button > span:last-child strong { font-size: 11px; font-weight: 500; }
 .flux-camera-preview { position: relative; height: 390px; overflow: hidden; display: grid; place-items: center; margin-top: 10px; border-radius: 24px; background: radial-gradient(circle at 45% 30%, rgb(255 255 255 / 8%), transparent 36%), linear-gradient(135deg, #34443a, #131d16); }
+.flux-camera-preview video { width: 100%; height: 100%; object-fit: cover; background: transparent; }
+.flux-camera-preview::after { position: absolute; inset: 0; content: ''; background: linear-gradient(180deg, rgb(5 15 8 / 16%), transparent 30%, transparent 70%, rgb(5 15 8 / 20%)); pointer-events: none; }
 .flux-camera-corner { position: absolute; width: 48px; height: 48px; border-color: #d9ecd5; }
 .flux-camera-corner.is-top-left { top: 78px; left: 42px; border-top: 3px solid; border-left: 3px solid; border-radius: 9px 0 0; }
 .flux-camera-corner.is-top-right { top: 78px; right: 42px; border-top: 3px solid; border-right: 3px solid; border-radius: 0 9px 0 0; }
 .flux-camera-corner.is-bottom-left { bottom: 78px; left: 42px; border-bottom: 3px solid; border-left: 3px solid; border-radius: 0 0 0 9px; }
 .flux-camera-corner.is-bottom-right { right: 42px; bottom: 78px; border-right: 3px solid; border-bottom: 3px solid; border-radius: 0 0 9px; }
-.flux-demo-barcode { position: relative; width: 238px; height: 92px; display: flex; align-items: stretch; gap: 5px; padding: 14px 20px; background: #f4f0e9; box-shadow: 0 7px 20px rgb(0 0 0 / 22%); transform: rotate(-2deg); }
-.flux-demo-barcode i { flex: 1; background: #1e211f; }
-.flux-demo-barcode i:nth-child(2n) { flex: .35; }
-.flux-demo-barcode i:nth-child(3n) { flex: 1.6; }
-.flux-scan-line { position: absolute; width: 264px; height: 2px; background: #87bf83; box-shadow: 0 0 12px #a6d6a2; animation: flux-scan-line 1.6s ease-in-out infinite; }
-.flux-scanning-status { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 20px; color: #6e7f70; font-size: 11px; }
+.flux-camera-corner, .flux-scan-line { z-index: 2; }
+.flux-scan-line { position: absolute; z-index: 3; width: calc(100% - 84px); max-width: 278px; height: 2px; background: #9bd096; box-shadow: 0 0 12px #bce6b8; animation: flux-scan-line 1.6s ease-in-out infinite; }
+.flux-camera-preview.is-requesting .flux-scan-line, .flux-camera-preview.is-error .flux-scan-line { display: none; }
+.flux-camera-placeholder { position: absolute; z-index: 1; inset: 0; display: grid; place-items: center; color: #dcebd8; }
+.flux-camera-placeholder svg { width: 34px; height: 34px; }
+.flux-camera-placeholder.is-error { color: #adc3ad; }
+.flux-camera-placeholder.is-error svg { width: 54px; height: 54px; stroke-width: 1.2; }
+.flux-scanning-status { min-height: 36px; display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 14px; color: #6e7f70; font-size: 11px; line-height: 1.45; text-align: center; }
+.flux-scanning-status.is-error { color: #79645f; }
 .flux-scanning-status svg { width: 17px; height: 17px; }
+.flux-camera-pulse { width: 8px; height: 8px; border-radius: 50%; background: #6fa36f; box-shadow: 0 0 0 5px rgb(111 163 111 / 14%); animation: flux-camera-pulse 1.4s ease-in-out infinite; }
+.flux-camera-retry { width: 100%; min-height: 44px; margin-top: 8px; border-radius: 15px; }
 .flux-scanner-view > .flux-text-button { margin-top: 18px; }
 @keyframes flux-scan-line { 0%, 100% { transform: translateY(-86px); } 50% { transform: translateY(86px); } }
+@keyframes flux-camera-pulse { 50% { opacity: .45; transform: scale(.8); } }
 .flux-empty { padding: 35px 16px; color: #718071; text-align: center; font-size: 11px; }
 .flux-empty strong, .flux-empty span { display: block; }
 .flux-empty strong { color: #202b21; font-size: 13px; font-weight: 500; }
