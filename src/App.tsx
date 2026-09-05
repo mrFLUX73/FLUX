@@ -50,6 +50,7 @@ import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Toaster, toast } from '@/components/ui/toast';
 import { barcodeDemoAlternatives, barcodeDemoProduct, fallbackProducts } from './features/nutrition/catalog';
+import { lookupProductByBarcode } from './features/nutrition/productSearch';
 import {
   addRemoteMealEntry,
   bootstrapNutrition,
@@ -156,6 +157,11 @@ function QuickAddDrawer({
   const [meal, setMeal] = useState<MealKind>(initialMeal);
   const [isAdding, setIsAdding] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [barcodeProducts, setBarcodeProducts] = useState<Product[]>([]);
+  const [lookupState, setLookupState] = useState<'idle' | 'loading' | 'found' | 'not_found' | 'incomplete' | 'error'>('idle');
+  const [lookupMessage, setLookupMessage] = useState('');
+  const barcodeQuery = query.replace(/\D/g, '');
+  const isBarcodeQuery = /^\d{8,14}$/.test(barcodeQuery);
 
   useEffect(() => {
     if (!open) return;
@@ -163,27 +169,73 @@ function QuickAddDrawer({
     setSelected(initialProduct);
     setAmount(initialProduct?.amount ?? 180);
     setScannerOpen(false);
+    setBarcodeProducts([]);
+    setLookupState('idle');
+    setLookupMessage('');
   }, [initialMeal, initialProduct, open]);
 
   useEffect(() => {
-    if (!open || !scannerOpen) return;
-    const detectionTimer = window.setTimeout(() => {
-      setQuery(barcodeDemoProduct.barcode ?? '');
-      setScannerOpen(false);
-    }, 2200);
-    return () => window.clearTimeout(detectionTimer);
-  }, [open, scannerOpen]);
+    if (!open || !isBarcodeQuery) {
+      setBarcodeProducts([]);
+      setLookupState('idle');
+      setLookupMessage('');
+      return;
+    }
+
+    const controller = new AbortController();
+    let active = true;
+    setBarcodeProducts([]);
+    setLookupState('loading');
+    setLookupMessage('');
+    const searchTimer = window.setTimeout(async () => {
+      const requestTimer = window.setTimeout(() => controller.abort(), 8000);
+      try {
+        const result = await lookupProductByBarcode(barcodeQuery, controller.signal);
+        if (!active) return;
+        if (result.status === 'found') {
+          setBarcodeProducts([result.product]);
+          setLookupState('found');
+          return;
+        }
+        if (barcodeQuery === barcodeDemoProduct.barcode) {
+          setBarcodeProducts([barcodeDemoProduct]);
+          setLookupState('found');
+          return;
+        }
+        setLookupState(result.status);
+        setLookupMessage(result.status === 'incomplete'
+          ? `${result.name} найден, но в источнике нет полного КБЖУ.`
+          : result.status === 'error' ? result.message : 'Такого штрихкода пока нет в подключённой базе.');
+      } catch (error) {
+        if (!active) return;
+        setLookupState('error');
+        setLookupMessage(error instanceof DOMException && error.name === 'AbortError'
+          ? 'Поиск занял слишком много времени. Попробуйте ещё раз.'
+          : 'Не удалось связаться с базой продуктов');
+      } finally {
+        window.clearTimeout(requestTimer);
+      }
+    }, 450);
+
+    return () => {
+      active = false;
+      window.clearTimeout(searchTimer);
+      controller.abort();
+    };
+  }, [barcodeQuery, isBarcodeQuery, open]);
 
   const recentIds = [...entries]
     .sort((a, b) => b.eatenAt.localeCompare(a.eatenAt))
     .map((entry) => entry.productId)
     .filter((id): id is string => Boolean(id));
   const normalizedQuery = query.trim().toLocaleLowerCase('ru');
-  const barcodeQuery = query.replace(/\D/g, '');
-  const isBarcodeQuery = /^\d{8,14}$/.test(barcodeQuery);
   const demoProducts = [barcodeDemoProduct, ...barcodeDemoAlternatives];
   const searchableProducts = query.trim()
-    ? [...products, ...demoProducts.filter((demo) => !products.some((product) => product.id === demo.id))]
+    ? [
+      ...products,
+      ...barcodeProducts.filter((candidate) => !products.some((product) => product.barcode === candidate.barcode)),
+      ...demoProducts.filter((demo) => !products.some((product) => product.id === demo.id) && (!isBarcodeQuery || demo.barcode === barcodeQuery)),
+    ]
     : products;
   const filtered = searchableProducts
     .filter((product) => `${product.name} ${product.brand} ${product.barcode ?? ''}`.toLocaleLowerCase('ru').includes(normalizedQuery))
@@ -214,6 +266,9 @@ function QuickAddDrawer({
       setQuery('');
       setIsAdding(false);
       setScannerOpen(false);
+      setBarcodeProducts([]);
+      setLookupState('idle');
+      setLookupMessage('');
     }, 250);
   }
 
@@ -225,6 +280,9 @@ function QuickAddDrawer({
         setQuery('');
         setIsAdding(false);
         setScannerOpen(false);
+        setBarcodeProducts([]);
+        setLookupState('idle');
+        setLookupMessage('');
       }, 250);
     }
   }
@@ -279,7 +337,7 @@ function QuickAddDrawer({
               <span className="flux-demo-barcode" aria-hidden="true">{Array.from({ length: 11 }, (_, index) => <i key={index} />)}</span>
               <span className="flux-scan-line" />
             </div>
-            <div className="flux-scanning-status"><LoaderCircle className="is-spinning" /> Ищем штрихкод…</div>
+            <div className="flux-scanning-status">Камеру подключим следующим этапом</div>
             <button type="button" className="flux-text-button" onClick={() => setScannerOpen(false)}>Ввести штрихкод вручную</button>
           </div>
         ) : selected ? (
@@ -346,22 +404,26 @@ function QuickAddDrawer({
                 <h2>{isBarcodeQuery ? 'Результат по штрихкоду' : query ? 'Результаты поиска' : recentIds.length ? 'Недавние и частые' : 'Популярные продукты'}</h2>
                 {isBarcodeQuery && filtered.length > 0 && <span className="flux-found-pill">Найдено</span>}
               </div>
+              {isBarcodeQuery && lookupState === 'loading' && (
+                <div className="flux-lookup-state"><LoaderCircle className="is-spinning" /><span>Ищем продукт и проверяем КБЖУ…</span></div>
+              )}
               {filtered.map((product) => {
                 const isBarcodeMatch = isBarcodeQuery && product.barcode === barcodeQuery;
                 const kcalPer100 = Math.round(product.kcal / product.servingSizeG * 100);
+                const isExternalMatch = product.id.startsWith('open-food-facts:');
                 return (
                   <div key={product.id} className={isBarcodeMatch ? 'flux-product-match' : undefined}>
                     <button type="button" className={`flux-product-row ${isBarcodeMatch ? 'is-barcode-match' : ''}`} onClick={() => choose(product)}>
                       <span className="flux-food-icon"><ProductIcon type={product.icon} /></span>
-                      <span><strong>{product.name}</strong><small>{product.brand} · {isBarcodeMatch ? product.amount : 'обычно ' + product.amount} {product.unit}</small>{isBarcodeMatch && <em>{kcalPer100} ккал на 100 г</em>}</span>
+                      <span><strong>{product.name}</strong><small>{product.brand} · {isBarcodeMatch ? product.amount : 'обычно ' + product.amount} {product.unit}</small>{isBarcodeMatch && <em>{kcalPer100} ккал на 100 {product.unit === 'мл' ? 'мл' : 'г'}</em>}</span>
                       {!isBarcodeMatch && <span><strong>{product.kcal}</strong><small>ккал</small></span>}
                       <ChevronRight aria-hidden="true" />
                     </button>
-                    {isBarcodeMatch && <div className="flux-product-note"><span><Check /></span><p><strong>Наиболее подходящий вариант</strong>Жирность 0,3% совпадает с товаром по штрихкоду. Проверьте цифры на упаковке перед первым сохранением.</p></div>}
+                    {isBarcodeMatch && <div className="flux-product-note"><span><Check /></span><p><strong>{isExternalMatch ? 'Найдено в Open Food Facts' : 'Проверенный пример FLUX'}</strong>Сверьте название и КБЖУ с упаковкой перед первым сохранением.</p></div>}
                   </div>
                 );
               })}
-              {isBarcodeQuery && filtered.some((product) => product.barcode === barcodeQuery) && (
+              {isBarcodeQuery && barcodeQuery === barcodeDemoProduct.barcode && filtered.some((product) => product.barcode === barcodeQuery) && (
                 <div className="flux-alternative-products">
                   <h3>Другие варианты</h3>
                   {barcodeDemoAlternatives.map((product) => (
@@ -372,7 +434,12 @@ function QuickAddDrawer({
                   ))}
                 </div>
               )}
-              {filtered.length === 0 && <div className="flux-empty"><strong>Ничего не нашли</strong><span>Проверьте название — создание своего продукта добавим следующим шагом.</span></div>}
+              {filtered.length === 0 && lookupState !== 'loading' && (
+                <div className="flux-empty">
+                  <strong>{isBarcodeQuery && lookupState === 'incomplete' ? 'Нужно дополнить КБЖУ' : 'Ничего не нашли'}</strong>
+                  <span>{isBarcodeQuery ? lookupMessage || 'Введите от 8 до 14 цифр штрихкода.' : 'Проверьте название — создание своего продукта добавим следующим шагом.'}</span>
+                </div>
+              )}
             </section>
           </div>
         )}

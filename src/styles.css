@@ -323,6 +323,8 @@ button { cursor: pointer; }
 .flux-product-results { margin-top: 24px; }
 .flux-results-heading { align-items: center; }
 .flux-found-pill { padding: 5px 9px; border-radius: 12px; background: #e7f1e3; color: #46734c; font-size: 8px; font-weight: 600; }
+.flux-lookup-state { min-height: 92px; display: flex; align-items: center; justify-content: center; gap: 9px; color: #718071; font-size: 10px; }
+.flux-lookup-state svg { width: 18px; height: 18px; color: #4f7e55; }
 .flux-product-row { width: 100%; min-height: 68px; display: grid; grid-template-columns: 42px 1fr 40px 16px; gap: 9px; align-items: center; padding: 8px 1px; border: 0; border-bottom: 1px solid #dfe8dc; background: transparent; color: #202b21; text-align: left; }
 .flux-product-row.is-barcode-match { min-height: 82px; grid-template-columns: 42px 1fr 16px; padding: 12px; border: 1.5px solid #6f9d73; border-radius: 19px; }
 .flux-product-row > span:nth-child(2) { min-width: 0; }
