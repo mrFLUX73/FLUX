@@ -12,6 +12,7 @@ const LEGACY_STORAGE_KEY = 'flux.nutrition-diary.v2';
 const STORAGE_KEY_PREFIX = 'flux.nutrition-diary.v3';
 const PRODUCT_CATALOG_KEY_PREFIX = 'flux.nutrition-products.v1';
 const PENDING_DELETIONS_KEY_PREFIX = 'flux.nutrition-pending-deletions.v2';
+const PENDING_UPDATES_KEY_PREFIX = 'flux.nutrition-pending-updates.v1';
 const GUEST_CLAIM_KEY = 'flux.nutrition-guest-claim.v1';
 
 export type NutritionStorageScope =
@@ -60,6 +61,12 @@ type PendingDeletionsEnvelope = {
   entries: PendingDeletion[];
 };
 
+type PendingUpdatesEnvelope = {
+  version: 1;
+  ownerUserId: string;
+  entries: MealEntry[];
+};
+
 type GuestClaimMarker = {
   version: 1;
   status: 'copying' | 'done';
@@ -81,6 +88,10 @@ function productCatalogKey(scope: NutritionStorageScope) {
 
 function pendingDeletionsKey(scope: Extract<NutritionStorageScope, { kind: 'user' }>) {
   return `${PENDING_DELETIONS_KEY_PREFIX}:user:${scope.userId}`;
+}
+
+function pendingUpdatesKey(scope: Extract<NutritionStorageScope, { kind: 'user' }>) {
+  return `${PENDING_UPDATES_KEY_PREFIX}:user:${scope.userId}`;
 }
 
 function ownerUserId(scope: NutritionStorageScope) {
@@ -259,6 +270,20 @@ export function persistLocalEntriesForToday(scope: NutritionStorageScope, entrie
   }
 }
 
+export function persistUpdatedLocalEntry(scope: NutritionStorageScope, entry: MealEntry) {
+  try {
+    const current = readLocalDiary(scope);
+    if (!current.entries.some((candidate) => candidate.entryId === entry.entryId)) return false;
+    persistLocalDiary({
+      ...current,
+      entries: current.entries.map((candidate) => candidate.entryId === entry.entryId ? entry : candidate),
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function removeLocalEntryFromStorage(scope: NutritionStorageScope, entryId: string) {
   try {
     const current = readLocalDiary(scope);
@@ -395,6 +420,26 @@ function persistPendingDeletions(scope: Extract<NutritionStorageScope, { kind: '
   window.localStorage.setItem(pendingDeletionsKey(scope), JSON.stringify(envelope));
 }
 
+function readPendingUpdates(scope: Extract<NutritionStorageScope, { kind: 'user' }>): MealEntry[] {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(pendingUpdatesKey(scope)) ?? '{}') as Partial<PendingUpdatesEnvelope>;
+    if (parsed.version !== 1 || parsed.ownerUserId !== scope.userId) return [];
+    return validMealEntries(parsed.entries);
+  } catch {
+    return [];
+  }
+}
+
+function persistPendingUpdates(scope: Extract<NutritionStorageScope, { kind: 'user' }>, entries: MealEntry[]) {
+  const deduplicated = new Map(entries.map((entry) => [entry.entryId, entry]));
+  const envelope: PendingUpdatesEnvelope = { version: 1, ownerUserId: scope.userId, entries: [...deduplicated.values()] };
+  window.localStorage.setItem(pendingUpdatesKey(scope), JSON.stringify(envelope));
+}
+
+function markLocalUpdateSynced(scope: Extract<NutritionStorageScope, { kind: 'user' }>, entryId: string) {
+  persistPendingUpdates(scope, readPendingUpdates(scope).filter((candidate) => candidate.entryId !== entryId));
+}
+
 export function queueRemoteMealDeletion(scope: NutritionStorageScope, entry: MealEntry) {
   if (scope.kind !== 'user') return false;
   try {
@@ -402,6 +447,19 @@ export function queueRemoteMealDeletion(scope: NutritionStorageScope, entry: Mea
     if (!pending.some((candidate) => candidate.entryId === entry.entryId)) {
       persistPendingDeletions(scope, [...pending, { entryId: entry.entryId, mealId: entry.mealId }]);
     }
+    markLocalUpdateSynced(scope, entry.entryId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function queueRemoteMealUpdate(scope: NutritionStorageScope, entry: MealEntry) {
+  if (scope.kind !== 'user') return false;
+  try {
+    const pendingDeletions = readPendingDeletions(scope);
+    if (pendingDeletions.some((candidate) => candidate.entryId === entry.entryId)) return true;
+    persistPendingUpdates(scope, [...readPendingUpdates(scope), entry]);
     return true;
   } catch {
     return false;
@@ -688,6 +746,27 @@ async function addRemoteMealEntryWithClient(
   return true;
 }
 
+async function updateRemoteMealEntryWithClient(
+  client: SupabaseClient,
+  scope: Extract<NutritionStorageScope, { kind: 'user' }>,
+  entry: MealEntry,
+) {
+  const { error } = await client.rpc('update_meal_item', {
+    p_item_id: entry.entryId,
+    p_meal_type: mealToDatabase(entry.meal),
+    p_quantity: entry.amount,
+  });
+  if (error) throw error;
+  markLocalUpdateSynced(scope, entry.entryId);
+  return true;
+}
+
+async function flushPendingUpdates(client: SupabaseClient, scope: Extract<NutritionStorageScope, { kind: 'user' }>) {
+  for (const entry of readPendingUpdates(scope)) {
+    await updateRemoteMealEntryWithClient(client, scope, entry);
+  }
+}
+
 export async function bootstrapNutrition(scope: NutritionStorageScope, localEntries: MealEntry[]): Promise<NutritionBootstrap> {
   const localProducts = readLocalProducts(scope);
   if (!isSupabaseConfigured || scope.kind === 'guest') {
@@ -719,6 +798,9 @@ export async function bootstrapNutrition(scope: NutritionStorageScope, localEntr
       if (!synced) throw new Error('Не удалось синхронизировать локальную запись');
       merged.set(localEntry.entryId, localEntry);
     }
+    const pendingUpdates = readPendingUpdates(scope);
+    await flushPendingUpdates(client, scope);
+    for (const entry of pendingUpdates) merged.set(entry.entryId, entry);
 
     return {
       mode: 'supabase' as const,
@@ -751,4 +833,10 @@ export async function deleteRemoteMealEntry(scope: NutritionStorageScope, entry:
     persistPendingDeletions(scope, readPendingDeletions(scope).filter((candidate) => candidate.entryId !== entry.entryId));
   }
   return true;
+}
+
+export async function updateRemoteMealEntry(scope: NutritionStorageScope, entry: MealEntry) {
+  if (!isSupabaseConfigured || scope.kind !== 'user') return false;
+  const client = await getSupabaseClientForUser(scope.userId);
+  return updateRemoteMealEntryWithClient(client, scope, entry);
 }

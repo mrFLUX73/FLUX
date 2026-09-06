@@ -17,6 +17,7 @@ import {
   House,
   LoaderCircle,
   Minus,
+  Pencil,
   Pause,
   Play,
   Plus,
@@ -74,8 +75,11 @@ import {
   persistLocalProduct,
   persistNewLocalEntry,
   persistNewLocalEntries,
+  persistUpdatedLocalEntry,
   queueRemoteMealDeletion,
+  queueRemoteMealUpdate,
   removeLocalEntryFromStorage,
+  updateRemoteMealEntry,
   type NutritionMode,
   type NutritionStorageScope,
 } from './features/nutrition/repository';
@@ -842,6 +846,76 @@ function RepeatMealDrawer({
   );
 }
 
+function EditMealEntryDrawer({
+  entry,
+  open,
+  saving,
+  onOpenChange,
+  onSave,
+}: {
+  entry: MealEntry | null;
+  open: boolean;
+  saving: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSave: (entry: MealEntry, amount: number, meal: MealKind) => void;
+}) {
+  const [amount, setAmount] = useState<number | ''>(entry?.amount ?? '');
+  const [meal, setMeal] = useState<MealKind>(entry?.meal ?? 'Завтрак');
+
+  useEffect(() => {
+    if (!open || !entry) return;
+    setAmount(entry.amount);
+    setMeal(entry.meal);
+  }, [entry, open]);
+
+  if (!entry) return null;
+  const numericAmount = typeof amount === 'number' ? amount : 0;
+  const amountStep = entry.unit === 'шт' ? 1 : 10;
+  const amountMinimum = entry.unit === 'шт' ? 1 : 10;
+  const scale = numericAmount / entry.amount;
+  const presets = [...new Set(entry.unit === 'шт'
+    ? [1, 2, 3]
+    : [100, entry.amount, Math.max(amountMinimum, Math.round(entry.amount / 2 / amountStep) * amountStep)])];
+
+  return (
+    <Drawer open={open} onOpenChange={onOpenChange} showSwipeHandle>
+      <DrawerContent className="flux-drawer">
+        <DrawerHeader className="flux-drawer-header">
+          <div>
+            <DrawerTitle>Изменить продукт</DrawerTitle>
+            <DrawerDescription>{entry.name} · {entry.brand}</DrawerDescription>
+          </div>
+        </DrawerHeader>
+        <div className="flux-meal-picker" role="group" aria-label="Приём пищи">
+          {MEAL_KINDS.map((kind) => (
+            <button key={kind} type="button" className={meal === kind ? 'is-active' : ''} onClick={() => setMeal(kind)}>{kind}</button>
+          ))}
+        </div>
+        <div className="flux-portion-view">
+          <div className="flux-portion-caption"><span>Количество</span><span>Было: {entry.amount} {entry.unit}</span></div>
+          <div className="flux-portion-stepper">
+            <Button variant="secondary" size="icon-lg" onClick={() => setAmount((value) => Math.max(amountMinimum, (Number(value) || entry.amount) - amountStep))} aria-label="Уменьшить количество"><Minus /></Button>
+            <label><input className="flux-portion-input" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value === '' ? '' : Math.max(0, Number(event.target.value)))} onBlur={() => { if (!numericAmount) setAmount(entry.amount); }} aria-label={`Количество, ${entry.unit}`} /><span>{entry.unit}</span></label>
+            <Button variant="secondary" size="icon-lg" onClick={() => setAmount((value) => (Number(value) || entry.amount) + amountStep)} aria-label="Увеличить количество"><Plus /></Button>
+          </div>
+          <div className="flux-portion-presets">
+            {presets.map((preset) => <button type="button" key={preset} className={numericAmount === preset ? 'is-active' : ''} onClick={() => setAmount(preset)}>{preset} {entry.unit}</button>)}
+          </div>
+          <div className="flux-nutrient-grid">
+            <div><span>Калории</span><strong><MorphNumber value={Math.round(entry.kcal * scale)} /></strong><small>ккал</small></div>
+            <div><span>Белки</span><strong><MorphNumber value={formatMacro(entry.protein * scale)} /></strong><small>г</small></div>
+            <div><span>Жиры</span><strong><MorphNumber value={formatMacro(entry.fat * scale)} /></strong><small>г</small></div>
+            <div><span>Углеводы</span><strong><MorphNumber value={formatMacro(entry.carbs * scale)} /></strong><small>г</small></div>
+          </div>
+          <Button className="flux-main-button" size="lg" disabled={saving || numericAmount <= 0} onClick={() => onSave(entry, numericAmount, meal)}>
+            {saving ? <LoaderCircle className="is-spinning" /> : <Check />} {saving ? 'Сохраняю…' : 'Сохранить изменения'}
+          </Button>
+        </div>
+      </DrawerContent>
+    </Drawer>
+  );
+}
+
 type WorkoutPhase = 'overview' | 'ready' | 'running' | 'rest' | 'complete';
 
 const workoutExercises = [
@@ -1041,6 +1115,7 @@ function FoodScreen({
   onConnect,
   onRefresh,
   onAdd,
+  onEdit,
   onRemove,
   onRepeat,
   repeatLoadingMeal,
@@ -1054,6 +1129,7 @@ function FoodScreen({
   onConnect: () => void;
   onRefresh: () => void;
   onAdd: (meal?: MealKind) => void;
+  onEdit: (entry: MealEntry) => void;
   onRemove: (entry: MealEntry) => void;
   onRepeat: (meal: MealKind) => void;
   repeatLoadingMeal: MealKind | null;
@@ -1101,6 +1177,7 @@ function FoodScreen({
                   <span>{entry.time}</span>
                   <p><strong>{entry.name}</strong><small>{entry.amount} {entry.unit} · {entry.brand}</small></p>
                   <b>{entry.kcal}</b>
+                  <button type="button" className="flux-edit-entry" onClick={() => onEdit(entry)} aria-label={`Изменить ${entry.name}`}><Pencil /></button>
                   <button type="button" className="flux-remove-entry" onClick={() => onRemove(entry)} aria-label={`Удалить ${entry.name}`}><Trash2 /></button>
                 </div>
               ))}
@@ -1199,6 +1276,8 @@ export default function App() {
   const [repeatLoadingMeal, setRepeatLoadingMeal] = useState<MealKind | null>(null);
   const [repeatSaving, setRepeatSaving] = useState(false);
   const repeatRequestRevision = useRef(0);
+  const [editingEntry, setEditingEntry] = useState<MealEntry | null>(null);
+  const [entrySaving, setEntrySaving] = useState(false);
   const [workoutOpen, setWorkoutOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileDraft, setProfileDraft] = useState<ProfileDraft | null>(startupProfileRef.current?.draft ?? null);
@@ -1727,6 +1806,53 @@ export default function App() {
     });
   }
 
+  async function updateEntry(entry: MealEntry, amount: number, meal: MealKind) {
+    if (entrySaving || amount <= 0) return;
+    const scope = diary.scope;
+    const scale = amount / entry.amount;
+    const nextEntry: MealEntry = {
+      ...entry,
+      amount,
+      meal,
+      kcal: Math.round(entry.kcal * scale),
+      protein: Math.round(entry.protein * scale * 10) / 10,
+      fat: Math.round(entry.fat * scale * 10) / 10,
+      carbs: Math.round(entry.carbs * scale * 10) / 10,
+    };
+    const shouldQueueRemoteUpdate = isSupabaseConfigured && scope.kind === 'user';
+    if (shouldQueueRemoteUpdate && !queueRemoteMealUpdate(scope, nextEntry)) {
+      toast.add({ title: 'Не удалось сохранить изменения', description: 'Локальное хранилище недоступно. Попробуйте ещё раз.', type: 'error' });
+      return;
+    }
+    if (!persistUpdatedLocalEntry(scope, nextEntry)) {
+      toast.add({ title: 'Не удалось сохранить изменения', description: 'Локальное хранилище недоступно. Попробуйте ещё раз.', type: 'error' });
+      return;
+    }
+
+    setEntrySaving(true);
+    nutritionEditRevision.current += 1;
+    setEntries((current) => current.map((candidate) => candidate.entryId === nextEntry.entryId ? nextEntry : candidate));
+    setEditingEntry(null);
+
+    if (nutritionMode === 'supabase') {
+      try {
+        await updateRemoteMealEntry(scope, nextEntry);
+      } catch {
+        setNutritionMode('local');
+        toast.add({ title: 'Сохранили на устройстве', description: 'Изменения синхронизируем, когда Supabase снова станет доступен.', type: 'info' });
+        setEntrySaving(false);
+        return;
+      }
+    }
+
+    setEntrySaving(false);
+    toast.add({
+      title: 'Продукт обновлён',
+      description: `${nextEntry.name} · ${nextEntry.amount} ${nextEntry.unit} · ${nextEntry.kcal} ккал`,
+      type: 'success',
+    });
+  }
+
   async function removeEntry(entry: MealEntry) {
     const scope = diary.scope;
     const shouldQueueRemoteDeletion = isSupabaseConfigured && scope.kind === 'user';
@@ -1778,7 +1904,7 @@ export default function App() {
             </header>
             <div key={tab} className="flux-content" id="top">
               {tab === 'today' && <TodayScreen totals={totals} target={calorieTarget} products={catalog} onSelectProduct={(product) => openFood(currentMeal(), product)} onOpenFood={() => openFood()} onWorkout={() => setWorkoutOpen(true)} />}
-              {tab === 'food' && <FoodScreen entries={entries} target={calorieTarget} mode={nutritionMode} isConnecting={nutritionConnecting} isAuthenticated={Boolean(account)} canConnect={canConnectNutrition} onConnect={openSync} onRefresh={refreshNutrition} onAdd={(meal) => openFood(meal ?? currentMeal())} onRemove={removeEntry} onRepeat={openPreviousMeal} repeatLoadingMeal={repeatLoadingMeal} />}
+              {tab === 'food' && <FoodScreen entries={entries} target={calorieTarget} mode={nutritionMode} isConnecting={nutritionConnecting} isAuthenticated={Boolean(account)} canConnect={canConnectNutrition} onConnect={openSync} onRefresh={refreshNutrition} onAdd={(meal) => openFood(meal ?? currentMeal())} onEdit={setEditingEntry} onRemove={removeEntry} onRepeat={openPreviousMeal} repeatLoadingMeal={repeatLoadingMeal} />}
               {tab === 'workouts' && <WorkoutsScreen onStart={() => setWorkoutOpen(true)} />}
               {tab === 'progress' && <ProgressScreen />}
             </div>
@@ -1823,6 +1949,13 @@ export default function App() {
         onToggle={toggleRepeatedEntry}
         onToggleAll={toggleAllRepeatedEntries}
         onConfirm={() => { void repeatPreviousMeal(); }}
+      />
+      <EditMealEntryDrawer
+        open={Boolean(editingEntry)}
+        entry={editingEntry}
+        saving={entrySaving}
+        onOpenChange={(open) => { if (!open && !entrySaving) setEditingEntry(null); }}
+        onSave={(entry, amount, meal) => { void updateEntry(entry, amount, meal); }}
       />
       <PhonePasswordAuthGate
         guestDiaryEntryCount={guestDiaryEntryCount}
