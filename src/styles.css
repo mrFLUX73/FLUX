@@ -501,6 +501,9 @@ button:active { transform: scale(.97); }
 .flux-meal-group > header span { color: var(--flux-muted); font-size: 9px; }
 .flux-meal-group > header button { width: 31px; height: 31px; border: 0; border-radius: 10px; background: var(--flux-soft); color: var(--flux-primary); display: grid; place-items: center; }
 .flux-meal-group > header svg { width: 14px; height: 14px; }
+.flux-meal-group > header > .flux-meal-actions { display: flex; align-items: center; gap: 6px; }
+.flux-meal-actions button:first-child { background: var(--flux-soft-2); color: var(--flux-muted); }
+.flux-meal-actions button:disabled { cursor: wait; opacity: .55; }
 .flux-meal-row { min-height: 66px; display: grid; grid-template-columns: 38px 1fr 36px 30px; gap: 7px; align-items: center; border-top: 1px solid var(--flux-divider); }
 .flux-meal-row > span { color: var(--flux-muted); font-size: 9px; }
 .flux-meal-row p { min-width: 0; margin: 0; }
@@ -549,6 +552,26 @@ button:active { transform: scale(.97); }
 .flux-drawer-header.is-scanner { display: grid; grid-template-columns: 34px 1fr; gap: 9px; align-items: start; }
 .flux-drawer-back { width: 31px; height: 31px; display: grid; place-items: center; border: 0; border-radius: 50%; background: var(--flux-soft); color: var(--flux-primary); }
 .flux-drawer-back svg { width: 16px; height: 16px; }
+.flux-repeat-drawer { --drawer-content-height: min(620px, calc(100dvh - 18px)); padding-bottom: max(22px, env(safe-area-inset-bottom)); }
+.flux-repeat-toolbar { min-height: 34px; margin: 0 22px 4px; display: flex; align-items: center; justify-content: space-between; color: var(--flux-muted); font-size: 9px; }
+.flux-repeat-toolbar button { padding: 7px 0 7px 12px; border: 0; background: transparent; color: var(--flux-primary); font-size: 9px; }
+.flux-repeat-list { min-height: 0; max-height: 320px; margin: 0 22px; overflow-y: auto; border-top: 1px solid var(--flux-divider); scrollbar-width: none; }
+.flux-repeat-list::-webkit-scrollbar { display: none; }
+.flux-repeat-row { width: 100%; min-height: 66px; display: grid; grid-template-columns: 25px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 2px; border: 0; border-bottom: 1px solid var(--flux-divider); background: transparent; color: var(--flux-ink); text-align: left; }
+.flux-repeat-row > span:nth-child(2) { min-width: 0; }
+.flux-repeat-row strong, .flux-repeat-row small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flux-repeat-row strong { font-size: 11px; font-weight: 500; }
+.flux-repeat-row small { margin-top: 3px; color: var(--flux-muted); font-size: 8px; }
+.flux-repeat-row > b { font-size: 11px; font-weight: 500; white-space: nowrap; }
+.flux-repeat-row > b small { display: inline; }
+.flux-repeat-check { width: 21px; height: 21px; display: grid !important; place-items: center; border: 1px solid var(--flux-border); border-radius: 7px; background: var(--flux-card); color: var(--flux-on-primary); transition: background-color .2s ease, border-color .2s ease, transform .2s ease; }
+.flux-repeat-check svg { width: 12px; height: 12px; }
+.flux-repeat-row.is-selected .flux-repeat-check { border-color: var(--flux-accent); background: var(--flux-accent); transform: scale(1.04); }
+.flux-repeat-summary { margin: 14px 22px 0; padding: 13px 15px; border-radius: 16px; background: var(--flux-soft-2); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.flux-repeat-summary span { color: var(--flux-muted); font-size: 9px; }
+.flux-repeat-summary strong { color: var(--flux-ink); font-size: 11px; font-weight: 500; }
+.flux-repeat-confirm { width: auto; margin: 12px 22px 0; }
+.flux-repeat-confirm svg { width: 16px; height: 16px; }
 .flux-meal-picker { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 2px 22px 8px; }
 .flux-meal-picker button { min-height: 34px; padding: 0 6px; border: 1px solid var(--flux-border); border-radius: 12px; background: var(--flux-card); color: var(--flux-muted); font-size: 9px; }
 .flux-meal-picker button.is-active { border-color: transparent; background: var(--flux-soft); color: var(--flux-primary); font-weight: 500; }

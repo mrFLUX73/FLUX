@@ -65,9 +65,11 @@ import {
   guestNutritionScope,
   isSameNutritionScope,
   loadLocalEntriesForToday,
+  loadPreviousMealEntries,
   nutritionScopeForUser,
   persistLocalEntriesForToday,
   persistNewLocalEntry,
+  persistNewLocalEntries,
   queueRemoteMealDeletion,
   removeLocalEntryFromStorage,
   type NutritionMode,
@@ -128,6 +130,15 @@ function currentMeal(): MealKind {
 
 function mealInSentence(meal: MealKind) {
   return meal.toLocaleLowerCase('ru');
+}
+
+function productCountLabel(count: number) {
+  const mod100 = count % 100;
+  const mod10 = count % 10;
+  if (mod100 >= 11 && mod100 <= 14) return 'продуктов';
+  if (mod10 === 1) return 'продукт';
+  if (mod10 >= 2 && mod10 <= 4) return 'продукта';
+  return 'продуктов';
 }
 
 function formatMacro(value: number) {
@@ -690,6 +701,74 @@ function QuickAddDrawer({
   );
 }
 
+function RepeatMealDrawer({
+  open,
+  meal,
+  entries,
+  selectedIds,
+  saving,
+  onOpenChange,
+  onToggle,
+  onToggleAll,
+  onConfirm,
+}: {
+  open: boolean;
+  meal: MealKind;
+  entries: MealEntry[];
+  selectedIds: Set<string>;
+  saving: boolean;
+  onOpenChange: (open: boolean) => void;
+  onToggle: (entryId: string) => void;
+  onToggleAll: () => void;
+  onConfirm: () => void;
+}) {
+  const selectedEntries = entries.filter((entry) => selectedIds.has(entry.entryId));
+  const selectedCalories = selectedEntries.reduce((sum, entry) => sum + entry.kcal, 0);
+  const sourceDate = entries[0]
+    ? new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long' }).format(new Date(entries[0].eatenAt))
+    : '';
+  const allSelected = entries.length > 0 && selectedEntries.length === entries.length;
+
+  return (
+    <Drawer open={open} onOpenChange={onOpenChange} showSwipeHandle>
+      <DrawerContent className="flux-drawer flux-repeat-drawer">
+        <DrawerHeader className="flux-drawer-header">
+          <div>
+            <DrawerTitle>Повторить {mealInSentence(meal)}</DrawerTitle>
+            <DrawerDescription>{sourceDate ? `Последний приём · ${sourceDate}` : 'Выберите продукты'}</DrawerDescription>
+          </div>
+        </DrawerHeader>
+        <div className="flux-repeat-toolbar">
+          <span>{entries.length} {productCountLabel(entries.length)}</span>
+          <button type="button" onClick={onToggleAll}>{allSelected ? 'Снять выбор' : 'Выбрать все'}</button>
+        </div>
+        <div className="flux-repeat-list">
+          {entries.map((entry) => {
+            const selected = selectedIds.has(entry.entryId);
+            return (
+              <button
+                className={`flux-repeat-row${selected ? ' is-selected' : ''}`}
+                type="button"
+                key={entry.entryId}
+                aria-pressed={selected}
+                onClick={() => onToggle(entry.entryId)}
+              >
+                <span className="flux-repeat-check">{selected && <Check />}</span>
+                <span><strong>{entry.name}</strong><small>{entry.amount} {entry.unit} · {entry.brand}</small></span>
+                <b>{entry.kcal}<small> ккал</small></b>
+              </button>
+            );
+          })}
+        </div>
+        <div className="flux-repeat-summary"><span>Будет добавлено</span><strong>{selectedEntries.length} · {selectedCalories} ккал</strong></div>
+        <Button className="flux-main-button flux-repeat-confirm" size="lg" disabled={!selectedEntries.length || saving} onClick={onConfirm}>
+          {saving ? <LoaderCircle className="is-spinning" /> : <Clock3 />} Повторить приём пищи
+        </Button>
+      </DrawerContent>
+    </Drawer>
+  );
+}
+
 type WorkoutPhase = 'overview' | 'ready' | 'running' | 'rest' | 'complete';
 
 const workoutExercises = [
@@ -889,6 +968,8 @@ function FoodScreen({
   onConnect,
   onAdd,
   onRemove,
+  onRepeat,
+  repeatLoadingMeal,
 }: {
   entries: MealEntry[];
   target: number;
@@ -899,6 +980,8 @@ function FoodScreen({
   onConnect: () => void;
   onAdd: (meal?: MealKind) => void;
   onRemove: (entry: MealEntry) => void;
+  onRepeat: (meal: MealKind) => void;
+  repeatLoadingMeal: MealKind | null;
 }) {
   const total = entries.reduce((sum, entry) => sum + entry.kcal, 0);
   const isSynced = mode === 'supabase' && isAuthenticated;
@@ -931,7 +1014,12 @@ function FoodScreen({
             <article className="flux-meal-group" key={meal}>
               <header>
                 <div><strong>{meal}</strong><span>{mealCalories ? `${mealCalories} ккал` : 'Пока пусто'}</span></div>
-                <button type="button" onClick={() => onAdd(meal)} aria-label={`Добавить в ${mealInSentence(meal)}`}><Plus /></button>
+                <div className="flux-meal-actions">
+                  <button type="button" onClick={() => onRepeat(meal)} disabled={repeatLoadingMeal !== null} aria-label={`Повторить предыдущий ${mealInSentence(meal)}`}>
+                    {repeatLoadingMeal === meal ? <LoaderCircle className="is-spinning" /> : <Clock3 />}
+                  </button>
+                  <button type="button" onClick={() => onAdd(meal)} aria-label={`Добавить в ${mealInSentence(meal)}`}><Plus /></button>
+                </div>
               </header>
               {mealEntries.map((entry) => (
                 <div className="flux-meal-row" key={entry.entryId}>
@@ -1029,6 +1117,13 @@ export default function App() {
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [quickAddProduct, setQuickAddProduct] = useState<Product | null>(null);
   const [quickAddMeal, setQuickAddMeal] = useState<MealKind>(() => currentMeal());
+  const [repeatMealOpen, setRepeatMealOpen] = useState(false);
+  const [repeatMeal, setRepeatMeal] = useState<MealKind>('Завтрак');
+  const [repeatCandidates, setRepeatCandidates] = useState<MealEntry[]>([]);
+  const [repeatSelectedIds, setRepeatSelectedIds] = useState<Set<string>>(() => new Set());
+  const [repeatLoadingMeal, setRepeatLoadingMeal] = useState<MealKind | null>(null);
+  const [repeatSaving, setRepeatSaving] = useState(false);
+  const repeatRequestRevision = useRef(0);
   const [workoutOpen, setWorkoutOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileDraft, setProfileDraft] = useState<ProfileDraft | null>(startupProfileRef.current?.draft ?? null);
@@ -1097,6 +1192,7 @@ export default function App() {
       setNutritionMode('local');
       setNutritionConnecting(true);
       setQuickAddOpen(false);
+      setRepeatMealOpen(false);
       setDiary({ scope, entries: localEntries, hydrated: true });
       setSessionResolved(true);
 
@@ -1393,6 +1489,94 @@ export default function App() {
     setQuickAddOpen(true);
   }
 
+  async function openPreviousMeal(meal: MealKind) {
+    const requestRevision = ++repeatRequestRevision.current;
+    setRepeatLoadingMeal(meal);
+    try {
+      const previousEntries = await loadPreviousMealEntries(diary.scope, meal);
+      if (requestRevision !== repeatRequestRevision.current) return;
+      if (!previousEntries.length) {
+        toast.add({
+          title: `Предыдущий ${mealInSentence(meal)} не найден`,
+          description: 'Когда появится история питания, FLUX предложит повторить её здесь.',
+          type: 'info',
+        });
+        return;
+      }
+      setRepeatMeal(meal);
+      setRepeatCandidates(previousEntries);
+      setRepeatSelectedIds(new Set(previousEntries.map((entry) => entry.entryId)));
+      setRepeatMealOpen(true);
+    } finally {
+      if (requestRevision === repeatRequestRevision.current) setRepeatLoadingMeal(null);
+    }
+  }
+
+  function toggleRepeatedEntry(entryId: string) {
+    setRepeatSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(entryId)) next.delete(entryId);
+      else next.add(entryId);
+      return next;
+    });
+  }
+
+  function toggleAllRepeatedEntries() {
+    setRepeatSelectedIds((current) => current.size === repeatCandidates.length
+      ? new Set()
+      : new Set(repeatCandidates.map((entry) => entry.entryId)));
+  }
+
+  async function repeatPreviousMeal() {
+    if (repeatSaving) return;
+    const selected = repeatCandidates.filter((entry) => repeatSelectedIds.has(entry.entryId));
+    if (!selected.length) return;
+    const targetScope = diary.scope;
+    setRepeatSaving(true);
+    const now = new Date();
+    const repeatedEntries = selected.map((entry, index): MealEntry => {
+      const eatenAt = new Date(now.getTime() + index).toISOString();
+      return {
+        ...entry,
+        entryId: crypto.randomUUID(),
+        mealId: crypto.randomUUID(),
+        meal: repeatMeal,
+        eatenAt,
+        time: new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit' }).format(new Date(eatenAt)),
+      };
+    });
+
+    if (!persistNewLocalEntries(targetScope, repeatedEntries)) {
+      setRepeatSaving(false);
+      toast.add({ title: 'Не удалось повторить приём пищи', description: 'Локальное хранилище недоступно.', type: 'error' });
+      return;
+    }
+
+    nutritionEditRevision.current += 1;
+    setEntries((current) => [...current, ...repeatedEntries]);
+    setRepeatMealOpen(false);
+    setRepeatSaving(false);
+    toast.add({
+      title: `${repeatMeal} добавлен`,
+      description: `${repeatedEntries.length} ${productCountLabel(repeatedEntries.length)} · ${repeatedEntries.reduce((sum, entry) => sum + entry.kcal, 0)} ккал`,
+      type: 'success',
+    });
+
+    if (nutritionMode === 'supabase') {
+      void (async () => {
+        try {
+          for (const entry of repeatedEntries) {
+            const synced = await addRemoteMealEntry(targetScope, entry);
+            if (!synced) throw new Error('Не удалось синхронизировать запись');
+          }
+        } catch {
+          setNutritionMode('local');
+          toast.add({ title: 'Сохранено на устройстве', description: 'Повторённый приём синхронизируем после восстановления связи.', type: 'info' });
+        }
+      })();
+    }
+  }
+
   async function addProduct(product: Product, amount = product.amount, meal: MealKind = currentMeal()) {
     const scope = diary.scope;
     const scale = amount / product.amount;
@@ -1488,7 +1672,7 @@ export default function App() {
             </header>
             <div key={tab} className="flux-content" id="top">
               {tab === 'today' && <TodayScreen totals={totals} target={calorieTarget} products={catalog} onSelectProduct={(product) => openFood(currentMeal(), product)} onOpenFood={() => openFood()} onWorkout={() => setWorkoutOpen(true)} />}
-              {tab === 'food' && <FoodScreen entries={entries} target={calorieTarget} mode={nutritionMode} isConnecting={nutritionConnecting} isAuthenticated={Boolean(account)} canConnect={canConnectNutrition} onConnect={openSync} onAdd={(meal) => openFood(meal ?? currentMeal())} onRemove={removeEntry} />}
+              {tab === 'food' && <FoodScreen entries={entries} target={calorieTarget} mode={nutritionMode} isConnecting={nutritionConnecting} isAuthenticated={Boolean(account)} canConnect={canConnectNutrition} onConnect={openSync} onAdd={(meal) => openFood(meal ?? currentMeal())} onRemove={removeEntry} onRepeat={openPreviousMeal} repeatLoadingMeal={repeatLoadingMeal} />}
               {tab === 'workouts' && <WorkoutsScreen onStart={() => setWorkoutOpen(true)} />}
               {tab === 'progress' && <ProgressScreen />}
             </div>
@@ -1522,6 +1706,17 @@ export default function App() {
         initialProduct={quickAddProduct}
         initialMeal={quickAddMeal}
         syncsProducts={nutritionMode === 'supabase' && Boolean(account)}
+      />
+      <RepeatMealDrawer
+        open={repeatMealOpen}
+        meal={repeatMeal}
+        entries={repeatCandidates}
+        selectedIds={repeatSelectedIds}
+        saving={repeatSaving}
+        onOpenChange={setRepeatMealOpen}
+        onToggle={toggleRepeatedEntry}
+        onToggleAll={toggleAllRepeatedEntries}
+        onConfirm={() => { void repeatPreviousMeal(); }}
       />
       <PhonePasswordAuthGate
         guestDiaryEntryCount={guestDiaryEntryCount}

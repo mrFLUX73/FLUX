@@ -152,6 +152,19 @@ export function loadLocalEntriesForToday(scope: NutritionStorageScope) {
   return readAllLocalEntries(scope).filter((entry) => isSameLocalDay(entry.eatenAt));
 }
 
+function previousLocalMealEntries(scope: NutritionStorageScope, meal: MealKind) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const candidates = readAllLocalEntries(scope)
+    .filter((entry) => entry.meal === meal && new Date(entry.eatenAt).getTime() < today.getTime())
+    .sort((left, right) => right.eatenAt.localeCompare(left.eatenAt));
+  if (!candidates.length) return [];
+  const latestDay = new Date(candidates[0].eatenAt);
+  return candidates
+    .filter((entry) => isSameLocalDay(entry.eatenAt, latestDay))
+    .sort((left, right) => left.eatenAt.localeCompare(right.eatenAt));
+}
+
 export function countGuestDiaryEntries() {
   return readLocalDiary(guestNutritionScope).entries.length;
 }
@@ -198,6 +211,25 @@ export function persistNewLocalEntry(scope: NutritionStorageScope, entry: MealEn
       ? [...current.pendingAddEntryIds, entry.entryId]
       : current.pendingAddEntryIds;
     persistLocalDiary({ ...current, entries, pendingAddEntryIds });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function persistNewLocalEntries(scope: NutritionStorageScope, additions: MealEntry[]) {
+  try {
+    const current = readLocalDiary(scope);
+    const knownIds = new Set(current.entries.map((entry) => entry.entryId));
+    const uniqueAdditions = additions.filter((entry) => !knownIds.has(entry.entryId));
+    const pendingAddEntryIds = scope.kind === 'user'
+      ? [...new Set([...current.pendingAddEntryIds, ...uniqueAdditions.map((entry) => entry.entryId)])]
+      : current.pendingAddEntryIds;
+    persistLocalDiary({
+      ...current,
+      entries: [...current.entries, ...uniqueAdditions],
+      pendingAddEntryIds,
+    });
     return true;
   } catch {
     return false;
@@ -447,6 +479,100 @@ async function loadRemoteEntries(client: SupabaseClient, userId: string, product
       eatenAt: meal.eaten_at,
     }];
   });
+}
+
+async function loadRemotePreviousMealEntries(client: SupabaseClient, userId: string, meal: MealKind) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const { data: latestMeals, error: latestError } = await client
+    .from('meals')
+    .select('id,meal_type,eaten_at')
+    .eq('user_id', userId)
+    .eq('meal_type', mealToDatabase(meal))
+    .lt('eaten_at', today.toISOString())
+    .order('eaten_at', { ascending: false })
+    .limit(1);
+  if (latestError) throw latestError;
+  const latestMeal = latestMeals?.[0];
+  if (!latestMeal) return [];
+
+  const latestDate = new Date(latestMeal.eaten_at);
+  const dayStart = new Date(latestDate);
+  dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = new Date(dayStart);
+  dayEnd.setDate(dayEnd.getDate() + 1);
+  const { data: meals, error: mealsError } = await client
+    .from('meals')
+    .select('id,meal_type,eaten_at')
+    .eq('user_id', userId)
+    .eq('meal_type', mealToDatabase(meal))
+    .gte('eaten_at', dayStart.toISOString())
+    .lt('eaten_at', dayEnd.toISOString())
+    .order('eaten_at');
+  if (mealsError) throw mealsError;
+  if (!meals?.length) return [];
+
+  const { data: items, error: itemsError } = await client
+    .from('meal_items')
+    .select('id,meal_id,product_id,product_name,portion_quantity,portion_unit,amount_g,energy_kcal,protein_g,carbohydrates_g,fat_g')
+    .in('meal_id', meals.map((candidate) => candidate.id));
+  if (itemsError) throw itemsError;
+  if (!items?.length) return [];
+
+  const productIds = [...new Set(items.map((item) => item.product_id).filter((id): id is string => Boolean(id)))];
+  const selection = 'id,barcode,name,brand,category,serving_size_g,serving_unit,default_serving_quantity,energy_kcal_per_100g,protein_g_per_100g,carbohydrates_g_per_100g,fat_g_per_100g';
+  const { data: productRows, error: productsError } = productIds.length
+    ? await client.from('products').select(selection).in('id', productIds)
+    : { data: [], error: null };
+  if (productsError) throw productsError;
+  const productMap = new Map((productRows ?? []).map((row) => {
+    const product = productFromRow(row);
+    return [product.id, product] as const;
+  }));
+  const mealMap = new Map(meals.map((candidate) => [candidate.id, candidate]));
+
+  return items.flatMap((item): MealEntry[] => {
+    const storedMeal = mealMap.get(item.meal_id);
+    if (!storedMeal) return [];
+    const product = item.product_id ? productMap.get(item.product_id) : undefined;
+    return [{
+      id: product?.id ?? item.product_id ?? item.id,
+      productId: item.product_id,
+      entryId: item.id,
+      mealId: item.meal_id,
+      name: item.product_name,
+      brand: product?.brand ?? 'Без бренда',
+      amount: Number(item.portion_quantity) || Number(item.amount_g),
+      unit: unitFromDatabase(item.portion_unit),
+      servingSizeG: Number(item.amount_g),
+      kcal: Math.round(Number(item.energy_kcal)),
+      protein: Math.round(Number(item.protein_g) * 10) / 10,
+      fat: Math.round(Number(item.fat_g) * 10) / 10,
+      carbs: Math.round(Number(item.carbohydrates_g) * 10) / 10,
+      icon: product?.icon ?? 'curd',
+      meal: mealFromDatabase(storedMeal.meal_type),
+      time: formatTime(storedMeal.eaten_at),
+      eatenAt: storedMeal.eaten_at,
+    }];
+  });
+}
+
+export async function loadPreviousMealEntries(scope: NutritionStorageScope, meal: MealKind) {
+  const localEntries = previousLocalMealEntries(scope, meal);
+  if (!isSupabaseConfigured || scope.kind === 'guest') return localEntries;
+
+  try {
+    const client = await getSupabaseClientForUser(scope.userId);
+    const remoteEntries = await loadRemotePreviousMealEntries(client, scope.userId, meal);
+    if (!remoteEntries.length) return localEntries;
+    const current = readLocalDiary(scope);
+    const merged = new Map(current.entries.map((entry) => [entry.entryId, entry]));
+    for (const entry of remoteEntries) merged.set(entry.entryId, entry);
+    persistLocalDiary({ ...current, entries: [...merged.values()] });
+    return remoteEntries;
+  } catch {
+    return localEntries;
+  }
 }
 
 async function deleteRemoteEntryById(client: SupabaseClient, entryId: string) {
