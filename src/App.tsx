@@ -1473,6 +1473,7 @@ export default function App() {
         setDiary({ scope, entries: result.entries, hydrated: true });
       }
       if (result.mode !== 'supabase') throw new Error(result.message ?? 'Не удалось подключить синхронизацию');
+      return result;
     } finally {
       if (generation === nutritionGeneration.current) setNutritionConnecting(false);
     }
@@ -1496,8 +1497,22 @@ export default function App() {
   }
 
   function refreshNutrition() {
-    void connectNutrition().then(() => {
-      toast.add({ title: 'Рацион обновлён', description: 'Актуальные записи загружены из Supabase.', type: 'success' });
+    void connectNutrition().then((result) => {
+      const entryCount = result.entries.length;
+      const totalKcal = result.entries.reduce((sum, entry) => sum + entry.kcal, 0);
+      const entryLabel = entryCount % 10 === 1 && entryCount % 100 !== 11
+        ? 'запись'
+        : entryCount % 10 >= 2 && entryCount % 10 <= 4 && (entryCount % 100 < 12 || entryCount % 100 > 14)
+          ? 'записи'
+          : 'записей';
+
+      toast.add({
+        title: 'Рацион обновлён',
+        description: entryCount
+          ? `Загружено ${entryCount} ${entryLabel} · ${totalKcal.toLocaleString('ru-RU')} ккал.`
+          : 'В Supabase на сегодня пока нет записей.',
+        type: 'success',
+      });
     }).catch(() => {
       toast.add({ title: 'Не удалось обновить рацион', description: 'Показываем сохранённые данные. Попробуйте ещё раз, когда связь станет лучше.', type: 'error' });
     });
