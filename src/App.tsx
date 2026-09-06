@@ -95,6 +95,12 @@ import {
 
 type Tab = 'today' | 'food' | 'workouts' | 'progress';
 type ScannerState = 'idle' | 'requesting' | 'scanning' | 'error';
+type ScannerTrackCapabilities = MediaTrackCapabilities & {
+  focusMode?: string[];
+};
+type ScannerTrackConstraintSet = MediaTrackConstraintSet & {
+  focusMode?: string;
+};
 type ManualProductDraft = {
   name: string;
   brand: string;
@@ -256,30 +262,55 @@ function QuickAddDrawer({
       }
 
       try {
-        const { BarcodeFormat, BrowserMultiFormatReader } = await import('@zxing/browser');
+        const [{ BarcodeFormat, BrowserMultiFormatReader }, { DecodeHintType }] = await Promise.all([
+          import('@zxing/browser'),
+          import('@zxing/library'),
+        ]);
         if (!active || !scannerVideoRef.current) return;
 
-        const reader = new BrowserMultiFormatReader(undefined, {
-          delayBetweenScanAttempts: 140,
-          delayBetweenScanSuccess: 500,
-          tryPlayVideoTimeout: 5000,
-        });
-        reader.possibleFormats = [
+        const formats = [
           BarcodeFormat.EAN_13,
           BarcodeFormat.EAN_8,
           BarcodeFormat.UPC_A,
           BarcodeFormat.UPC_E,
         ];
-
-        const controls = await reader.decodeFromConstraints(
-          {
-            audio: false,
-            video: {
-              facingMode: { ideal: 'environment' },
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
-            },
+        const hints = new Map();
+        hints.set(DecodeHintType.POSSIBLE_FORMATS, formats);
+        hints.set(DecodeHintType.TRY_HARDER, true);
+        const reader = new BrowserMultiFormatReader(hints, {
+          delayBetweenScanAttempts: 110,
+          delayBetweenScanSuccess: 500,
+          tryPlayVideoTimeout: 5000,
+        });
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            frameRate: { ideal: 30 },
           },
+        });
+        if (!active || !scannerVideoRef.current) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+
+        const cameraTrack = stream.getVideoTracks()[0];
+        if (cameraTrack) {
+          try {
+            const capabilities = cameraTrack.getCapabilities() as ScannerTrackCapabilities;
+            const advanced: ScannerTrackConstraintSet[] = [];
+            if (capabilities.focusMode?.includes('continuous')) advanced.push({ focusMode: 'continuous' });
+            if (advanced.length) await cameraTrack.applyConstraints({ advanced } as MediaTrackConstraints);
+          } catch {
+            // Safari does not expose focus controls on every iPhone camera.
+            // The stream remains usable with the camera's own autofocus.
+          }
+        }
+
+        const controls = await reader.decodeFromStream(
+          stream,
           scannerVideoRef.current,
           (result, _error, liveControls) => {
             if (!active || !result || detectedBarcodeRef.current) return;
@@ -532,7 +563,7 @@ function QuickAddDrawer({
           {(scannerOpen || manualProductOpen) && <button type="button" className="flux-drawer-back" onClick={() => scannerOpen ? setScannerOpen(false) : setManualProductOpen(false)} aria-label="Назад к поиску"><ArrowLeft /></button>}
           <div>
             <DrawerTitle>{scannerOpen ? 'Сканировать штрихкод' : manualProductOpen ? 'Новый продукт' : selected ? selected.name : 'Добавить еду'}</DrawerTitle>
-            <DrawerDescription>{scannerOpen ? 'Наведите камеру на код упаковки' : manualProductOpen ? `Штрихкод ${barcodeQuery}` : selected ? selected.brand : `Сегодня · ${meal}`}</DrawerDescription>
+            <DrawerDescription>{scannerOpen ? 'Держите код целиком в рамке на расстоянии 15–25 см' : manualProductOpen ? `Штрихкод ${barcodeQuery}` : selected ? selected.brand : `Сегодня · ${meal}`}</DrawerDescription>
           </div>
         </DrawerHeader>
         {!scannerOpen && !manualProductOpen && <div className="flux-meal-picker" role="group" aria-label="Приём пищи">
