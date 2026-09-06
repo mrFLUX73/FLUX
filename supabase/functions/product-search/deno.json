@@ -1,0 +1,6 @@
+{
+  "imports": {
+    "cheerio": "npm:cheerio@1.0.0"
+  }
+}
+

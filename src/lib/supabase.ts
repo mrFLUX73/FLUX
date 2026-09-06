@@ -6,6 +6,36 @@ const supabasePublishableKey = (
   || import.meta.env.VITE_SUPABASE_ANON_KEY
 )?.trim();
 
+export async function invokeSupabaseFunction<T>(
+  functionName: string,
+  body: unknown,
+  signal?: AbortSignal,
+): Promise<T> {
+  const client = await getSupabaseClient();
+  if (!client || !supabaseUrl || !supabasePublishableKey) throw new Error('Supabase не настроен');
+
+  const { data, error } = await client.auth.getSession();
+  if (error) throw error;
+  if (!data.session || data.session.user.is_anonymous) throw new Error('Для серверного поиска требуется вход');
+
+  const response = await fetch(`${supabaseUrl}/functions/v1/${encodeURIComponent(functionName)}`, {
+    method: 'POST',
+    signal,
+    headers: {
+      apikey: supabasePublishableKey,
+      Authorization: `Bearer ${data.session.access_token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const message = payload && typeof payload.error === 'string' ? payload.error : `HTTP ${response.status}`;
+    throw new Error(message);
+  }
+  return payload as T;
+}
+
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabasePublishableKey);
 export const isAnonymousAuthEnabled = import.meta.env.VITE_SUPABASE_ANONYMOUS_AUTH_ENABLED === 'true';
 

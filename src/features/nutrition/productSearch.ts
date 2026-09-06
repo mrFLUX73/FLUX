@@ -1,4 +1,5 @@
 import type { Product, ProductIconName, ProductUnit } from './types';
+import { invokeSupabaseFunction } from '../../lib/supabase';
 
 const OPEN_FOOD_FACTS_FIELDS = [
   'code',
@@ -30,7 +31,7 @@ type OpenFoodFactsResponse = {
 };
 
 export type BarcodeLookupResult =
-  | { status: 'found'; product: Product; source: 'Open Food Facts' }
+  | { status: 'found'; product: Product; source: 'Open Food Facts' | 'FatSecret' }
   | { status: 'not_found' }
   | { status: 'incomplete'; name: string }
   | { status: 'error'; message: string };
@@ -65,7 +66,7 @@ function serving(product: OpenFoodFactsProduct): { amount: number; unit: Product
   return { amount: rounded(amount), unit: isLiquid ? 'мл' : 'г', servingSizeG: rounded(amount) };
 }
 
-export async function lookupProductByBarcode(barcode: string, signal?: AbortSignal): Promise<BarcodeLookupResult> {
+async function lookupOpenFoodFactsByBarcode(barcode: string, signal?: AbortSignal): Promise<BarcodeLookupResult> {
   if (!/^\d{8,14}$/.test(barcode)) return { status: 'not_found' };
 
   const url = `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(barcode)}.json?fields=${OPEN_FOOD_FACTS_FIELDS}`;
@@ -114,4 +115,25 @@ export async function lookupProductByBarcode(barcode: string, signal?: AbortSign
     if (error instanceof DOMException && error.name === 'AbortError') throw error;
     return { status: 'error', message: 'Не удалось связаться с базой продуктов' };
   }
+}
+
+function isBarcodeLookupResult(value: unknown): value is BarcodeLookupResult {
+  if (!value || typeof value !== 'object' || !('status' in value)) return false;
+  const status = (value as { status?: unknown }).status;
+  return status === 'found' || status === 'not_found' || status === 'incomplete' || status === 'error';
+}
+
+export async function lookupProductByBarcode(barcode: string, signal?: AbortSignal): Promise<BarcodeLookupResult> {
+  if (!/^\d{8,14}$/.test(barcode)) return { status: 'not_found' };
+
+  try {
+    const result = await invokeSupabaseFunction<unknown>('product-search', { barcode }, signal);
+    if (isBarcodeLookupResult(result)) return result;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw error;
+    // Guest mode and a temporarily unavailable Edge Function still retain
+    // the direct Open Food Facts lookup instead of turning barcode search off.
+  }
+
+  return lookupOpenFoodFactsByBarcode(barcode, signal);
 }

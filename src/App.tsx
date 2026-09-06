@@ -341,6 +341,15 @@ function QuickAddDrawer({
       return;
     }
 
+    const savedProduct = products.find((product) => product.barcode === barcodeQuery);
+    if (savedProduct) {
+      setBarcodeProducts([]);
+      setLookupState('found');
+      setLookupMessage('');
+      setLookupProductName(savedProduct.name);
+      return;
+    }
+
     const controller = new AbortController();
     let active = true;
     setBarcodeProducts([]);
@@ -384,7 +393,7 @@ function QuickAddDrawer({
       window.clearTimeout(searchTimer);
       controller.abort();
     };
-  }, [barcodeQuery, isBarcodeQuery, open]);
+  }, [barcodeQuery, isBarcodeQuery, open, products]);
 
   const recentIds = [...entries]
     .sort((a, b) => b.eatenAt.localeCompare(a.eatenAt))
@@ -662,7 +671,9 @@ function QuickAddDrawer({
               {filtered.map((product) => {
                 const isBarcodeMatch = isBarcodeQuery && product.barcode === barcodeQuery;
                 const kcalPer100 = Math.round(product.kcal / product.servingSizeG * 100);
-                const isExternalMatch = product.id.startsWith('open-food-facts:');
+                const externalSource = product.id.startsWith('open-food-facts:')
+                  ? 'Open Food Facts'
+                  : product.id.startsWith('fatsecret:') ? 'FatSecret' : null;
                 return (
                   <div key={product.id} className={isBarcodeMatch ? 'flux-product-match' : undefined}>
                     <button type="button" className={`flux-product-row ${isBarcodeMatch ? 'is-barcode-match' : ''}`} onClick={() => choose(product)}>
@@ -671,7 +682,7 @@ function QuickAddDrawer({
                       {!isBarcodeMatch && <span><strong>{product.kcal}</strong><small>ккал</small></span>}
                       <ChevronRight aria-hidden="true" />
                     </button>
-                    {isBarcodeMatch && <div className="flux-product-note"><span><Check /></span><p><strong>{isExternalMatch ? 'Найдено в Open Food Facts' : 'Проверенный пример FLUX'}</strong>Сверьте название и КБЖУ с упаковкой перед первым сохранением.</p></div>}
+                    {isBarcodeMatch && <div className="flux-product-note"><span><Check /></span><p><strong>{externalSource ? `Найдено через ${externalSource}` : 'Проверенный пример FLUX'}</strong>Сверьте название и КБЖУ с упаковкой перед первым сохранением.</p></div>}
                   </div>
                 );
               })}

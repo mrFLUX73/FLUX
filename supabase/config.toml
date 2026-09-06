@@ -1,0 +1,5 @@
+project_id = "icltwrlqppsfmzlijdxy"
+
+[functions.product-search]
+verify_jwt = true
+

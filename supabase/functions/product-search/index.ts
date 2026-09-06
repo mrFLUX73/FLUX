@@ -1,0 +1,333 @@
+import * as cheerio from "cheerio";
+
+const ALLOWED_ORIGINS = new Set([
+  "https://mrflux73.github.io",
+  "http://127.0.0.1:5173",
+  "http://localhost:5173",
+]);
+
+const OFF_FIELDS = [
+  "code",
+  "product_name_ru",
+  "product_name",
+  "brands",
+  "categories_tags",
+  "product_quantity",
+  "product_quantity_unit",
+  "nutrition_data_per",
+  "nutriments",
+].join(",");
+
+type Product = {
+  id: string;
+  barcode: string;
+  name: string;
+  brand: string;
+  amount: number;
+  unit: "г" | "мл";
+  servingSizeG: number;
+  kcal: number;
+  protein: number;
+  fat: number;
+  carbs: number;
+  icon: "wheat" | "curd" | "banana" | "coffee";
+};
+
+type SearchResult =
+  | { status: "found"; product: Product; source: "Open Food Facts" | "FatSecret" }
+  | { status: "incomplete"; name: string }
+  | { status: "not_found" }
+  | { status: "error"; message: string };
+
+type NameCandidate = { name: string; rating: number };
+type FatSecretHit = {
+  name: string;
+  brand: string;
+  serving: string;
+  kcal: number;
+  protein: number;
+  fat: number;
+  carbs: number;
+  score: number;
+};
+
+function corsHeaders(request: Request) {
+  const origin = request.headers.get("origin") ?? "";
+  return {
+    "Access-Control-Allow-Origin": ALLOWED_ORIGINS.has(origin) ? origin : "https://mrflux73.github.io",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Vary": "Origin",
+  };
+}
+
+function json(request: Request, body: SearchResult | { error: string }, status = 200) {
+  return Response.json(body, { status, headers: corsHeaders(request) });
+}
+
+function numeric(value: unknown): number | null {
+  const parsed = typeof value === "number" ? value : Number.parseFloat(String(value ?? "").replace(",", "."));
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function rounded(value: number) {
+  return Math.round(value * 10) / 10;
+}
+
+async function fetchWithTimeout(url: string, timeoutMs: number, headers: HeadersInit = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      signal: controller.signal,
+      redirect: "follow",
+      headers: {
+        "Accept-Language": "ru-RU,ru;q=0.9",
+        "User-Agent": "FLUX/0.1 product lookup",
+        ...headers,
+      },
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function productIcon(text: string): Product["icon"] {
+  const normalized = text.toLocaleLowerCase("ru");
+  if (/напит|сок|вода|чай|кофе/.test(normalized)) return "coffee";
+  if (/фрукт|овощ|яблок|банан/.test(normalized)) return "banana";
+  if (/круп|каша|рис|греч|зерн/.test(normalized)) return "wheat";
+  return "curd";
+}
+
+function packageSize(text: string): { amount: number; unit: "г" | "мл" } {
+  const match = text.match(/(\d+(?:[.,]\d+)?)\s*(кг|г|гр|мл|л)(?![а-яёa-z])/iu);
+  if (!match) return { amount: 100, unit: "г" };
+  let amount = Number(match[1].replace(",", "."));
+  const rawUnit = match[2].toLocaleLowerCase("ru");
+  if (rawUnit === "кг" || rawUnit === "л") amount *= 1000;
+  return { amount, unit: rawUnit === "мл" || rawUnit === "л" ? "мл" : "г" };
+}
+
+async function lookupOpenFoodFacts(barcode: string): Promise<SearchResult> {
+  try {
+    const url = `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(barcode)}.json?fields=${OFF_FIELDS}`;
+    const response = await fetchWithTimeout(url, 6500, { Accept: "application/json" });
+    if (response.status === 404) return { status: "not_found" };
+    if (!response.ok) return { status: "error", message: `Open Food Facts: HTTP ${response.status}` };
+    const payload = await response.json();
+    const source = payload?.status === 1 ? payload.product : null;
+    if (!source) return { status: "not_found" };
+
+    const name = String(source.product_name_ru || source.product_name || "").trim();
+    const kcal = numeric(source.nutriments?.["energy-kcal_100g"]);
+    const protein = numeric(source.nutriments?.proteins_100g);
+    const fat = numeric(source.nutriments?.fat_100g);
+    const carbs = numeric(source.nutriments?.carbohydrates_100g);
+    if (!name || kcal === null || protein === null || fat === null || carbs === null) {
+      return { status: "incomplete", name: name || `Товар ${barcode}` };
+    }
+
+    const size = packageSize(`${source.product_quantity ?? ""} ${source.product_quantity_unit ?? ""}`);
+    const isLiquid = size.unit === "мл" || source.nutrition_data_per === "100ml"
+      || /beverage|drink|напит/.test((source.categories_tags ?? []).join(" ").toLocaleLowerCase("ru"));
+    const portion = { amount: size.amount, unit: isLiquid ? "мл" as const : "г" as const };
+    const scale = portion.amount / 100;
+    return {
+      status: "found",
+      source: "Open Food Facts",
+      product: {
+        id: `open-food-facts:${barcode}`,
+        barcode,
+        name,
+        brand: String(source.brands || "Без бренда").trim(),
+        amount: rounded(portion.amount),
+        unit: portion.unit,
+        servingSizeG: rounded(portion.amount),
+        kcal: Math.round(kcal * scale),
+        protein: rounded(protein * scale),
+        fat: rounded(fat * scale),
+        carbs: rounded(carbs * scale),
+        icon: productIcon(`${name} ${(source.categories_tags ?? []).join(" ")}`),
+      },
+    };
+  } catch {
+    return { status: "error", message: "Open Food Facts недоступен" };
+  }
+}
+
+function hasLetters(value: string) {
+  return /[a-zа-яё]/iu.test(value);
+}
+
+function nameQuality(name: string) {
+  const words = name.trim().split(/\s+/).filter(Boolean).length;
+  return Math.min(words, 8) + (/\d+[.,]?\d*\s*(кг|гр|г|мл|л)(?![а-яёa-z])/iu.test(name) ? 3 : 0);
+}
+
+async function lookupBarcodeName(barcode: string): Promise<string | null> {
+  try {
+    const url = new URL("/barcode/RU/Поиск.htm", "https://barcode-list.ru");
+    url.searchParams.set("barcode", barcode);
+    const response = await fetchWithTimeout(url.toString(), 6500);
+    if (!response.ok) return null;
+    const $ = cheerio.load(await response.text());
+    const candidates: NameCandidate[] = [];
+    $("table.randomBarcodes tr").each((_, row) => {
+      const cells = $(row).find("td");
+      if (cells.length < 5) return;
+      const rowBarcode = $(cells[1]).text().replace(/\D/g, "");
+      const name = $(cells[2]).text().replace(/\s+/g, " ").trim();
+      const rating = Number($(cells[4]).text().trim()) || 0;
+      if (rowBarcode === barcode && name && hasLetters(name)) candidates.push({ name, rating });
+    });
+    const multiword = candidates.filter((candidate) => candidate.name.trim().split(/\s+/).length > 1);
+    const pool = multiword.length ? multiword : candidates;
+    return pool.sort((a, b) => (b.rating * 100 + nameQuality(b.name)) - (a.rating * 100 + nameQuality(a.name)))[0]?.name ?? null;
+  } catch {
+    return null;
+  }
+}
+
+const UNIT_WORDS = new Set(["шт", "кг", "г", "гр", "мл", "л", "уп", "пач", "бан", "бут", "п", "кор"]);
+
+function cleanNameVariants(raw: string): string[] {
+  const cleaned = raw
+    .replace(/(?<![\p{L}\d])\d+[.,]?\d*\s*(кг|гр|мл|шт|уп|пач|бан|бут|кор|л|п|г)\.?(?=\s|$)/giu, " ")
+    .replace(/[«»"“”'']/gu, " ")
+    .split(/\s+/)
+    .filter((token) => token && !UNIT_WORDS.has(token.toLocaleLowerCase("ru").replace(/\.$/, "")))
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const tokens = cleaned.split(/\s+/).filter(Boolean).map((token) => token.toLocaleLowerCase("ru"));
+  if (!tokens.length) return [];
+  if (tokens.length === 1) return [tokens[0]];
+  const [type, brand, ...description] = tokens;
+  return [...new Set([
+    [brand, type, ...description].join(" "),
+    [type, ...description].join(" "),
+    [brand, type].join(" "),
+  ])].slice(0, 3);
+}
+
+function tokens(text: string) {
+  return text.toLocaleLowerCase("ru").replace(/ё/g, "е").match(/[\p{L}\p{N}]+/gu)?.filter((token) => token.length > 1) ?? [];
+}
+
+function percent(text: string) {
+  const match = text.match(/(\d+(?:[.,]\d+)?)\s*%/u);
+  return match ? Number(match[1].replace(",", ".")) : null;
+}
+
+function matchScore(original: string, name: string, brand: string) {
+  const expectedPercent = percent(original);
+  const foundPercent = percent(`${name} ${brand}`);
+  if (expectedPercent !== null && foundPercent !== null && Math.abs(expectedPercent - foundPercent) > 0.11) return -100;
+
+  const expected = new Set(tokens(original));
+  const found = new Set(tokens(`${name} ${brand}`));
+  let overlap = 0;
+  for (const token of expected) if (found.has(token)) overlap += 1;
+  const ratio = expected.size ? overlap / expected.size : 0;
+  let score = ratio * 100;
+  if (/обезжир/iu.test(original) && !/обезжир/iu.test(`${name} ${brand}`)) score -= 35;
+  if (expectedPercent !== null && foundPercent === expectedPercent) score += 35;
+  return score;
+}
+
+function parseNutrition(text: string) {
+  const servingMatch = text.match(/^в\s+(.+?)\s*-\s*(.+)$/iu);
+  if (!servingMatch) return null;
+  const read = (pattern: RegExp) => numeric(servingMatch[2].match(pattern)?.[1]);
+  const kcal = read(/калори[а-я]*\s*:\s*([\d,.]+)/iu);
+  const fat = read(/жир\s*:\s*([\d,.]+)/iu);
+  const carbs = read(/углев[а-я]*\s*:\s*([\d,.]+)/iu);
+  const protein = read(/белк[а-я]*\s*:\s*([\d,.]+)/iu);
+  if (kcal === null || fat === null || carbs === null || protein === null) return null;
+  return { serving: servingMatch[1].trim(), kcal, protein, fat, carbs };
+}
+
+async function searchFatSecret(query: string, original: string): Promise<FatSecretHit[]> {
+  try {
+    const url = `http://www.fatsecret.ru/калории-питание/search?q=${encodeURIComponent(query)}`;
+    const response = await fetchWithTimeout(url, 8000);
+    if (!response.ok) return [];
+    const $ = cheerio.load(await response.text());
+    const hits: FatSecretHit[] = [];
+    $("table.searchResult tr td.borderBottom, table.generic.searchResult tr td.borderBottom").each((_, element) => {
+      const cell = $(element);
+      const name = cell.find("a.prominent").first().text().trim();
+      const brand = cell.find("a.brand").first().text().replace(/[()]/g, "").trim();
+      const details = cell.find("div.smallText.greyText.greyLink").first().text().replace(/\s+/g, " ").trim();
+      const nutrition = parseNutrition(details);
+      if (!name || !nutrition) return;
+      hits.push({ ...nutrition, name, brand, score: matchScore(original, name, brand) });
+    });
+    return hits;
+  } catch {
+    return [];
+  }
+}
+
+async function lookupFatSecret(barcode: string, rawName: string): Promise<SearchResult> {
+  const variants = cleanNameVariants(rawName);
+  if (!variants.length) return { status: "incomplete", name: rawName };
+  const groups = await Promise.all(variants.slice(0, 2).map((query) => searchFatSecret(query, rawName)));
+  const best = groups.flat().filter((hit) => hit.score >= 45).sort((a, b) => b.score - a.score)[0];
+  if (!best) return { status: "incomplete", name: rawName };
+
+  const serving = packageSize(best.serving);
+  const scaleTo100 = serving.amount > 0 ? 100 / serving.amount : 1;
+  const per100 = {
+    kcal: best.kcal * scaleTo100,
+    protein: best.protein * scaleTo100,
+    fat: best.fat * scaleTo100,
+    carbs: best.carbs * scaleTo100,
+  };
+  const portion = packageSize(rawName);
+  const portionScale = portion.amount / 100;
+  return {
+    status: "found",
+    source: "FatSecret",
+    product: {
+      id: `fatsecret:${barcode}`,
+      barcode,
+      name: best.name,
+      brand: best.brand || "Без бренда",
+      amount: rounded(portion.amount),
+      unit: portion.unit,
+      servingSizeG: rounded(portion.amount),
+      kcal: Math.round(per100.kcal * portionScale),
+      protein: rounded(per100.protein * portionScale),
+      fat: rounded(per100.fat * portionScale),
+      carbs: rounded(per100.carbs * portionScale),
+      icon: productIcon(`${best.name} ${best.brand}`),
+    },
+  };
+}
+
+Deno.serve(async (request) => {
+  if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(request) });
+  if (request.method !== "POST") return json(request, { error: "Method not allowed" }, 405);
+
+  let barcode = "";
+  try {
+    barcode = String((await request.json())?.barcode ?? "").replace(/\D/g, "");
+  } catch {
+    return json(request, { error: "Некорректный JSON" }, 400);
+  }
+  if (!/^\d{8,14}$/.test(barcode)) return json(request, { error: "Некорректный штрихкод" }, 400);
+
+  const offPromise = lookupOpenFoodFacts(barcode);
+  const namePromise = lookupBarcodeName(barcode);
+  const off = await offPromise;
+  if (off.status === "found") return json(request, off);
+
+  const rawName = await namePromise;
+  if (rawName) return json(request, await lookupFatSecret(barcode, rawName));
+  if (off.status === "incomplete") return json(request, off);
+  if (off.status === "error") return json(request, off, 503);
+  return json(request, { status: "not_found" });
+});
+
