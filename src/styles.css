@@ -632,12 +632,12 @@ button:active { transform: scale(.97); }
 .flux-camera-preview video { width: 100%; height: 100%; object-fit: cover; background: transparent; }
 .flux-camera-preview::after { position: absolute; inset: 0; content: ''; background: linear-gradient(180deg, rgb(5 15 8 / 16%), transparent 30%, transparent 70%, rgb(5 15 8 / 20%)); pointer-events: none; }
 .flux-camera-corner { position: absolute; width: 48px; height: 48px; border-color: var(--flux-cta-soft); }
-.flux-camera-corner.is-top-left { top: 124px; left: 34px; border-top: 3px solid; border-left: 3px solid; border-radius: 9px 0 0; }
-.flux-camera-corner.is-top-right { top: 124px; right: 34px; border-top: 3px solid; border-right: 3px solid; border-radius: 0 9px 0 0; }
-.flux-camera-corner.is-bottom-left { bottom: 124px; left: 34px; border-bottom: 3px solid; border-left: 3px solid; border-radius: 0 0 0 9px; }
-.flux-camera-corner.is-bottom-right { right: 34px; bottom: 124px; border-right: 3px solid; border-bottom: 3px solid; border-radius: 0 0 9px; }
+.flux-camera-corner.is-top-left { top: 78px; left: 42px; border-top: 3px solid; border-left: 3px solid; border-radius: 9px 0 0; }
+.flux-camera-corner.is-top-right { top: 78px; right: 42px; border-top: 3px solid; border-right: 3px solid; border-radius: 0 9px 0 0; }
+.flux-camera-corner.is-bottom-left { bottom: 78px; left: 42px; border-bottom: 3px solid; border-left: 3px solid; border-radius: 0 0 0 9px; }
+.flux-camera-corner.is-bottom-right { right: 42px; bottom: 78px; border-right: 3px solid; border-bottom: 3px solid; border-radius: 0 0 9px; }
 .flux-camera-corner, .flux-scan-line { z-index: 2; }
-.flux-scan-line { position: absolute; z-index: 3; width: calc(100% - 68px); max-width: 294px; height: 2px; background: var(--flux-accent); box-shadow: 0 0 12px var(--flux-cta-soft); animation: flux-scan-line 1.6s ease-in-out infinite; }
+.flux-scan-line { position: absolute; z-index: 3; width: calc(100% - 84px); max-width: 278px; height: 2px; background: var(--flux-accent); box-shadow: 0 0 12px var(--flux-cta-soft); animation: flux-scan-line 1.6s ease-in-out infinite; }
 .flux-camera-preview.is-requesting .flux-scan-line, .flux-camera-preview.is-error .flux-scan-line { display: none; }
 .flux-camera-placeholder { position: absolute; z-index: 1; inset: 0; display: grid; place-items: center; color: var(--flux-control-soft); }
 .flux-camera-placeholder svg { width: 34px; height: 34px; }
@@ -649,7 +649,7 @@ button:active { transform: scale(.97); }
 .flux-camera-pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--flux-accent); box-shadow: 0 0 0 5px color-mix(in srgb, var(--flux-accent) 14%, transparent); animation: flux-camera-pulse 1.4s ease-in-out infinite; }
 .flux-camera-retry { width: 100%; min-height: 44px; margin-top: 8px; border-radius: 15px; }
 .flux-scanner-view > .flux-text-button { margin-top: 18px; }
-@keyframes flux-scan-line { 0%, 100% { transform: translateY(-52px); } 50% { transform: translateY(52px); } }
+@keyframes flux-scan-line { 0%, 100% { transform: translateY(-86px); } 50% { transform: translateY(86px); } }
 @keyframes flux-camera-pulse { 50% { opacity: .45; transform: scale(.8); } }
 .flux-empty { padding: 35px 16px; color: var(--flux-muted); text-align: center; font-size: 11px; }
 .flux-empty strong, .flux-empty span { display: block; }
