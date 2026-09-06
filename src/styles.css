@@ -622,6 +622,11 @@ button:active { transform: scale(.97); }
 .flux-product-note > span svg { width: 12px; height: 12px; stroke-width: 2; }
 .flux-product-note p { margin: 0; color: var(--flux-muted); font-size: 8.5px; line-height: 1.55; }
 .flux-product-note p strong { display: block; color: var(--flux-primary); font-weight: 600; }
+.flux-product-confirmation { display: grid; grid-template-columns: 28px 1fr; gap: 9px; margin: 2px 0 17px; padding: 12px; border: 1px solid var(--flux-border); border-radius: 16px; background: var(--flux-selection); }
+.flux-product-confirmation > span { width: 27px; height: 27px; display: grid; place-items: center; border-radius: 50%; background: var(--flux-control-soft); color: var(--flux-primary); }
+.flux-product-confirmation > span svg { width: 14px; height: 14px; stroke-width: 2.25; }
+.flux-product-confirmation p { margin: 0; color: var(--flux-muted); font-size: 9px; line-height: 1.48; }
+.flux-product-confirmation strong { display: block; margin-bottom: 2px; color: var(--flux-primary); font-weight: 600; }
 .flux-alternative-products h3 { margin: 0 0 2px; font-size: 12px; font-weight: 600; }
 .flux-alternative-products > button { width: 100%; display: grid; grid-template-columns: 1fr auto; align-items: center; padding: 12px 2px; border: 0; border-bottom: 1px solid var(--flux-divider); background: transparent; color: var(--flux-ink); text-align: left; }
 .flux-alternative-products > button > span:first-child strong, .flux-alternative-products > button > span:first-child small { display: block; }

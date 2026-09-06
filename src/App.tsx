@@ -71,6 +71,7 @@ import {
   loadPreviousMealEntries,
   nutritionScopeForUser,
   persistLocalEntriesForToday,
+  persistLocalProduct,
   persistNewLocalEntry,
   persistNewLocalEntries,
   queueRemoteMealDeletion,
@@ -161,6 +162,13 @@ function draftNumber(value: string) {
 function ProductIcon({ type }: { type: Product['icon'] }) {
   const Icon = type === 'wheat' ? Wheat : type === 'banana' ? Banana : type === 'coffee' ? Coffee : Utensils;
   return <Icon aria-hidden="true" />;
+}
+
+function productLookupSource(product: Product) {
+  if (product.id.startsWith('open-food-facts:')) return 'Open Food Facts';
+  if (product.id.startsWith('fatsecret:')) return 'FatSecret';
+  if (product.id.startsWith('manual-barcode:')) return 'вручную';
+  return null;
 }
 
 function MorphNumber({ value, className = '' }: { value: string | number; className?: string }) {
@@ -563,6 +571,8 @@ function QuickAddDrawer({
 
   const numericAmount = typeof amount === 'number' ? amount : 0;
   const scale = selected ? numericAmount / selected.amount : 1;
+  const selectedSource = selected ? productLookupSource(selected) : null;
+  const selectedIsNewToCatalog = Boolean(selected?.barcode && !products.some((product) => product.barcode === selected.barcode));
   const amountStep = selected?.unit === 'шт' ? 1 : 10;
   const amountMinimum = selected?.unit === 'шт' ? 1 : 10;
   const portionPresets = selected
@@ -656,6 +666,17 @@ function QuickAddDrawer({
           </div>
         ) : selected ? (
           <div className="flux-portion-view">
+            {selected.barcode && (
+              <div className="flux-product-confirmation">
+                <span><Check /></span>
+                <p>
+                  <strong>{selectedSource ? `Найдено через ${selectedSource}` : 'Продукт из вашего каталога'}</strong>
+                  {selectedIsNewToCatalog
+                    ? 'Сверьте название и КБЖУ с упаковкой. После добавления сохраним продукт в вашем каталоге.'
+                    : 'Можно сразу добавить — этот продукт уже сохранён в вашем каталоге.'}
+                </p>
+              </div>
+            )}
             <div className="flux-portion-caption"><span>Количество</span><span>{selected.barcode ? 'Упаковка' : 'Обычно'}: {selected.amount} {selected.unit}</span></div>
             <div className="flux-portion-stepper">
               <Button variant="secondary" size="icon-lg" onClick={() => setAmount((value) => Math.max(amountMinimum, (Number(value) || selected.amount) - amountStep))} aria-label="Уменьшить количество"><Minus /></Button>
@@ -724,9 +745,8 @@ function QuickAddDrawer({
               {filtered.map((product) => {
                 const isBarcodeMatch = isBarcodeQuery && product.barcode === barcodeQuery;
                 const kcalPer100 = Math.round(product.kcal / product.servingSizeG * 100);
-                const externalSource = product.id.startsWith('open-food-facts:')
-                  ? 'Open Food Facts'
-                  : product.id.startsWith('fatsecret:') ? 'FatSecret' : null;
+                const externalSource = productLookupSource(product);
+                const isSavedInCatalog = products.some((candidate) => candidate.barcode === barcodeQuery);
                 return (
                   <div key={product.id} className={isBarcodeMatch ? 'flux-product-match' : undefined}>
                     <button type="button" className={`flux-product-row ${isBarcodeMatch ? 'is-barcode-match' : ''}`} onClick={() => choose(product)}>
@@ -735,7 +755,7 @@ function QuickAddDrawer({
                       {!isBarcodeMatch && <span><strong>{product.kcal}</strong><small>ккал</small></span>}
                       <ChevronRight aria-hidden="true" />
                     </button>
-                    {isBarcodeMatch && <div className="flux-product-note"><span><Check /></span><p><strong>{externalSource ? `Найдено через ${externalSource}` : 'Проверенный пример FLUX'}</strong>Сверьте название и КБЖУ с упаковкой перед первым сохранением.</p></div>}
+                    {isBarcodeMatch && <div className="flux-product-note"><span><Check /></span><p><strong>{externalSource ? `Найдено через ${externalSource}` : isSavedInCatalog ? 'Уже в вашем каталоге' : 'Продукт FLUX'}</strong>{isSavedInCatalog ? 'Можно выбрать порцию и сразу добавить в приём пищи.' : 'Сверьте название и КБЖУ с упаковкой: после добавления сохраним продукт в вашем каталоге.'}</p></div>}
                   </div>
                 );
               })}
@@ -1632,6 +1652,7 @@ export default function App() {
 
   async function addProduct(product: Product, amount = product.amount, meal: MealKind = currentMeal()) {
     const scope = diary.scope;
+    const productIsNewToCatalog = Boolean(product.barcode && !catalog.some((candidate) => candidate.barcode === product.barcode));
     const scale = amount / product.amount;
     const eatenAt = new Date().toISOString();
     const entry: MealEntry = {
@@ -1653,6 +1674,7 @@ export default function App() {
       toast.add({ title: 'Не удалось сохранить запись', description: 'Локальное хранилище недоступно. Попробуйте ещё раз.', type: 'error' });
       return;
     }
+    const productWasStoredLocally = !product.barcode || persistLocalProduct(scope, product);
     nutritionEditRevision.current += 1;
     if (scope.kind === 'guest') setGuestDiaryEntryCount(countGuestDiaryEntries());
     setEntries((current) => [...current, entry]);
@@ -1671,7 +1693,11 @@ export default function App() {
       }
     }
 
-    toast.add({ title: `Добавлено в ${mealInSentence(meal)}`, description: `${product.name} · ${amount} ${product.unit} · ${entry.kcal} ккал`, type: 'success' });
+    toast.add({
+      title: `Добавлено в ${mealInSentence(meal)}`,
+      description: `${product.name} · ${amount} ${product.unit} · ${entry.kcal} ккал${productIsNewToCatalog && productWasStoredLocally ? ' · сохранили в каталог' : ''}`,
+      type: 'success',
+    });
   }
 
   async function removeEntry(entry: MealEntry) {

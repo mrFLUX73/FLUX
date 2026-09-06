@@ -10,6 +10,7 @@ import {
 
 const LEGACY_STORAGE_KEY = 'flux.nutrition-diary.v2';
 const STORAGE_KEY_PREFIX = 'flux.nutrition-diary.v3';
+const PRODUCT_CATALOG_KEY_PREFIX = 'flux.nutrition-products.v1';
 const PENDING_DELETIONS_KEY_PREFIX = 'flux.nutrition-pending-deletions.v2';
 const GUEST_CLAIM_KEY = 'flux.nutrition-guest-claim.v1';
 
@@ -47,6 +48,12 @@ type DiaryEnvelope = {
   pendingAddEntryIds: string[];
 };
 
+type ProductCatalogEnvelope = {
+  version: 1;
+  ownerUserId: string | null;
+  products: Product[];
+};
+
 type PendingDeletionsEnvelope = {
   version: 2;
   ownerUserId: string;
@@ -66,6 +73,10 @@ function scopeToken(scope: NutritionStorageScope) {
 
 function storageKey(scope: NutritionStorageScope) {
   return `${STORAGE_KEY_PREFIX}:${scopeToken(scope)}`;
+}
+
+function productCatalogKey(scope: NutritionStorageScope) {
+  return `${PRODUCT_CATALOG_KEY_PREFIX}:${scopeToken(scope)}`;
 }
 
 function pendingDeletionsKey(scope: Extract<NutritionStorageScope, { kind: 'user' }>) {
@@ -93,6 +104,25 @@ function validMealEntries(value: unknown): MealEntry[] {
       && typeof candidate.mealId === 'string'
       && typeof candidate.eatenAt === 'string'
       && typeof candidate.name === 'string';
+  });
+}
+
+function validProducts(value: unknown): Product[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((product): product is Product => {
+    if (!product || typeof product !== 'object') return false;
+    const candidate = product as Partial<Product>;
+    return typeof candidate.id === 'string'
+      && typeof candidate.name === 'string'
+      && typeof candidate.brand === 'string'
+      && typeof candidate.amount === 'number'
+      && typeof candidate.servingSizeG === 'number'
+      && typeof candidate.kcal === 'number'
+      && typeof candidate.protein === 'number'
+      && typeof candidate.fat === 'number'
+      && typeof candidate.carbs === 'number'
+      && (candidate.unit === 'г' || candidate.unit === 'мл' || candidate.unit === 'шт')
+      && (candidate.icon === 'wheat' || candidate.icon === 'curd' || candidate.icon === 'banana' || candidate.icon === 'coffee');
   });
 }
 
@@ -136,6 +166,48 @@ function readLocalDiary(scope: NutritionStorageScope): DiaryEnvelope {
     return emptyDiary(scope);
   } catch {
     return emptyDiary(scope);
+  }
+}
+
+function readLocalProducts(scope: NutritionStorageScope): Product[] {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(productCatalogKey(scope)) ?? '{}') as Partial<ProductCatalogEnvelope>;
+    if (parsed.version !== 1 || parsed.ownerUserId !== ownerUserId(scope)) return [];
+    return validProducts(parsed.products);
+  } catch {
+    return [];
+  }
+}
+
+function persistLocalProducts(scope: NutritionStorageScope, products: Product[]) {
+  const deduplicated = new Map<string, Product>();
+  for (const product of products) {
+    deduplicated.set(product.barcode ? `barcode:${product.barcode}` : `id:${product.id}`, product);
+  }
+  const envelope: ProductCatalogEnvelope = {
+    version: 1,
+    ownerUserId: ownerUserId(scope),
+    products: [...deduplicated.values()],
+  };
+  window.localStorage.setItem(productCatalogKey(scope), JSON.stringify(envelope));
+}
+
+function mergeProducts(...lists: Product[][]) {
+  const merged = new Map<string, Product>();
+  for (const products of lists) {
+    for (const product of products) {
+      merged.set(product.barcode ? `barcode:${product.barcode}` : `id:${product.id}`, product);
+    }
+  }
+  return [...merged.values()];
+}
+
+export function persistLocalProduct(scope: NutritionStorageScope, product: Product) {
+  try {
+    persistLocalProducts(scope, [...readLocalProducts(scope), product]);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -278,6 +350,12 @@ export async function claimGuestDiaryForNewUser(userId: string) {
     const verifiedIds = new Set(verified.entries.map((entry) => entry.entryId));
     if (!sourceEntryIds.every((entryId) => verifiedIds.has(entryId))) {
       throw new Error('Не удалось проверить перенос гостевого дневника');
+    }
+
+    const guestProducts = readLocalProducts(guestNutritionScope);
+    if (guestProducts.length) {
+      persistLocalProducts(targetScope, mergeProducts(readLocalProducts(targetScope), guestProducts));
+      window.localStorage.removeItem(productCatalogKey(guestNutritionScope));
     }
 
     window.localStorage.removeItem(storageKey(guestNutritionScope));
@@ -611,8 +689,9 @@ async function addRemoteMealEntryWithClient(
 }
 
 export async function bootstrapNutrition(scope: NutritionStorageScope, localEntries: MealEntry[]): Promise<NutritionBootstrap> {
+  const localProducts = readLocalProducts(scope);
   if (!isSupabaseConfigured || scope.kind === 'guest') {
-    return { mode: 'local', products: fallbackProducts, entries: localEntries };
+    return { mode: 'local', products: mergeProducts(fallbackProducts, localProducts), entries: localEntries };
   }
 
   const pendingEntryIds = new Set(readPendingDeletions(scope).map((entry) => entry.entryId));
@@ -643,14 +722,14 @@ export async function bootstrapNutrition(scope: NutritionStorageScope, localEntr
 
     return {
       mode: 'supabase' as const,
-      products,
+      products: mergeProducts(localProducts, products),
       entries: [...merged.values()].sort((a, b) => a.eatenAt.localeCompare(b.eatenAt)),
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Не удалось подключиться к Supabase';
     return {
       mode: 'local' as const,
-      products: fallbackProducts,
+      products: mergeProducts(fallbackProducts, localProducts),
       entries: activeLocalEntries,
       message,
       requiresAuth: error instanceof SupabaseAuthScopeError,
