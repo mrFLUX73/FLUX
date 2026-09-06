@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
-import type { IScannerControls } from '@zxing/browser';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type KeyboardEvent } from 'react';
 import {
   Activity,
   ArrowLeft,
   ArrowRight,
   Banana,
+  Camera,
   ChartNoAxesColumnIncreasing,
   Check,
   ChevronRight,
@@ -12,6 +12,8 @@ import {
   Cloud,
   Coffee,
   Dumbbell,
+  Flashlight,
+  FlashlightOff,
   House,
   LoaderCircle,
   Minus,
@@ -55,6 +57,7 @@ import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Toaster, toast } from '@/components/ui/toast';
 import { fallbackProducts } from './features/nutrition/catalog';
+import { decodeBarcodeImage, startBarcodeScanner, type BarcodeScannerSession } from './features/nutrition/barcodeScanner';
 import { lookupProductByBarcode } from './features/nutrition/productSearch';
 import {
   addRemoteMealEntry,
@@ -208,7 +211,11 @@ function QuickAddDrawer({
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scannerState, setScannerState] = useState<ScannerState>('idle');
   const [scannerMessage, setScannerMessage] = useState('');
+  const [scannerDetail, setScannerDetail] = useState('');
   const [scannerAttempt, setScannerAttempt] = useState(0);
+  const [scannerPhotoBusy, setScannerPhotoBusy] = useState(false);
+  const [scannerSupportsTorch, setScannerSupportsTorch] = useState(false);
+  const [scannerTorchOn, setScannerTorchOn] = useState(false);
   const [manualProductOpen, setManualProductOpen] = useState(false);
   const [manualProduct, setManualProduct] = useState<ManualProductDraft>(() => emptyManualProduct());
   const [barcodeProducts, setBarcodeProducts] = useState<Product[]>([]);
@@ -218,7 +225,8 @@ function QuickAddDrawer({
   const barcodeQuery = query.replace(/\D/g, '');
   const isBarcodeQuery = /^\d{8,14}$/.test(barcodeQuery);
   const scannerVideoRef = useRef<HTMLVideoElement>(null);
-  const scannerControlsRef = useRef<IScannerControls | null>(null);
+  const scannerSessionRef = useRef<BarcodeScannerSession | null>(null);
+  const scannerPhotoInputRef = useRef<HTMLInputElement>(null);
   const detectedBarcodeRef = useRef('');
 
   useEffect(() => {
@@ -229,7 +237,11 @@ function QuickAddDrawer({
     setScannerOpen(false);
     setScannerState('idle');
     setScannerMessage('');
+    setScannerDetail('');
     setScannerAttempt(0);
+    setScannerPhotoBusy(false);
+    setScannerSupportsTorch(false);
+    setScannerTorchOn(false);
     setManualProductOpen(false);
     setManualProduct(emptyManualProduct());
     setBarcodeProducts([]);
@@ -238,15 +250,34 @@ function QuickAddDrawer({
     setLookupProductName('');
   }, [initialMeal, initialProduct, open]);
 
+  const finishScannedBarcode = useCallback((barcode: string) => {
+    if (detectedBarcodeRef.current) return;
+    detectedBarcodeRef.current = barcode;
+    scannerSessionRef.current?.stop();
+    scannerSessionRef.current = null;
+    if ('vibrate' in navigator) navigator.vibrate(80);
+    setQuery(barcode);
+    setScannerOpen(false);
+    toast.add({
+      title: 'Штрихкод считан',
+      description: `${barcode} · ищем продукт`,
+      type: 'success',
+    });
+  }, []);
+
   useEffect(() => {
     if (!open || !scannerOpen) return;
 
     let active = true;
     detectedBarcodeRef.current = '';
-    scannerControlsRef.current?.stop();
-    scannerControlsRef.current = null;
+    scannerSessionRef.current?.stop();
+    scannerSessionRef.current = null;
     setScannerState('requesting');
     setScannerMessage('');
+    setScannerDetail('');
+    setScannerPhotoBusy(false);
+    setScannerSupportsTorch(false);
+    setScannerTorchOn(false);
 
     async function startScanner() {
       if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
@@ -256,55 +287,26 @@ function QuickAddDrawer({
       }
 
       try {
-        const { BarcodeFormat, BrowserMultiFormatReader } = await import('@zxing/browser');
         if (!active || !scannerVideoRef.current) return;
-
-        const reader = new BrowserMultiFormatReader(undefined, {
-          delayBetweenScanAttempts: 140,
-          delayBetweenScanSuccess: 500,
-          tryPlayVideoTimeout: 5000,
+        const session = await startBarcodeScanner({
+          video: scannerVideoRef.current,
+          onBarcode: (barcode) => {
+            if (active) finishScannedBarcode(barcode);
+          },
+          onReady: ({ width, height, supportsTorch, continuousFocusRequested }) => {
+            if (!active) return;
+            setScannerState('scanning');
+            setScannerSupportsTorch(supportsTorch);
+            setScannerDetail(
+              continuousFocusRequested
+                ? `Фокусируемся на коде · камера ${width}×${height}`
+                : `Ищем штрихкод на упаковке · камера ${width}×${height}`,
+            );
+          },
         });
-        reader.possibleFormats = [
-          BarcodeFormat.EAN_13,
-          BarcodeFormat.EAN_8,
-          BarcodeFormat.UPC_A,
-          BarcodeFormat.UPC_E,
-        ];
 
-        const controls = await reader.decodeFromConstraints(
-          {
-            audio: false,
-            video: {
-              facingMode: { ideal: 'environment' },
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
-            },
-          },
-          scannerVideoRef.current,
-          (result, _error, liveControls) => {
-            if (!active || !result || detectedBarcodeRef.current) return;
-            const barcode = result.getText().replace(/\D/g, '');
-            if (!/^\d{8,14}$/.test(barcode)) return;
-
-            detectedBarcodeRef.current = barcode;
-            liveControls.stop();
-            if ('vibrate' in navigator) navigator.vibrate(80);
-            setQuery(barcode);
-            setScannerOpen(false);
-            toast.add({
-              title: 'Штрихкод считан',
-              description: `${barcode} · ищем продукт`,
-              type: 'success',
-            });
-          },
-        );
-
-        if (!active) {
-          controls.stop();
-          return;
-        }
-        scannerControlsRef.current = controls;
-        setScannerState('scanning');
+        if (!active) session.stop();
+        else scannerSessionRef.current = session;
       } catch (error) {
         if (!active) return;
         const name = error instanceof DOMException ? error.name : '';
@@ -324,13 +326,10 @@ function QuickAddDrawer({
     void startScanner();
     return () => {
       active = false;
-      scannerControlsRef.current?.stop();
-      scannerControlsRef.current = null;
-      const stream = scannerVideoRef.current?.srcObject;
-      if (stream instanceof MediaStream) stream.getTracks().forEach((track) => track.stop());
-      if (scannerVideoRef.current) scannerVideoRef.current.srcObject = null;
+      scannerSessionRef.current?.stop();
+      scannerSessionRef.current = null;
     };
-  }, [open, scannerAttempt, scannerOpen]);
+  }, [finishScannedBarcode, open, scannerAttempt, scannerOpen]);
 
   useEffect(() => {
     if (!open || !isBarcodeQuery) {
@@ -428,6 +427,47 @@ function QuickAddDrawer({
     setManualProduct((draft) => ({ ...draft, [field]: value }));
   }
 
+  async function scanPhoto(event: ChangeEvent<HTMLInputElement>) {
+    const photo = event.target.files?.[0];
+    event.target.value = '';
+    if (!photo) return;
+
+    setScannerPhotoBusy(true);
+    setScannerDetail('Проверяем фотографию кода…');
+    try {
+      const barcode = await decodeBarcodeImage(photo);
+      if (barcode) {
+        finishScannedBarcode(barcode);
+        return;
+      }
+      setScannerDetail('На фото код не прочитан. Попробуйте без бликов и теней.');
+      toast.add({
+        title: 'Штрихкод не прочитан',
+        description: 'Сфотографируйте код целиком, без бликов, или введите цифры вручную.',
+        type: 'warning',
+      });
+    } catch {
+      setScannerDetail('Не удалось обработать фотографию. Попробуйте ещё раз.');
+      toast.add({
+        title: 'Не удалось прочитать фото',
+        description: 'Попробуйте снять код ещё раз или введите его вручную.',
+        type: 'error',
+      });
+    } finally {
+      setScannerPhotoBusy(false);
+    }
+  }
+
+  async function toggleScannerTorch() {
+    if (!scannerSessionRef.current?.supportsTorch) return;
+    try {
+      await scannerSessionRef.current.setTorch(!scannerTorchOn);
+      setScannerTorchOn((value) => !value);
+    } catch {
+      toast.add({ title: 'Не удалось включить подсветку', description: 'Попробуйте изменить освещение вокруг упаковки.', type: 'warning' });
+    }
+  }
+
   function openManualProduct() {
     setManualProduct(emptyManualProduct(lookupProductName));
     setManualProductOpen(true);
@@ -475,6 +515,10 @@ function QuickAddDrawer({
       setScannerOpen(false);
       setScannerState('idle');
       setScannerMessage('');
+      setScannerDetail('');
+      setScannerPhotoBusy(false);
+      setScannerSupportsTorch(false);
+      setScannerTorchOn(false);
       setManualProductOpen(false);
       setManualProduct(emptyManualProduct());
       setBarcodeProducts([]);
@@ -493,6 +537,10 @@ function QuickAddDrawer({
         setScannerOpen(false);
         setScannerState('idle');
         setScannerMessage('');
+        setScannerDetail('');
+        setScannerPhotoBusy(false);
+        setScannerSupportsTorch(false);
+        setScannerTorchOn(false);
         setManualProductOpen(false);
         setManualProduct(emptyManualProduct());
         setBarcodeProducts([]);
@@ -556,8 +604,20 @@ function QuickAddDrawer({
             </div>
             <div className={`flux-scanning-status is-${scannerState}`} role="status" aria-live="polite">
               {scannerState === 'requesting' && <><LoaderCircle className="is-spinning" /> Запрашиваем доступ к камере…</>}
-              {scannerState === 'scanning' && <><span className="flux-camera-pulse" /> Ищем штрихкод на упаковке…</>}
+              {scannerState === 'scanning' && <><span className="flux-camera-pulse" /> {scannerDetail || 'Ищем штрихкод на упаковке…'}</>}
               {scannerState === 'error' && scannerMessage}
+            </div>
+            <div className="flux-scanner-actions">
+              <input ref={scannerPhotoInputRef} className="flux-camera-file-input" type="file" accept="image/*" capture="environment" onChange={scanPhoto} />
+              <Button variant="secondary" className="flux-camera-photo" disabled={scannerPhotoBusy} onClick={() => scannerPhotoInputRef.current?.click()}>
+                {scannerPhotoBusy ? <LoaderCircle className="is-spinning" /> : <Camera />}
+                {scannerPhotoBusy ? 'Считываем фото…' : 'Сделать фото кода'}
+              </Button>
+              {scannerSupportsTorch && (
+                <Button variant="secondary" size="icon" className="flux-camera-torch" onClick={() => void toggleScannerTorch()} aria-label={scannerTorchOn ? 'Выключить подсветку' : 'Включить подсветку'} aria-pressed={scannerTorchOn}>
+                  {scannerTorchOn ? <FlashlightOff /> : <Flashlight />}
+                </Button>
+              )}
             </div>
             {scannerState === 'error' && (
               <Button variant="secondary" className="flux-camera-retry" onClick={() => setScannerAttempt((attempt) => attempt + 1)}>

@@ -647,6 +647,12 @@ button:active { transform: scale(.97); }
 .flux-scanning-status.is-error { color: #79645f; }
 .flux-scanning-status svg { width: 17px; height: 17px; }
 .flux-camera-pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--flux-accent); box-shadow: 0 0 0 5px color-mix(in srgb, var(--flux-accent) 14%, transparent); animation: flux-camera-pulse 1.4s ease-in-out infinite; }
+.flux-scanner-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-top: 2px; }
+.flux-camera-file-input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+.flux-camera-photo { min-height: 44px; border-radius: 15px; font-size: 11px; }
+.flux-camera-photo svg { width: 16px; height: 16px; }
+.flux-camera-torch { align-self: center; width: 44px; height: 44px; border-radius: 15px; color: var(--flux-primary); }
+.flux-camera-torch[aria-pressed='true'] { background: var(--flux-primary); color: var(--flux-on-primary); }
 .flux-camera-retry { width: 100%; min-height: 44px; margin-top: 8px; border-radius: 15px; }
 .flux-scanner-view > .flux-text-button { margin-top: 18px; }
 @keyframes flux-scan-line { 0%, 100% { transform: translateY(-86px); } 50% { transform: translateY(86px); } }
