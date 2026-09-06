@@ -217,7 +217,12 @@ function tokens(text: string) {
 
 function percent(text: string) {
   const match = text.match(/(\d+(?:[.,]\d+)?)\s*%/u);
-  return match ? Number(match[1].replace(",", ".")) : null;
+  if (match) return Number(match[1].replace(",", "."));
+  // Barcode-List sometimes drops the percent sign but keeps the decimal
+  // fat value, for example "ТВОРОГ ... 0.3 180Г". A package size has a
+  // unit suffix and cannot be mistaken for this standalone decimal.
+  const decimal = text.match(/(?:^|\s)(\d+[.,]\d+)(?=\s|$)/u);
+  return decimal ? Number(decimal[1].replace(",", ".")) : null;
 }
 
 function matchScore(original: string, name: string, brand: string) {
@@ -273,7 +278,7 @@ async function searchFatSecret(query: string, original: string): Promise<FatSecr
 async function lookupFatSecret(barcode: string, rawName: string): Promise<SearchResult> {
   const variants = cleanNameVariants(rawName);
   if (!variants.length) return { status: "incomplete", name: rawName };
-  const groups = await Promise.all(variants.slice(0, 2).map((query) => searchFatSecret(query, rawName)));
+  const groups = await Promise.all(variants.map((query) => searchFatSecret(query, rawName)));
   const best = groups.flat().filter((hit) => hit.score >= 45).sort((a, b) => b.score - a.score)[0];
   if (!best) return { status: "incomplete", name: rawName };
 
@@ -330,4 +335,3 @@ Deno.serve(async (request) => {
   if (off.status === "error") return json(request, off, 503);
   return json(request, { status: "not_found" });
 });
-

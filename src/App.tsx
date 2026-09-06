@@ -54,7 +54,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Toaster, toast } from '@/components/ui/toast';
-import { barcodeDemoAlternatives, barcodeDemoProduct, fallbackProducts } from './features/nutrition/catalog';
+import { fallbackProducts } from './features/nutrition/catalog';
 import { lookupProductByBarcode } from './features/nutrition/productSearch';
 import {
   addRemoteMealEntry,
@@ -367,11 +367,6 @@ function QuickAddDrawer({
           setLookupProductName(result.product.name);
           return;
         }
-        if (barcodeQuery === barcodeDemoProduct.barcode) {
-          setBarcodeProducts([barcodeDemoProduct]);
-          setLookupState('found');
-          return;
-        }
         setLookupState(result.status);
         setLookupProductName(result.status === 'incomplete' ? result.name : '');
         setLookupMessage(result.status === 'incomplete'
@@ -400,12 +395,10 @@ function QuickAddDrawer({
     .map((entry) => entry.productId)
     .filter((id): id is string => Boolean(id));
   const normalizedQuery = query.trim().toLocaleLowerCase('ru');
-  const demoProducts = [barcodeDemoProduct, ...barcodeDemoAlternatives];
   const searchableProducts = query.trim()
     ? [
       ...products,
       ...barcodeProducts.filter((candidate) => !products.some((product) => product.barcode === candidate.barcode)),
-      ...demoProducts.filter((demo) => !products.some((product) => product.id === demo.id) && (!isBarcodeQuery || demo.barcode === barcodeQuery)),
     ]
     : products;
   const filtered = searchableProducts
@@ -686,17 +679,6 @@ function QuickAddDrawer({
                   </div>
                 );
               })}
-              {isBarcodeQuery && barcodeQuery === barcodeDemoProduct.barcode && filtered.some((product) => product.barcode === barcodeQuery) && (
-                <div className="flux-alternative-products">
-                  <h3>Другие варианты</h3>
-                  {barcodeDemoAlternatives.map((product) => (
-                    <button type="button" key={product.id} onClick={() => choose(product)}>
-                      <span><strong>{product.name}</strong><small>{product.brand}</small></span>
-                      <span><strong>{Math.round(product.kcal / product.servingSizeG * 100)}</strong><small> ккал</small></span>
-                    </button>
-                  ))}
-                </div>
-              )}
               {filtered.length === 0 && lookupState !== 'loading' && (
                 <div className="flux-empty">
                   <strong>{isBarcodeQuery && lookupState === 'incomplete' ? 'Нужно дополнить КБЖУ' : 'Ничего не нашли'}</strong>
