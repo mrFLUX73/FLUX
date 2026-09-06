@@ -20,6 +20,7 @@ import {
   Pause,
   Play,
   Plus,
+  RefreshCw,
   ScanBarcode,
   Search,
   Sprout,
@@ -33,7 +34,6 @@ import {
 import { Button } from '@/components/ui/button';
 import {
   PhonePasswordAuthGate,
-  isTurnstileConfigured,
   type PhoneAuthMode,
   type PhoneAuthSubmission,
 } from './features/auth/PhonePasswordAuthGate';
@@ -1039,6 +1039,7 @@ function FoodScreen({
   isAuthenticated,
   canConnect,
   onConnect,
+  onRefresh,
   onAdd,
   onRemove,
   onRepeat,
@@ -1051,6 +1052,7 @@ function FoodScreen({
   isAuthenticated: boolean;
   canConnect: boolean;
   onConnect: () => void;
+  onRefresh: () => void;
   onAdd: (meal?: MealKind) => void;
   onRemove: (entry: MealEntry) => void;
   onRepeat: (meal: MealKind) => void;
@@ -1062,15 +1064,15 @@ function FoodScreen({
     <>
       <div className="flux-page-heading flux-page-heading-row"><div><span className="flux-eyebrow">Сегодня</span><h1>Питание</h1></div><Button size="icon-lg" onClick={() => onAdd()} aria-label="Добавить продукт"><Plus /></Button></div>
       <button
-        className={`flux-sync-status ${isSynced ? 'is-cloud' : ''} ${canConnect && !isSynced ? 'is-actionable' : ''}`}
+        className={`flux-sync-status ${isSynced ? 'is-cloud' : ''} ${canConnect ? 'is-actionable' : ''}`}
         type="button"
-        disabled={isConnecting || isSynced || !canConnect}
-        onClick={onConnect}
+        disabled={isConnecting || !canConnect}
+        onClick={isSynced ? onRefresh : onConnect}
       >
         {isConnecting
           ? <><LoaderCircle className="is-spinning" /> Подключаю данные…</>
           : isSynced
-            ? <><Cloud /> Синхронизировано с Supabase</>
+            ? <><RefreshCw /> Синхронизировано · обновить</>
             : canConnect
               ? <><Cloud /> {isAuthenticated ? 'Повторить синхронизацию' : 'Войти или создать профиль'}</>
               : 'Сохраняется на этом устройстве'}
@@ -1401,7 +1403,9 @@ export default function App() {
 
   const totals = useMemo(() => entries.reduce((sum, entry) => ({ kcal: sum.kcal + entry.kcal, protein: sum.protein + entry.protein, fat: sum.fat + entry.fat, carbs: sum.carbs + entry.carbs }), { kcal: 0, protein: 0, fat: 0, carbs: 0 }), [entries]);
 
-  const canConnectNutrition = isSupabaseConfigured && isTurnstileConfigured;
+  // Turnstile protects registration and sign-in only. A signed-in user must be
+  // able to refresh their existing diary regardless of that widget's state.
+  const canConnectNutrition = isSupabaseConfigured;
   const firstName = account?.displayName.split(/\s+/)[0];
   const fluxTheme: FluxTheme = profileDraft?.theme ?? 'sage';
 
@@ -1488,6 +1492,14 @@ export default function App() {
       toast.add({ title: 'Синхронизация подключена', description: 'Дневник теперь сохраняется в Supabase.', type: 'success' });
     }).catch(() => {
       toast.add({ title: 'Не удалось подключиться', description: 'Проверьте интернет и попробуйте ещё раз.', type: 'error' });
+    });
+  }
+
+  function refreshNutrition() {
+    void connectNutrition().then(() => {
+      toast.add({ title: 'Рацион обновлён', description: 'Актуальные записи загружены из Supabase.', type: 'success' });
+    }).catch(() => {
+      toast.add({ title: 'Не удалось обновить рацион', description: 'Показываем сохранённые данные. Попробуйте ещё раз, когда связь станет лучше.', type: 'error' });
     });
   }
 
@@ -1751,7 +1763,7 @@ export default function App() {
             </header>
             <div key={tab} className="flux-content" id="top">
               {tab === 'today' && <TodayScreen totals={totals} target={calorieTarget} products={catalog} onSelectProduct={(product) => openFood(currentMeal(), product)} onOpenFood={() => openFood()} onWorkout={() => setWorkoutOpen(true)} />}
-              {tab === 'food' && <FoodScreen entries={entries} target={calorieTarget} mode={nutritionMode} isConnecting={nutritionConnecting} isAuthenticated={Boolean(account)} canConnect={canConnectNutrition} onConnect={openSync} onAdd={(meal) => openFood(meal ?? currentMeal())} onRemove={removeEntry} onRepeat={openPreviousMeal} repeatLoadingMeal={repeatLoadingMeal} />}
+              {tab === 'food' && <FoodScreen entries={entries} target={calorieTarget} mode={nutritionMode} isConnecting={nutritionConnecting} isAuthenticated={Boolean(account)} canConnect={canConnectNutrition} onConnect={openSync} onRefresh={refreshNutrition} onAdd={(meal) => openFood(meal ?? currentMeal())} onRemove={removeEntry} onRepeat={openPreviousMeal} repeatLoadingMeal={repeatLoadingMeal} />}
               {tab === 'workouts' && <WorkoutsScreen onStart={() => setWorkoutOpen(true)} />}
               {tab === 'progress' && <ProgressScreen />}
             </div>
