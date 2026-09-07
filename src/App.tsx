@@ -522,6 +522,7 @@ function QuickAddDrawer({
       fat: Math.round(manualFat * scale * 10) / 10,
       carbs: Math.round(manualCarbs * scale * 10) / 10,
       icon: manualProduct.unit === 'мл' ? 'coffee' : 'curd',
+      isManual: true,
     });
   }
 

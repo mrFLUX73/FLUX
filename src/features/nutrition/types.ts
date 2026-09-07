@@ -17,6 +17,9 @@ export type Product = {
   fat: number;
   carbs: number;
   icon: ProductIconName;
+  // Personal products created through the manual form use a name/brand key
+  // while their temporary local id is replaced by a database UUID.
+  isManual?: boolean;
 };
 
 export type MealEntry = Product & {

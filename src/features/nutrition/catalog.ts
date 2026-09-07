@@ -139,5 +139,6 @@ export function productFromRow(row: ProductRow): Product {
     fat: rounded(Number(row.fat_g_per_100g) * scale),
     carbs: rounded(Number(row.carbohydrates_g_per_100g) * scale),
     icon: iconForCategory(row.category),
+    isManual: row.category === 'Добавлено вручную',
   };
 }

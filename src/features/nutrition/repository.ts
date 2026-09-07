@@ -204,11 +204,11 @@ function persistLocalProducts(scope: NutritionStorageScope, products: Product[])
 }
 
 function productKey(product: Product) {
+  if (product.isManual) {
+    return `manual:${product.name.trim().toLocaleLowerCase('ru')}|${product.brand.trim().toLocaleLowerCase('ru')}`;
+  }
   if (product.barcode) return `barcode:${product.barcode}`;
-  // A manual product receives a local temporary id before it is synchronised.
-  // Name + brand lets the server-owned copy replace that temporary copy after
-  // the next bootstrap, instead of showing the same product twice.
-  return `name:${product.name.trim().toLocaleLowerCase('ru')}|${product.brand.trim().toLocaleLowerCase('ru')}`;
+  return `id:${product.id}`;
 }
 
 function mergeProducts(...lists: Product[][]) {
