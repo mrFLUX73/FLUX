@@ -285,6 +285,18 @@ function QuickAddDrawer({
     scannerSessionRef.current?.stop();
     scannerSessionRef.current = null;
     if ('vibrate' in navigator) navigator.vibrate(80);
+    // A scan starts a new search, not a continuation of the text search that
+    // opened the drawer. Clear its selection and result lists synchronously so
+    // a previous card (for example, "Творог") cannot remain on screen while
+    // the barcode lookup is in flight.
+    setSelected(null);
+    setBarcodeProducts([]);
+    setNameCandidates([]);
+    setNameLookupState('idle');
+    setNameLookupMessage('');
+    setLookupState('loading');
+    setLookupMessage('');
+    setLookupProductName('');
     setQuery(barcode);
     setScannerOpen(false);
     toast.add({
@@ -293,6 +305,23 @@ function QuickAddDrawer({
       type: 'success',
     });
   }, []);
+
+  function beginScanner() {
+    // Reset before the camera opens as well. This makes returning from a
+    // cancelled or unreadable scan land on a neutral search screen.
+    detectedBarcodeRef.current = '';
+    setSelected(null);
+    setQuery('');
+    setBarcodeProducts([]);
+    setNameCandidates([]);
+    setNameLookupState('idle');
+    setNameLookupMessage('');
+    setLookupState('idle');
+    setLookupMessage('');
+    setLookupProductName('');
+    setScannerAttempt((attempt) => attempt + 1);
+    setScannerOpen(true);
+  }
 
   useEffect(() => {
     if (!open || !scannerOpen) return;
@@ -804,7 +833,7 @@ function QuickAddDrawer({
               <Search aria-hidden="true" />
               <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Продукт, бренд или штрихкод" aria-label="Найти продукт, бренд или штрихкод" />
               {query && <button type="button" onClick={() => setQuery('')} aria-label="Очистить поиск"><X /></button>}
-              <button type="button" className="flux-scan-button" onClick={(event) => { event.preventDefault(); setScannerAttempt((attempt) => attempt + 1); setScannerOpen(true); }} aria-label="Сканировать штрихкод"><ScanBarcode /></button>
+              <button type="button" className="flux-scan-button" onClick={(event) => { event.preventDefault(); beginScanner(); }} aria-label="Сканировать штрихкод"><ScanBarcode /></button>
             </label>
             {!query && repeatEntry && repeatProduct && (
               <section className="flux-usual-meal">
