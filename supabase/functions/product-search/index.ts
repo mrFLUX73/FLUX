@@ -271,7 +271,7 @@ function parseNutrition(text: string) {
   return { serving: servingMatch[1].trim(), kcal, protein, fat, carbs };
 }
 
-async function searchFatSecret(query: string, original: string): Promise<FatSecretHit[]> {
+async function searchFatSecretWeb(query: string, original: string): Promise<FatSecretHit[]> {
   try {
     const url = `http://www.fatsecret.ru/калории-питание/search?q=${encodeURIComponent(query)}`;
     const response = await fetchWithTimeout(url, 8000);
@@ -293,11 +293,95 @@ async function searchFatSecret(query: string, original: string): Promise<FatSecr
   }
 }
 
+function oauthEncode(value: string) {
+  return encodeURIComponent(value).replace(/[!'()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+
+function base64(bytes: ArrayBuffer) {
+  let text = "";
+  for (const byte of new Uint8Array(bytes)) text += String.fromCharCode(byte);
+  return btoa(text);
+}
+
+async function fatSecretSignature(method: string, endpoint: string, parameters: Record<string, string>, consumerSecret: string) {
+  const normalized = Object.entries(parameters)
+    .map(([key, value]) => [oauthEncode(key), oauthEncode(value)] as const)
+    .sort(([keyA, valueA], [keyB, valueB]) => keyA.localeCompare(keyB) || valueA.localeCompare(valueB))
+    .map(([key, value]) => `${key}=${value}`)
+    .join("&");
+  const base = `${method.toUpperCase()}&${oauthEncode(endpoint)}&${oauthEncode(normalized)}`;
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(`${oauthEncode(consumerSecret)}&`),
+    { name: "HMAC", hash: "SHA-1" },
+    false,
+    ["sign"],
+  );
+  return base64(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(base)));
+}
+
+function parseFatSecretApiDescription(description: string) {
+  const servingMatch = description.match(/^per\s+(.+?)\s*-\s*(.+)$/iu);
+  if (!servingMatch) return null;
+  const read = (pattern: RegExp) => numeric(servingMatch[2].match(pattern)?.[1]);
+  const kcal = read(/calories\s*:\s*([\d,.]+)/iu);
+  const fat = read(/fat\s*:\s*([\d,.]+)/iu);
+  const carbs = read(/carbs\s*:\s*([\d,.]+)/iu);
+  const protein = read(/protein\s*:\s*([\d,.]+)/iu);
+  if (kcal === null || fat === null || carbs === null || protein === null) return null;
+  return { serving: servingMatch[1].trim(), kcal, protein, fat, carbs };
+}
+
+async function searchFatSecretApi(query: string, original: string): Promise<FatSecretHit[]> {
+  const consumerKey = Deno.env.get("FATSECRET_CONSUMER_KEY");
+  const consumerSecret = Deno.env.get("FATSECRET_CONSUMER_SECRET");
+  if (!consumerKey || !consumerSecret) return [];
+  try {
+    const endpoint = "https://platform.fatsecret.com/rest/foods/search/v1";
+    const parameters: Record<string, string> = {
+      format: "json",
+      max_results: "8",
+      oauth_consumer_key: consumerKey,
+      oauth_nonce: crypto.randomUUID().replace(/-/g, ""),
+      oauth_signature_method: "HMAC-SHA1",
+      oauth_timestamp: String(Math.floor(Date.now() / 1000)),
+      oauth_version: "1.0",
+      page_number: "0",
+      search_expression: query,
+    };
+    parameters.oauth_signature = await fatSecretSignature("GET", endpoint, parameters, consumerSecret);
+    const url = new URL(endpoint);
+    for (const [key, value] of Object.entries(parameters)) url.searchParams.set(key, value);
+    const response = await fetchWithTimeout(url.toString(), 6500, { Accept: "application/json" });
+    if (!response.ok) return [];
+    const payload = await response.json() as { foods?: { food?: unknown } };
+    const foods = Array.isArray(payload.foods?.food) ? payload.foods.food : [payload.foods?.food].filter(Boolean);
+    return foods.flatMap((food): FatSecretHit[] => {
+      if (!food || typeof food !== "object") return [];
+      const row = food as Record<string, unknown>;
+      const name = text(row.food_name);
+      const nutrition = parseFatSecretApiDescription(text(row.food_description));
+      if (!name || !nutrition) return [];
+      const brand = text(row.brand_name);
+      return [{ ...nutrition, name, brand, score: matchScore(original, name, brand) }];
+    });
+  } catch {
+    return [];
+  }
+}
+
 async function lookupFatSecret(barcode: string, rawName: string): Promise<SearchResult> {
   const variants = cleanNameVariants(rawName);
   if (!variants.length) return { status: "incomplete", name: rawName };
-  const groups = await Promise.all(variants.map((query) => searchFatSecret(query, rawName)));
-  const best = groups.flat().filter((hit) => hit.score >= 45).sort((a, b) => b.score - a.score)[0];
+  // The official API is attempted first. Its free plan has a US-only catalogue,
+  // so the public Russian search remains a compatibility fallback rather than
+  // making existing Russian barcode results disappear.
+  const apiGroups = await Promise.all(variants.map((query) => searchFatSecretApi(query, rawName)));
+  let best = apiGroups.flat().filter((hit) => hit.score >= 45).sort((a, b) => b.score - a.score)[0];
+  if (!best) {
+    const webGroups = await Promise.all(variants.map((query) => searchFatSecretWeb(query, rawName)));
+    best = webGroups.flat().filter((hit) => hit.score >= 45).sort((a, b) => b.score - a.score)[0];
+  }
   if (!best) return { status: "incomplete", name: rawName };
 
   const serving = packageSize(best.serving);
