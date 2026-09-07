@@ -250,7 +250,7 @@
 * { box-sizing: border-box; }
 html { background: var(--flux-stage-bg); }
 body { margin: 0; background: var(--flux-stage-bg); color: var(--foreground); font-family: Manrope, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-weight: 400; }
-button, input { font: inherit; }
+button, input, textarea, select { font: inherit; }
 button { cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform .18s cubic-bezier(.22,.75,.25,1), background-color .24s ease, color .24s ease, border-color .24s ease, box-shadow .24s ease; }
 button:active { transform: scale(.97); }
 .flux-stage { min-height: 100dvh; display: grid; place-items: start center; padding: 22px 12px; }
@@ -557,7 +557,7 @@ button:active { transform: scale(.97); }
 .flux-drawer-header.is-scanner { display: grid; grid-template-columns: 34px 1fr; gap: 9px; align-items: start; }
 .flux-drawer-back { width: 31px; height: 31px; display: grid; place-items: center; border: 0; border-radius: 50%; background: var(--flux-soft); color: var(--flux-primary); }
 .flux-drawer-back svg { width: 16px; height: 16px; }
-.flux-feedback-drawer { --drawer-content-height: min(632px, calc(100dvh - 18px)); padding-bottom: max(22px, env(safe-area-inset-bottom)); }
+.flux-feedback-drawer { --drawer-content-height: min(680px, calc(100dvh - 18px)); padding-bottom: max(22px, env(safe-area-inset-bottom)); }
 .flux-feedback-body { padding: 9px 22px 0; }
 .flux-feedback-categories { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .flux-feedback-categories button { min-height: 59px; display: grid; grid-template-columns: 25px 1fr; gap: 8px; align-items: center; padding: 9px; border: 1px solid var(--flux-border); border-radius: 15px; background: var(--flux-card); color: var(--flux-muted); text-align: left; }
@@ -567,8 +567,18 @@ button:active { transform: scale(.97); }
 .flux-feedback-categories strong { color: var(--flux-ink); font-size: 9px; font-weight: 600; }
 .flux-feedback-categories small { margin-top: 2px; color: var(--flux-muted); font-size: 7px; line-height: 1.25; }
 .flux-feedback-message { display: grid; gap: 7px; margin-top: 18px; color: var(--flux-muted); font-size: 9px; }
-.flux-feedback-message textarea { width: 100%; min-height: 126px; resize: vertical; padding: 13px; border: 1px solid var(--flux-border); border-radius: 16px; outline: 0; background: var(--flux-bg); color: var(--flux-ink); font: inherit; font-size: 11px; line-height: 1.45; }
+.flux-feedback-message textarea { width: 100%; min-width: 0; min-height: 126px; resize: none; padding: 13px; border: 1px solid var(--flux-border); border-radius: 16px; outline: 0; background: var(--flux-bg); color: var(--flux-ink); font: inherit; font-size: 16px; line-height: 1.45; }
 .flux-feedback-message textarea:focus { border-color: var(--flux-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--flux-accent) 13%, transparent); }
+.flux-feedback-file-input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+.flux-feedback-attachments { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 11px; color: var(--flux-muted); font-size: 9px; }
+.flux-feedback-attachment-trigger { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 7px 10px; border: 1px solid var(--flux-border); border-radius: 11px; background: var(--flux-soft); color: var(--flux-primary); font-size: 10px; font-weight: 600; }
+.flux-feedback-attachment-trigger svg { width: 14px; height: 14px; }
+.flux-feedback-attachment-list { display: grid; gap: 6px; margin-top: 8px; }
+.flux-feedback-attachment-list > span { min-width: 0; display: flex; align-items: center; gap: 6px; padding: 7px 8px; border-radius: 10px; background: var(--flux-soft-2); color: var(--flux-muted); font-size: 9px; }
+.flux-feedback-attachment-list svg { width: 12px; height: 12px; flex: 0 0 auto; color: var(--flux-primary); }
+.flux-feedback-attachment-list b { min-width: 0; overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.flux-feedback-attachment-list button { width: 22px; height: 22px; margin-left: auto; display: grid; flex: 0 0 auto; place-items: center; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--flux-muted); }
+.flux-feedback-attachment-list button svg { width: 13px; height: 13px; }
 .flux-feedback-meta { display: flex; justify-content: space-between; gap: 10px; margin-top: 7px; color: var(--flux-muted); font-size: 8px; }
 .flux-feedback-error { margin: 11px 0 0; color: #b34a42; font-size: 9px; line-height: 1.45; }
 .flux-feedback-submit { width: 100%; min-height: 45px !important; margin-top: 15px; border-radius: 15px !important; }
@@ -594,6 +604,9 @@ button:active { transform: scale(.97); }
 .flux-admin-category svg { width: 11px; height: 11px; }
 .flux-admin-category.is-bug { background: color-mix(in srgb, #d7655b 11%, var(--flux-card)); color: #b7544c; }
 .flux-admin-feedback > p { margin: 10px 0 11px; color: var(--flux-ink); font-size: 10px; line-height: 1.48; white-space: pre-wrap; }
+.flux-admin-attachments { display: flex; flex-wrap: wrap; gap: 6px; margin: -3px 0 11px; }
+.flux-admin-attachments button { display: inline-flex; align-items: center; gap: 4px; min-height: 27px; padding: 5px 7px; border: 1px solid var(--flux-border); border-radius: 9px; background: var(--flux-soft); color: var(--flux-primary); font-size: 8px; }
+.flux-admin-attachments button svg { width: 11px; height: 11px; }
 .flux-admin-feedback select { max-width: 92px; height: 28px; padding: 0 6px; border: 1px solid var(--flux-border); border-radius: 9px; outline: 0; background: var(--flux-bg); color: var(--flux-primary); font: inherit; font-size: 8px; }
 .flux-admin-state { min-height: 145px; display: grid; place-content: center; gap: 9px; padding: 20px; border-radius: 20px; background: var(--flux-soft-2); color: var(--flux-muted); font-size: 10px; line-height: 1.45; text-align: center; }
 .flux-admin-state svg { width: 23px; height: 23px; justify-self: center; color: var(--flux-primary); }
@@ -744,6 +757,11 @@ button:active { transform: scale(.97); }
 .flux-portion-stepper > label { min-width: 0; display: flex; align-items: baseline; justify-content: center; gap: 6px; }
 .flux-portion-input { width: 95px; padding: 0; border: 0; outline: none; background: transparent; color: var(--flux-ink); font: inherit; font-size: 35px; font-weight: 500; letter-spacing: -.04em; text-align: right; appearance: textfield; }
 .flux-portion-input::-webkit-inner-spin-button, .flux-portion-input::-webkit-outer-spin-button { margin: 0; appearance: none; }
+
+/* iOS Safari zooms the whole page when a form field's text is under 16px. */
+@media (hover: none) and (pointer: coarse) {
+  input, textarea, select { font-size: 16px !important; }
+}
 .flux-portion-stepper > label > span { color: var(--flux-muted); font-size: 13px; }
 .flux-portion-presets { display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 7px; margin-top: 15px; }
 .flux-portion-presets button { min-height: 40px; padding: 0 5px; border: 1px solid var(--flux-border); border-radius: 14px; background: var(--flux-card); color: var(--flux-muted); font-size: 9px; }

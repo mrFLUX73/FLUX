@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Bug, CheckCircle2, Heart, Lightbulb, LoaderCircle, MessageCircle, RefreshCw } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Bug, CheckCircle2, Heart, ImagePlus, Lightbulb, LoaderCircle, MessageCircle, Paperclip, RefreshCw, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import {
+  getFeedbackAttachmentUrl,
   loadAdminFeedback,
   submitFeedback,
   updateFeedbackStatus,
@@ -48,12 +49,15 @@ export function FeedbackDrawer({
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [attachments, setAttachments] = useState<File[]>([]);
+  const attachmentInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open) return;
     setCategory('idea');
     setMessage('');
     setError('');
+    setAttachments([]);
   }, [open]);
 
   const canSubmit = message.trim().length >= 3 && !submitting;
@@ -62,7 +66,7 @@ export function FeedbackDrawer({
     setSubmitting(true);
     setError('');
     try {
-      await submitFeedback(userId, { category, message, screen, appVersion: 'FLUX web' });
+      await submitFeedback(userId, { category, message, screen, appVersion: 'FLUX web', attachments });
       onOpenChange(false);
       onSubmitted?.();
     } catch {
@@ -70,6 +74,21 @@ export function FeedbackDrawer({
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const addAttachments = (files: FileList | null) => {
+    if (!files?.length) return;
+    const incoming = Array.from(files);
+    const allowed = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']);
+    if (incoming.some((file) => !allowed.has(file.type) || file.size > 8 * 1024 * 1024)) {
+      setError('Подойдут JPG, PNG, WEBP или HEIC до 8 МБ.');
+      return;
+    }
+    setAttachments((current) => {
+      const next = [...current, ...incoming].slice(0, 3);
+      if (current.length + incoming.length > 3) setError('К обращению можно приложить до трёх изображений.');
+      return next;
+    });
   };
 
   return (
@@ -87,6 +106,12 @@ export function FeedbackDrawer({
             })}
           </div>
           <label className="flux-feedback-message"><span>Расскажите подробнее</span><textarea value={message} maxLength={4000} placeholder="Например: после сканирования продукт не нашёлся…" onChange={(event) => setMessage(event.target.value)} /></label>
+          <input ref={attachmentInput} className="flux-feedback-file-input" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple onChange={(event) => { addAttachments(event.target.files); event.currentTarget.value = ''; }} />
+          <div className="flux-feedback-attachments">
+            <button type="button" className="flux-feedback-attachment-trigger" onClick={() => attachmentInput.current?.click()}><ImagePlus /> Скриншот или фото</button>
+            <span>До 3 изображений по 8 МБ</span>
+          </div>
+          {attachments.length > 0 && <div className="flux-feedback-attachment-list">{attachments.map((file, index) => <span key={`${file.name}-${file.lastModified}`}><Paperclip /> <b>{file.name}</b><button type="button" aria-label={`Удалить ${file.name}`} onClick={() => setAttachments((current) => current.filter((_, candidateIndex) => candidateIndex !== index))}><X /></button></span>)}</div>}
           <div className="flux-feedback-meta"><span>Экран: {screen}</span><span>{message.length}/4000</span></div>
           {error && <p className="flux-feedback-error" role="alert">{error}</p>}
           <Button type="button" className="flux-feedback-submit" size="lg" disabled={!canSubmit} onClick={() => { void submit(); }}>{submitting ? <><LoaderCircle className="animate-spin" /> Отправляю…</> : <><MessageCircle /> Отправить</>}</Button>
@@ -103,6 +128,7 @@ export function AdminFeedbackScreen({ userId }: { userId: string }) {
   const [error, setError] = useState('');
   const [filter, setFilter] = useState<'all' | FeedbackStatus>('all');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [openingAttachment, setOpeningAttachment] = useState<string | null>(null);
 
   const refresh = async (quiet = false) => {
     quiet ? setRefreshing(true) : setLoading(true);
@@ -114,6 +140,19 @@ export function AdminFeedbackScreen({ userId }: { userId: string }) {
     } finally {
       setLoading(false);
       setRefreshing(false);
+    }
+  };
+
+  const openAttachment = async (path: string) => {
+    setOpeningAttachment(path);
+    setError('');
+    try {
+      const url = await getFeedbackAttachmentUrl(userId, path);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch {
+      setError('Не удалось открыть вложение. Попробуйте ещё раз.');
+    } finally {
+      setOpeningAttachment(null);
     }
   };
 
@@ -151,6 +190,7 @@ export function AdminFeedbackScreen({ userId }: { userId: string }) {
       return <article className="flux-admin-feedback" key={item.id}>
         <header><span className={`flux-admin-category is-${item.category}`}><Icon /> {category.label}</span><time>{formatCreatedAt(item.createdAt)}</time></header>
         <p>{item.message}</p>
+        {item.attachments.length > 0 && <div className="flux-admin-attachments">{item.attachments.map((path, index) => <button type="button" key={path} disabled={openingAttachment === path} onClick={() => { void openAttachment(path); }}><Paperclip /> {openingAttachment === path ? 'Открываю…' : `Вложение ${index + 1}`}</button>)}</div>}
         <footer><span>{item.reporterName}{item.reporterLogin ? ` · @${item.reporterLogin}` : ''}</span><select value={item.status} disabled={updatingId === item.id} onChange={(event) => { void changeStatus(item, event.target.value as FeedbackStatus); }} aria-label={`Статус обращения: ${item.message.slice(0, 40)}`}><option value="new">{statusLabels.new}</option><option value="in_progress">{statusLabels.in_progress}</option><option value="resolved">{statusLabels.resolved}</option></select></footer>
       </article>;
     })}</div> : <div className="flux-admin-state"><CheckCircle2 /> Здесь пока тихо. Новые обращения появятся в этом списке.</div>}
