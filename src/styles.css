@@ -427,6 +427,8 @@ button:active { transform: scale(.97); }
 .flux-profile-unit i { position: absolute; top: 16px; right: 11px; color: var(--flux-muted); font-size: 9px; font-style: normal; pointer-events: none; }
 .flux-profile-done { width: 100%; min-height: 50px !important; margin-top: 15px; border-radius: 17px !important; }
 .flux-profile-footnote { margin: 9px 14px 0; color: var(--flux-nav-muted); font-size: 8px; line-height: 1.45; text-align: center; }
+.flux-profile-signout { width: 100%; margin-top: 5px; color: var(--flux-muted) !important; font-size: 9px !important; }
+.flux-profile-signout svg { width: 13px; height: 13px; }
 
 .flux-page-heading { padding: 15px 2px 22px; }
 .flux-page-heading-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }

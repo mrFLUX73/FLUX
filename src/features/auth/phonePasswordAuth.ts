@@ -56,6 +56,15 @@ export function clearCachedAccount() {
   }
 }
 
+export async function signOutFlux() {
+  const client = await getSupabaseClient();
+  if (client) {
+    const { error } = await client.auth.signOut({ scope: 'local' });
+    if (error) throw error;
+  }
+  clearCachedAccount();
+}
+
 function technicalEmail(login: string) {
   return `${login}@${LOGIN_DOMAIN}`;
 }

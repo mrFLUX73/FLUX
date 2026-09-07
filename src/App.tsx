@@ -45,6 +45,7 @@ import {
   clearCachedAccount,
   loadCachedAccount,
   registerWithLogin,
+  signOutFlux,
   signInWithLogin,
   type FluxAccount,
 } from './features/auth/phonePasswordAuth';
@@ -1553,6 +1554,17 @@ export default function App() {
     }
   }
 
+  async function signOut() {
+    try {
+      await signOutFlux();
+      setProfileOpen(false);
+      setFeedbackOpen(false);
+      toast.add({ title: 'Вы вышли из аккаунта', description: 'Можно войти в другой профиль или создать новый.', type: 'info' });
+    } catch {
+      toast.add({ title: 'Не удалось выйти', description: 'Проверьте соединение и повторите попытку.', type: 'error' });
+    }
+  }
+
   async function connectNutrition() {
     const scope = diary.scope;
     const localEntries = diary.entries;
@@ -1944,6 +1956,7 @@ export default function App() {
               onClose={() => setProfileOpen(false)}
               onDone={completeProfile}
               onFeedback={() => { setProfileOpen(false); openFeedback('Профиль'); }}
+              onSignOut={signOut}
               saving={profileSaving}
             />
           )}

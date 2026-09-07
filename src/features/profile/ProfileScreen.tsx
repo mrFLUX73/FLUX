@@ -1,4 +1,4 @@
-import { ArrowLeft, CalendarDays, Check, ChevronDown, MessageCircle } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Check, ChevronDown, LogOut, MessageCircle } from 'lucide-react';
 import type { CSSProperties } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -115,6 +115,7 @@ export function ProfileScreen({
   onClose,
   onDone,
   onFeedback,
+  onSignOut,
   saving,
 }: {
   account: FluxAccount;
@@ -125,6 +126,7 @@ export function ProfileScreen({
   onClose: () => void;
   onDone: () => Promise<void> | void;
   onFeedback: () => void;
+  onSignOut: () => Promise<void> | void;
   saving: boolean;
 }) {
   const set = <Key extends keyof ProfileDraft>(key: Key, value: ProfileDraft[Key]) => {
@@ -284,6 +286,7 @@ export function ProfileScreen({
 
         <Button className="flux-profile-done" disabled={saving} size="lg" type="submit">{saving ? 'Сохраняю…' : 'Сохранить профиль'}</Button>
         <p className="flux-profile-footnote">Данные сохраняются в вашем профиле FLUX и доступны после входа на другом устройстве.</p>
+        <Button className="flux-profile-signout" type="button" variant="ghost" onClick={() => { void onSignOut(); }}><LogOut /> Выйти из аккаунта</Button>
       </form>
     </section>
   );
