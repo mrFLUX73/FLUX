@@ -344,7 +344,8 @@ function nutriapixServing(food: Record<string, unknown>) {
   const source = servings.find((serving) => serving.is_default === true) ?? servings[0];
   const amount = nutriapixNumber(source?.metric_serving_amount) ?? 100;
   const rawUnit = text(source?.metric_serving_unit).toLocaleLowerCase("ru");
-  const isLiquid = /мл|ml|миллилитр/.test(rawUnit) || /напит|сок|вода|чай|кофе/.test(`${text(food.category)} ${text(food.food_name)}`.toLocaleLowerCase("ru"));
+  const isLiquid = /мл|ml|миллилитр/.test(rawUnit)
+    || /напит|beverage|drink/.test(text(food.category).toLocaleLowerCase("ru"));
   return {
     amount: rounded(amount),
     unit: isLiquid ? "мл" as const : "г" as const,
