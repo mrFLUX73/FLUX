@@ -23,6 +23,10 @@ type StoredNutritionGoal = {
   target_weight_kg: number | null;
   weight_change_pace_kg_per_week: number | null;
   workouts_per_week: number | null;
+  daily_calories: number | null;
+  protein_g: number | null;
+  fat_g: number | null;
+  carbohydrates_g: number | null;
 };
 
 function optionalNumber(value: string) {
@@ -57,7 +61,7 @@ function themeCacheKey(userId: string) {
 }
 
 function profileCacheKey(userId: string) {
-  return `flux.profile.${userId}.v1`;
+  return `flux.profile.${userId}.v2`;
 }
 
 export function loadCachedProfileTheme(userId: string): FluxTheme | null {
@@ -98,6 +102,10 @@ export function loadCachedProfileDraft(userId: string, account: FluxAccount) {
       goal: stringValue('goal'),
       targetWeightKg: stringValue('targetWeightKg'),
       paceKgPerWeek: stringValue('paceKgPerWeek'),
+      dailyCalories: stringValue('dailyCalories'),
+      dailyProteinG: stringValue('dailyProteinG'),
+      dailyFatG: stringValue('dailyFatG'),
+      dailyCarbsG: stringValue('dailyCarbsG'),
       activity: stringValue('activity'),
       workoutsPerWeek: stringValue('workoutsPerWeek'),
     };
@@ -128,7 +136,7 @@ export async function loadProfileDraft(userId: string, account: FluxAccount) {
       .single<StoredProfile>(),
     client
       .from('nutrition_goals')
-      .select('goal_type,activity_level,target_weight_kg,weight_change_pace_kg_per_week,workouts_per_week')
+      .select('goal_type,activity_level,target_weight_kg,weight_change_pace_kg_per_week,workouts_per_week,daily_calories,protein_g,fat_g,carbohydrates_g')
       .eq('user_id', userId)
       .maybeSingle<StoredNutritionGoal>(),
     authClient?.auth.getUser() ?? Promise.resolve({ data: { user: null }, error: null }),
@@ -158,6 +166,10 @@ export async function loadProfileDraft(userId: string, account: FluxAccount) {
     goal: goal ? goalFromDatabase(goal.goal_type) : initial.goal,
     targetWeightKg: goal?.target_weight_kg == null ? '' : String(Number(goal.target_weight_kg)),
     paceKgPerWeek: goal ? paceFromDatabase(goal.weight_change_pace_kg_per_week) || initial.paceKgPerWeek : initial.paceKgPerWeek,
+    dailyCalories: goal?.daily_calories == null ? initial.dailyCalories : String(Number(goal.daily_calories)),
+    dailyProteinG: goal?.protein_g == null ? initial.dailyProteinG : String(Number(goal.protein_g)),
+    dailyFatG: goal?.fat_g == null ? initial.dailyFatG : String(Number(goal.fat_g)),
+    dailyCarbsG: goal?.carbohydrates_g == null ? initial.dailyCarbsG : String(Number(goal.carbohydrates_g)),
     activity: activityFromDatabase(goal?.activity_level ?? null),
     workoutsPerWeek: goal?.workouts_per_week == null ? '' : String(goal.workouts_per_week),
   };
@@ -204,6 +216,10 @@ export async function saveProfileDraft(userId: string, draft: ProfileDraft) {
       target_weight_kg: optionalNumber(draft.targetWeightKg),
       weight_change_pace_kg_per_week: optionalNumber(draft.paceKgPerWeek),
       workouts_per_week: optionalNumber(draft.workoutsPerWeek),
+      daily_calories: optionalNumber(draft.dailyCalories),
+      protein_g: optionalNumber(draft.dailyProteinG),
+      fat_g: optionalNumber(draft.dailyFatG),
+      carbohydrates_g: optionalNumber(draft.dailyCarbsG),
     }, { onConflict: 'user_id' });
   if (goalError) throw goalError;
 

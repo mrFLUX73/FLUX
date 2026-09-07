@@ -118,7 +118,12 @@ type ManualProductDraft = {
   carbs: string;
 };
 
-const macroTargets = { protein: 110, fat: 70, carbs: 230 };
+const defaultMacroTargets = { protein: 110, fat: 70, carbs: 230 };
+
+function positiveTarget(value: string | undefined, fallback: number) {
+  const target = Number(value);
+  return Number.isFinite(target) && target > 0 ? target : fallback;
+}
 const themeBrowserColors: Record<FluxTheme, string> = {
   sage: '#fbfdf9',
   storm: '#f8f9f8',
@@ -1081,6 +1086,7 @@ function WorkoutFlow({ onClose }: { onClose: () => void }) {
 function TodayScreen({
   totals,
   target,
+  macroTargets,
   products,
   onSelectProduct,
   onOpenFood,
@@ -1088,6 +1094,7 @@ function TodayScreen({
 }: {
   totals: NutritionTotals;
   target: number;
+  macroTargets: typeof defaultMacroTargets;
   products: Product[];
   onSelectProduct: (product: Product) => void;
   onOpenFood: () => void;
@@ -1295,7 +1302,12 @@ export default function App() {
   const [unreadFeedbackReplies, setUnreadFeedbackReplies] = useState(0);
   const [defaultAvatar, setDefaultAvatar] = useState<DefaultAvatar>(startupProfileRef.current?.avatar ?? 'short-hair');
   const profileEditRevision = useRef(0);
-  const calorieTarget = 2000;
+  const calorieTarget = positiveTarget(profileDraft?.dailyCalories, 2000);
+  const macroTargets = {
+    protein: positiveTarget(profileDraft?.dailyProteinG, defaultMacroTargets.protein),
+    fat: positiveTarget(profileDraft?.dailyFatG, defaultMacroTargets.fat),
+    carbs: positiveTarget(profileDraft?.dailyCarbsG, defaultMacroTargets.carbs),
+  };
 
   useEffect(() => {
     let active = true;
@@ -1956,7 +1968,7 @@ export default function App() {
               {tab === 'today' && <h1 className="flux-home-title"><span>Сегодня достаточно</span><span>просто продолжить.</span></h1>}
             </header>
             <div key={tab} className="flux-content" id="top">
-              {tab === 'today' && <TodayScreen totals={totals} target={calorieTarget} products={catalog} onSelectProduct={(product) => openFood(currentMeal(), product)} onOpenFood={() => openFood()} onWorkout={() => setWorkoutOpen(true)} />}
+              {tab === 'today' && <TodayScreen totals={totals} target={calorieTarget} macroTargets={macroTargets} products={catalog} onSelectProduct={(product) => openFood(currentMeal(), product)} onOpenFood={() => openFood()} onWorkout={() => setWorkoutOpen(true)} />}
               {tab === 'food' && <FoodScreen entries={entries} target={calorieTarget} mode={nutritionMode} isConnecting={nutritionConnecting} isAuthenticated={Boolean(account)} canConnect={canConnectNutrition} onConnect={openSync} onRefresh={refreshNutrition} onAdd={(meal) => openFood(meal ?? currentMeal())} onEdit={setEditingEntry} onRemove={removeEntry} onRepeat={openPreviousMeal} repeatLoadingMeal={repeatLoadingMeal} />}
               {tab === 'workouts' && <WorkoutsScreen onStart={() => setWorkoutOpen(true)} />}
               {tab === 'progress' && <ProgressScreen />}

@@ -19,6 +19,10 @@ export type ProfileDraft = {
   goal: '' | 'lose' | 'maintain' | 'gain';
   targetWeightKg: string;
   paceKgPerWeek: '' | '0.25' | '0.5' | '0.75';
+  dailyCalories: string;
+  dailyProteinG: string;
+  dailyFatG: string;
+  dailyCarbsG: string;
   activity: '' | 'low' | 'medium' | 'high';
   workoutsPerWeek: string;
 };
@@ -34,6 +38,10 @@ export function createProfileDraft(account: FluxAccount): ProfileDraft {
     goal: 'lose',
     targetWeightKg: '',
     paceKgPerWeek: '0.5',
+    dailyCalories: '2000',
+    dailyProteinG: '110',
+    dailyFatG: '70',
+    dailyCarbsG: '230',
     activity: '',
     workoutsPerWeek: '',
   };
@@ -265,6 +273,25 @@ export function ProfileScreen({
             </ProfileField>
             {draft.goal !== 'maintain' && <ProfileField label="Желаемый вес"><span className="flux-profile-unit"><Input inputMode="decimal" min="30" max="350" step="0.1" type="number" value={draft.targetWeightKg} onChange={(event) => set('targetWeightKg', event.target.value)} /><i>кг</i></span></ProfileField>}
             {draft.goal !== 'maintain' && <ProfileField label="Темп в неделю"><span className="flux-profile-select"><select value={draft.paceKgPerWeek} onChange={(event) => set('paceKgPerWeek', event.target.value as ProfileDraft['paceKgPerWeek'])}><option value="0.25">0,25 кг · мягко</option><option value="0.5">0,5 кг · комфортно</option><option value="0.75">0,75 кг · интенсивно</option></select><ChevronDown aria-hidden="true" /></span></ProfileField>}
+          </div>
+        </section>
+
+        <section className="flux-profile-card">
+          <div className="flux-profile-card-heading"><div><span>Дневная цель</span><strong>Баланс на каждый день</strong></div><small>Можно настроить вручную</small></div>
+          <p className="flux-profile-card-note">Эти значения показываются в дневнике как ориентир. Изменения не затронут уже добавленные продукты.</p>
+          <div className="flux-profile-grid">
+            <ProfileField label="Калории" wide>
+              <span className="flux-profile-unit"><Input inputMode="numeric" min="500" max="10000" type="number" value={draft.dailyCalories} onChange={(event) => set('dailyCalories', event.target.value)} /><i>ккал</i></span>
+            </ProfileField>
+            <ProfileField label="Белки">
+              <span className="flux-profile-unit"><Input inputMode="decimal" min="0" max="1000" step="0.1" type="number" value={draft.dailyProteinG} onChange={(event) => set('dailyProteinG', event.target.value)} /><i>г</i></span>
+            </ProfileField>
+            <ProfileField label="Жиры">
+              <span className="flux-profile-unit"><Input inputMode="decimal" min="0" max="500" step="0.1" type="number" value={draft.dailyFatG} onChange={(event) => set('dailyFatG', event.target.value)} /><i>г</i></span>
+            </ProfileField>
+            <ProfileField label="Углеводы" wide>
+              <span className="flux-profile-unit"><Input inputMode="decimal" min="0" max="1500" step="0.1" type="number" value={draft.dailyCarbsG} onChange={(event) => set('dailyCarbsG', event.target.value)} /><i>г</i></span>
+            </ProfileField>
           </div>
         </section>
 
