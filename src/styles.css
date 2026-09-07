@@ -595,6 +595,18 @@ button:active { transform: scale(.97); }
 .flux-feedback-history-item > p { margin: 8px 0 8px; color: var(--flux-ink); font-size: 10px; line-height: 1.45; white-space: pre-wrap; }
 .flux-feedback-history-item > small { display: inline-flex; padding: 4px 7px; border-radius: 8px; background: var(--flux-soft); color: var(--flux-muted); font-size: 8px; }
 .flux-feedback-history-item > small.is-resolved { background: color-mix(in srgb, var(--flux-accent) 14%, var(--flux-card)); color: var(--flux-primary); }
+.flux-feedback-conversation { display: grid; gap: 6px; margin-top: 10px; }
+.flux-feedback-bubble { max-width: 92%; justify-self: start; padding: 9px 10px; border-radius: 13px 13px 13px 4px; background: var(--flux-soft-2); color: var(--flux-ink); }
+.flux-feedback-bubble.is-own { justify-self: end; border-radius: 13px 13px 4px 13px; background: var(--flux-primary); color: var(--flux-on-primary); }
+.flux-feedback-bubble > span { display: block; color: var(--flux-muted); font-size: 7px; }
+.flux-feedback-bubble.is-own > span { color: color-mix(in srgb, var(--flux-on-primary) 70%, transparent); }
+.flux-feedback-bubble p { margin: 4px 0 0; font-size: 9px; line-height: 1.45; white-space: pre-wrap; }
+.flux-feedback-reply-trigger { margin-top: 10px; padding: 0; border: 0; background: transparent; color: var(--flux-primary); font-size: 9px; font-weight: 600; }
+.flux-feedback-inline-composer { display: grid; gap: 7px; margin-top: 10px; padding: 9px; border: 1px solid var(--flux-border); border-radius: 13px; background: var(--flux-soft-2); }
+.flux-feedback-inline-composer textarea { width: 100%; min-height: 60px; resize: none; padding: 8px; border: 1px solid var(--flux-border); border-radius: 9px; outline: 0; background: var(--flux-card); color: var(--flux-ink); font: inherit; font-size: 16px; line-height: 1.35; }
+.flux-feedback-inline-composer > div { display: flex; justify-content: flex-end; gap: 10px; }
+.flux-feedback-inline-composer button { padding: 5px 7px; border: 0; border-radius: 7px; background: transparent; color: var(--flux-muted); font-size: 8px; }
+.flux-feedback-inline-composer button:last-child { background: var(--flux-primary); color: var(--flux-on-primary); }
 .flux-feedback-reply { margin-top: 10px; padding: 10px; border-radius: 12px; background: var(--flux-soft-2); }
 .flux-feedback-reply > span { display: flex; align-items: center; gap: 5px; color: var(--flux-primary); font-size: 8px; font-weight: 600; }
 .flux-feedback-reply svg { width: 12px; height: 12px; }
@@ -640,6 +652,7 @@ button:active { transform: scale(.97); }
 @keyframes flux-attachment-card-in { from { opacity: 0; transform: scale(.96) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
 .flux-admin-feedback select { max-width: 92px; height: 28px; padding: 0 6px; border: 1px solid var(--flux-border); border-radius: 9px; outline: 0; background: var(--flux-bg); color: var(--flux-primary); font: inherit; font-size: 8px; }
 .flux-admin-actions { display: flex; align-items: center; gap: 5px; }
+.flux-admin-reply-button { min-height: 28px; padding: 0 7px; border: 1px solid var(--flux-border); border-radius: 9px; background: var(--flux-soft); color: var(--flux-primary); font-size: 8px; }
 .flux-admin-archive-button { min-height: 28px; display: inline-flex; align-items: center; gap: 4px; padding: 0 7px; border: 1px solid var(--flux-border); border-radius: 9px; background: var(--flux-soft); color: var(--flux-primary); font-size: 8px; }
 .flux-admin-archive-button svg { width: 12px; height: 12px; }
 .flux-admin-state { min-height: 145px; display: grid; place-content: center; gap: 9px; padding: 20px; border-radius: 20px; background: var(--flux-soft-2); color: var(--flux-muted); font-size: 10px; line-height: 1.45; text-align: center; }
