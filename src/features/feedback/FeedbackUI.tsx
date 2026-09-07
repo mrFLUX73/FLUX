@@ -129,6 +129,7 @@ export function AdminFeedbackScreen({ userId }: { userId: string }) {
   const [filter, setFilter] = useState<'all' | FeedbackStatus>('all');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [openingAttachment, setOpeningAttachment] = useState<string | null>(null);
+  const [activeAttachmentUrl, setActiveAttachmentUrl] = useState<string | null>(null);
 
   const refresh = async (quiet = false) => {
     quiet ? setRefreshing(true) : setLoading(true);
@@ -148,7 +149,7 @@ export function AdminFeedbackScreen({ userId }: { userId: string }) {
     setError('');
     try {
       const url = await getFeedbackAttachmentUrl(userId, path);
-      window.open(url, '_blank', 'noopener,noreferrer');
+      setActiveAttachmentUrl(url);
     } catch {
       setError('Не удалось открыть вложение. Попробуйте ещё раз.');
     } finally {
@@ -157,6 +158,15 @@ export function AdminFeedbackScreen({ userId }: { userId: string }) {
   };
 
   useEffect(() => { void refresh(); }, [userId]);
+
+  useEffect(() => {
+    if (!activeAttachmentUrl) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setActiveAttachmentUrl(null);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [activeAttachmentUrl]);
 
   const visibleItems = useMemo(() => filter === 'all' ? items : items.filter((item) => item.status === filter), [filter, items]);
   const newCount = items.filter((item) => item.status === 'new').length;
@@ -175,7 +185,8 @@ export function AdminFeedbackScreen({ userId }: { userId: string }) {
     }
   };
 
-  return <section className="flux-admin-screen">
+  return <>
+    <section className="flux-admin-screen">
     <div className="flux-page-heading">
       <div className="flux-page-heading-row"><div><span className="flux-eyebrow">Администрирование</span><h1>Управление</h1></div><Button type="button" variant="secondary" size="icon" aria-label="Обновить обращения" onClick={() => { void refresh(true); }} disabled={refreshing}>{refreshing ? <LoaderCircle className="animate-spin" /> : <RefreshCw />}</Button></div>
       <p>Обратная связь от пользователей FLUX.</p>
@@ -195,5 +206,12 @@ export function AdminFeedbackScreen({ userId }: { userId: string }) {
       </article>;
     })}</div> : <div className="flux-admin-state"><CheckCircle2 /> Здесь пока тихо. Новые обращения появятся в этом списке.</div>}
     {error && items.length > 0 && <p className="flux-admin-inline-error" role="alert">{error}</p>}
-  </section>;
+    </section>
+    {activeAttachmentUrl && <div className="flux-attachment-viewer" role="dialog" aria-modal="true" aria-label="Просмотр вложения" onMouseDown={() => setActiveAttachmentUrl(null)}>
+      <div className="flux-attachment-viewer-card" onMouseDown={(event) => event.stopPropagation()}>
+        <button type="button" aria-label="Закрыть просмотр вложения" onClick={() => setActiveAttachmentUrl(null)}><X /></button>
+        <img src={activeAttachmentUrl} alt="Вложение к обратной связи" />
+      </div>
+    </div>}
+  </>;
 }

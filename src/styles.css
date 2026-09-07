@@ -607,6 +607,13 @@ button:active { transform: scale(.97); }
 .flux-admin-attachments { display: flex; flex-wrap: wrap; gap: 6px; margin: -3px 0 11px; }
 .flux-admin-attachments button { display: inline-flex; align-items: center; gap: 4px; min-height: 27px; padding: 5px 7px; border: 1px solid var(--flux-border); border-radius: 9px; background: var(--flux-soft); color: var(--flux-primary); font-size: 8px; }
 .flux-admin-attachments button svg { width: 11px; height: 11px; }
+.flux-attachment-viewer { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: max(18px, env(safe-area-inset-top)) 18px max(18px, env(safe-area-inset-bottom)); background: color-mix(in srgb, #101814 76%, transparent); backdrop-filter: blur(8px); animation: flux-attachment-viewer-in .2s ease both; }
+.flux-attachment-viewer-card { width: min(100%, 560px); max-height: 100%; position: relative; display: grid; place-items: center; padding: 42px 12px 12px; border: 1px solid color-mix(in srgb, white 30%, transparent); border-radius: 22px; background: color-mix(in srgb, var(--flux-card) 94%, #111); box-shadow: 0 22px 70px rgba(0, 0, 0, .34); animation: flux-attachment-card-in .24s cubic-bezier(.22,.75,.25,1) both; }
+.flux-attachment-viewer-card img { display: block; max-width: 100%; max-height: min(76dvh, 760px); border-radius: 13px; object-fit: contain; }
+.flux-attachment-viewer-card > button { width: 32px; height: 32px; position: absolute; top: 7px; right: 7px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 11px; background: color-mix(in srgb, var(--flux-ink) 10%, transparent); color: var(--flux-ink); }
+.flux-attachment-viewer-card > button svg { width: 18px; height: 18px; }
+@keyframes flux-attachment-viewer-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes flux-attachment-card-in { from { opacity: 0; transform: scale(.96) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
 .flux-admin-feedback select { max-width: 92px; height: 28px; padding: 0 6px; border: 1px solid var(--flux-border); border-radius: 9px; outline: 0; background: var(--flux-bg); color: var(--flux-primary); font: inherit; font-size: 8px; }
 .flux-admin-state { min-height: 145px; display: grid; place-content: center; gap: 9px; padding: 20px; border-radius: 20px; background: var(--flux-soft-2); color: var(--flux-muted); font-size: 10px; line-height: 1.45; text-align: center; }
 .flux-admin-state svg { width: 23px; height: 23px; justify-self: center; color: var(--flux-primary); }
