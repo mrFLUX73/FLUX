@@ -96,6 +96,7 @@ import {
 } from './features/profile/ProfileScreen';
 import { loadCachedProfileDraft, loadCachedProfileTheme, loadProfileDraft, saveProfileDraft } from './features/profile/repository';
 import { AdminFeedbackScreen, FeedbackDrawer } from './features/feedback/FeedbackUI';
+import { countUnreadFeedbackReplies } from './features/feedback/repository';
 import {
   MEAL_KINDS,
   type MealEntry,
@@ -1287,6 +1288,7 @@ export default function App() {
   const [profileSaving, setProfileSaving] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedbackScreen, setFeedbackScreen] = useState('Сегодня');
+  const [unreadFeedbackReplies, setUnreadFeedbackReplies] = useState(0);
   const [defaultAvatar, setDefaultAvatar] = useState<DefaultAvatar>(startupProfileRef.current?.avatar ?? 'short-hair');
   const profileEditRevision = useRef(0);
   const calorieTarget = 2000;
@@ -1322,6 +1324,18 @@ export default function App() {
         }
       });
     }
+    return () => { active = false; };
+  }, [account?.id]);
+
+  useEffect(() => {
+    let active = true;
+    if (!account) {
+      setUnreadFeedbackReplies(0);
+      return () => { active = false; };
+    }
+    void countUnreadFeedbackReplies(account.id)
+      .then((count) => { if (active) setUnreadFeedbackReplies(count); })
+      .catch(() => { if (active) setUnreadFeedbackReplies(0); });
     return () => { active = false; };
   }, [account?.id]);
 
@@ -1956,6 +1970,7 @@ export default function App() {
               onClose={() => setProfileOpen(false)}
               onDone={completeProfile}
               onFeedback={() => { setProfileOpen(false); openFeedback('Профиль'); }}
+              feedbackReplyCount={unreadFeedbackReplies}
               onSignOut={signOut}
               saving={profileSaving}
             />
@@ -1998,7 +2013,7 @@ export default function App() {
         onOpenChange={setAuthGateOpen}
         onAuthenticated={authenticate}
       />
-      {account && <FeedbackDrawer open={feedbackOpen} onOpenChange={setFeedbackOpen} userId={account.id} screen={feedbackScreen} onSubmitted={() => toast.add({ title: 'Спасибо за обратную связь', description: 'Обращение уже в очереди команды FLUX.', type: 'success' })} />}
+      {account && <FeedbackDrawer open={feedbackOpen} onOpenChange={setFeedbackOpen} userId={account.id} screen={feedbackScreen} onRepliesRead={() => setUnreadFeedbackReplies(0)} onSubmitted={() => toast.add({ title: 'Спасибо за обратную связь', description: 'Обращение уже в очереди команды FLUX.', type: 'success' })} />}
     </Toaster>
   );
 }

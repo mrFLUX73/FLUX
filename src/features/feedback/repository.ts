@@ -22,6 +22,10 @@ export type FeedbackItem = {
   reporterName: string;
   reporterLogin: string;
   attachments: string[];
+  adminReply: string;
+  repliedAt: string | null;
+  replySeenAt: string | null;
+  archivedAt: string | null;
 };
 
 type StoredFeedback = {
@@ -35,6 +39,10 @@ type StoredFeedback = {
   reporter_login: string | null;
   created_at: string;
   attachments: string[] | null;
+  admin_reply: string | null;
+  replied_at: string | null;
+  reply_seen_at: string | null;
+  archived_at: string | null;
 };
 
 const attachmentBucket = 'feedback-attachments';
@@ -53,6 +61,10 @@ function fromStored(value: StoredFeedback): FeedbackItem {
     reporterLogin: value.reporter_login ?? '',
     createdAt: value.created_at,
     attachments: value.attachments ?? [],
+    adminReply: value.admin_reply ?? '',
+    repliedAt: value.replied_at,
+    replySeenAt: value.reply_seen_at,
+    archivedAt: value.archived_at,
   };
 }
 
@@ -95,15 +107,43 @@ export async function submitFeedback(userId: string, draft: FeedbackDraft) {
   }
 }
 
-export async function loadAdminFeedback(userId: string) {
+const feedbackColumns = 'id,category,message,screen,app_version,status,reporter_display_name,reporter_login,created_at,attachments,admin_reply,replied_at,reply_seen_at,archived_at';
+
+export async function loadAdminFeedback(userId: string, archived = false) {
+  const client = await getSupabaseClientForUser(userId);
+  let query = client
+    .from('feedback')
+    .select(feedbackColumns)
+    .order('created_at', { ascending: false });
+  query = archived ? query.not('archived_at', 'is', null) : query.is('archived_at', null);
+  const { data, error } = await query.returns<StoredFeedback[]>();
+  if (error) throw error;
+  return (data ?? []).map(fromStored);
+}
+
+export async function loadMyFeedback(userId: string) {
   const client = await getSupabaseClientForUser(userId);
   const { data, error } = await client
     .from('feedback')
-    .select('id,category,message,screen,app_version,status,reporter_display_name,reporter_login,created_at,attachments')
+    .select(feedbackColumns)
+    .eq('user_id', userId)
     .order('created_at', { ascending: false })
+    .limit(50)
     .returns<StoredFeedback[]>();
   if (error) throw error;
   return (data ?? []).map(fromStored);
+}
+
+export async function countUnreadFeedbackReplies(userId: string) {
+  const client = await getSupabaseClientForUser(userId);
+  const { count, error } = await client
+    .from('feedback')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .not('admin_reply', 'is', null)
+    .is('reply_seen_at', null);
+  if (error) throw error;
+  return count ?? 0;
 }
 
 export async function getFeedbackAttachmentUrl(userId: string, attachmentPath: string) {
@@ -121,4 +161,35 @@ export async function updateFeedbackStatus(userId: string, feedbackId: string, s
   });
   if (error) throw error;
   if (data !== true) throw new Error('Обращение не найдено');
+}
+
+export async function resolveFeedback(userId: string, feedbackId: string, reply: string) {
+  const client = await getSupabaseClientForUser(userId);
+  const { data, error } = await client.rpc('resolve_feedback', {
+    p_feedback_id: feedbackId,
+    p_reply: reply.trim(),
+  });
+  if (error) throw error;
+  if (data !== true) throw new Error('Обращение не найдено');
+}
+
+export async function archiveFeedback(userId: string, feedbackId: string) {
+  const client = await getSupabaseClientForUser(userId);
+  const { data, error } = await client.rpc('archive_feedback', { p_feedback_id: feedbackId });
+  if (error) throw error;
+  if (data !== true) throw new Error('Не удалось архивировать обращение');
+}
+
+export async function restoreFeedback(userId: string, feedbackId: string) {
+  const client = await getSupabaseClientForUser(userId);
+  const { data, error } = await client.rpc('restore_feedback', { p_feedback_id: feedbackId });
+  if (error) throw error;
+  if (data !== true) throw new Error('Не удалось восстановить обращение');
+}
+
+export async function markFeedbackRepliesSeen(userId: string, feedbackIds: string[]) {
+  if (!feedbackIds.length) return;
+  const client = await getSupabaseClientForUser(userId);
+  const { error } = await client.rpc('mark_feedback_replies_seen', { p_feedback_ids: feedbackIds });
+  if (error) throw error;
 }

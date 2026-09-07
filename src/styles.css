@@ -558,6 +558,11 @@ button:active { transform: scale(.97); }
 .flux-drawer-back { width: 31px; height: 31px; display: grid; place-items: center; border: 0; border-radius: 50%; background: var(--flux-soft); color: var(--flux-primary); }
 .flux-drawer-back svg { width: 16px; height: 16px; }
 .flux-feedback-drawer { --drawer-content-height: min(680px, calc(100dvh - 18px)); padding-bottom: max(22px, env(safe-area-inset-bottom)); }
+.flux-feedback-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin: 3px 22px 0; padding: 4px; border-radius: 14px; background: var(--flux-soft-2); }
+.flux-feedback-tabs button { min-height: 33px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 6px; border: 0; border-radius: 10px; background: transparent; color: var(--flux-muted); font-size: 9px; }
+.flux-feedback-tabs button.is-active { background: var(--flux-card); color: var(--flux-primary); box-shadow: 0 2px 8px color-mix(in srgb, var(--flux-ink) 7%, transparent); }
+.flux-feedback-tabs svg { width: 13px; height: 13px; }
+.flux-feedback-tabs b { min-width: 15px; height: 15px; display: grid; place-items: center; padding: 0 3px; border-radius: 999px; background: var(--flux-primary); color: var(--flux-on-primary); font-size: 7px; }
 .flux-feedback-body { padding: 9px 22px 0; }
 .flux-feedback-categories { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .flux-feedback-categories button { min-height: 59px; display: grid; grid-template-columns: 25px 1fr; gap: 8px; align-items: center; padding: 9px; border: 1px solid var(--flux-border); border-radius: 15px; background: var(--flux-card); color: var(--flux-muted); text-align: left; }
@@ -582,6 +587,22 @@ button:active { transform: scale(.97); }
 .flux-feedback-meta { display: flex; justify-content: space-between; gap: 10px; margin-top: 7px; color: var(--flux-muted); font-size: 8px; }
 .flux-feedback-error { margin: 11px 0 0; color: #b34a42; font-size: 9px; line-height: 1.45; }
 .flux-feedback-submit { width: 100%; min-height: 45px !important; margin-top: 15px; border-radius: 15px !important; }
+.flux-feedback-history-list { display: grid; gap: 9px; max-height: 470px; overflow-y: auto; padding-bottom: 4px; scrollbar-width: none; }
+.flux-feedback-history-list::-webkit-scrollbar { display: none; }
+.flux-feedback-history-item { padding: 12px; border: 1px solid var(--flux-border); border-radius: 16px; background: var(--flux-card); }
+.flux-feedback-history-item header { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--flux-muted); font-size: 8px; }
+.flux-feedback-history-item header span { color: var(--flux-primary); font-weight: 600; }
+.flux-feedback-history-item > p { margin: 8px 0 8px; color: var(--flux-ink); font-size: 10px; line-height: 1.45; white-space: pre-wrap; }
+.flux-feedback-history-item > small { display: inline-flex; padding: 4px 7px; border-radius: 8px; background: var(--flux-soft); color: var(--flux-muted); font-size: 8px; }
+.flux-feedback-history-item > small.is-resolved { background: color-mix(in srgb, var(--flux-accent) 14%, var(--flux-card)); color: var(--flux-primary); }
+.flux-feedback-reply { margin-top: 10px; padding: 10px; border-radius: 12px; background: var(--flux-soft-2); }
+.flux-feedback-reply > span { display: flex; align-items: center; gap: 5px; color: var(--flux-primary); font-size: 8px; font-weight: 600; }
+.flux-feedback-reply svg { width: 12px; height: 12px; }
+.flux-feedback-reply p { margin: 6px 0 0; color: var(--flux-ink); font-size: 9px; line-height: 1.45; white-space: pre-wrap; }
+.flux-feedback-history-state { min-height: 180px; display: grid; place-content: center; gap: 8px; color: var(--flux-muted); font-size: 10px; text-align: center; }
+.flux-feedback-history-state svg { width: 22px; height: 22px; justify-self: center; color: var(--flux-primary); }
+.flux-feedback-reply-drawer { --drawer-content-height: min(440px, calc(100dvh - 18px)); padding-bottom: max(22px, env(safe-area-inset-bottom)); }
+.flux-feedback-reply-body { padding: 0 22px; }
 
 .flux-admin-screen { min-height: 100%; padding-bottom: 12px; }
 .flux-admin-screen .flux-page-heading { padding-bottom: 15px; }
@@ -604,6 +625,9 @@ button:active { transform: scale(.97); }
 .flux-admin-category svg { width: 11px; height: 11px; }
 .flux-admin-category.is-bug { background: color-mix(in srgb, #d7655b 11%, var(--flux-card)); color: #b7544c; }
 .flux-admin-feedback > p { margin: 10px 0 11px; color: var(--flux-ink); font-size: 10px; line-height: 1.48; white-space: pre-wrap; }
+.flux-admin-reply { margin: -2px 0 11px; padding: 9px 10px; border-radius: 11px; background: var(--flux-soft-2); }
+.flux-admin-reply span { color: var(--flux-primary); font-size: 8px; font-weight: 600; }
+.flux-admin-reply p { margin: 4px 0 0; color: var(--flux-ink); font-size: 9px; line-height: 1.4; white-space: pre-wrap; }
 .flux-admin-attachments { display: flex; flex-wrap: wrap; gap: 6px; margin: -3px 0 11px; }
 .flux-admin-attachments button { display: inline-flex; align-items: center; gap: 4px; min-height: 27px; padding: 5px 7px; border: 1px solid var(--flux-border); border-radius: 9px; background: var(--flux-soft); color: var(--flux-primary); font-size: 8px; }
 .flux-admin-attachments button svg { width: 11px; height: 11px; }
@@ -615,6 +639,9 @@ button:active { transform: scale(.97); }
 @keyframes flux-attachment-viewer-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes flux-attachment-card-in { from { opacity: 0; transform: scale(.96) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
 .flux-admin-feedback select { max-width: 92px; height: 28px; padding: 0 6px; border: 1px solid var(--flux-border); border-radius: 9px; outline: 0; background: var(--flux-bg); color: var(--flux-primary); font: inherit; font-size: 8px; }
+.flux-admin-actions { display: flex; align-items: center; gap: 5px; }
+.flux-admin-archive-button { min-height: 28px; display: inline-flex; align-items: center; gap: 4px; padding: 0 7px; border: 1px solid var(--flux-border); border-radius: 9px; background: var(--flux-soft); color: var(--flux-primary); font-size: 8px; }
+.flux-admin-archive-button svg { width: 12px; height: 12px; }
 .flux-admin-state { min-height: 145px; display: grid; place-content: center; gap: 9px; padding: 20px; border-radius: 20px; background: var(--flux-soft-2); color: var(--flux-muted); font-size: 10px; line-height: 1.45; text-align: center; }
 .flux-admin-state svg { width: 23px; height: 23px; justify-self: center; color: var(--flux-primary); }
 .flux-admin-state.is-error p { margin: 0; }

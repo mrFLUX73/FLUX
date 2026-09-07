@@ -115,6 +115,7 @@ export function ProfileScreen({
   onClose,
   onDone,
   onFeedback,
+  feedbackReplyCount,
   onSignOut,
   saving,
 }: {
@@ -126,6 +127,7 @@ export function ProfileScreen({
   onClose: () => void;
   onDone: () => Promise<void> | void;
   onFeedback: () => void;
+  feedbackReplyCount: number;
   onSignOut: () => Promise<void> | void;
   saving: boolean;
 }) {
@@ -280,8 +282,8 @@ export function ProfileScreen({
 
         <section className="flux-profile-card flux-profile-feedback">
           <div className="flux-profile-card-heading"><div><span>Обратная связь</span><strong>Помочь улучшить FLUX</strong></div><MessageCircle aria-hidden="true" /></div>
-          <p className="flux-profile-card-note">Ошибка, идея или вопрос — сообщение попадёт в рабочую очередь команды.</p>
-          <Button type="button" variant="secondary" onClick={onFeedback}>Написать команде</Button>
+          <p className="flux-profile-card-note">{feedbackReplyCount ? `Команда ответила на ${feedbackReplyCount} ${feedbackReplyCount === 1 ? 'обращение' : 'обращения'}.` : 'Ошибка, идея или вопрос — сообщение попадёт в рабочую очередь команды.'}</p>
+          <Button type="button" variant="secondary" onClick={onFeedback}>{feedbackReplyCount ? `Есть ответ от FLUX · ${feedbackReplyCount}` : 'Написать команде'}</Button>
         </section>
 
         <Button className="flux-profile-done" disabled={saving} size="lg" type="submit">{saving ? 'Сохраняю…' : 'Сохранить профиль'}</Button>
