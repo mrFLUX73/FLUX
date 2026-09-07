@@ -36,6 +36,22 @@ export type BarcodeLookupResult =
   | { status: 'incomplete'; name: string }
   | { status: 'error'; message: string };
 
+export type NutriapixSearchCandidate = {
+  name: string;
+  brand: string;
+  slug: string;
+};
+
+type NutriapixSearchResponse =
+  | { status: 'found'; candidates: NutriapixSearchCandidate[] }
+  | { status: 'not_found' }
+  | { status: 'error'; message: string };
+
+type NutriapixFoodResponse =
+  | { status: 'found'; product: Product }
+  | { status: 'not_found' }
+  | { status: 'error'; message: string };
+
 function number(value: unknown) {
   const parsed = typeof value === 'number' ? value : Number.parseFloat(String(value ?? '').replace(',', '.'));
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
@@ -136,4 +152,28 @@ export async function lookupProductByBarcode(barcode: string, signal?: AbortSign
   }
 
   return lookupOpenFoodFactsByBarcode(barcode, signal);
+}
+
+export async function searchNutriapixProducts(query: string, signal?: AbortSignal): Promise<NutriapixSearchResponse> {
+  const normalized = query.trim();
+  if (normalized.length < 3 || normalized.length > 100) return { status: 'not_found' };
+  try {
+    return await invokeSupabaseFunction<NutriapixSearchResponse>('product-search', {
+      mode: 'nutriapix-search', query: normalized,
+    }, signal);
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw error;
+    return { status: 'error', message: 'Поиск Nutriapix временно недоступен.' };
+  }
+}
+
+export async function getNutriapixProduct(slug: string, signal?: AbortSignal): Promise<NutriapixFoodResponse> {
+  try {
+    return await invokeSupabaseFunction<NutriapixFoodResponse>('product-search', {
+      mode: 'nutriapix-food', slug,
+    }, signal);
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw error;
+    return { status: 'error', message: 'Не удалось получить карточку продукта.' };
+  }
 }

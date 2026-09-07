@@ -596,7 +596,7 @@ async function loadRemoteEntries(client: SupabaseClient, userId: string, product
 
   const { data: items, error: itemsError } = await client
     .from('meal_items')
-    .select('id,meal_id,product_id,product_name,portion_quantity,portion_unit,amount_g,energy_kcal,protein_g,carbohydrates_g,fat_g')
+    .select('id,meal_id,product_id,product_name,portion_quantity,portion_unit,amount_g,energy_kcal,protein_g,carbohydrates_g,fat_g,external_source,external_food_id,external_brand_id,external_serving_id,external_brand_name')
     .in('meal_id', meals.map((meal) => meal.id));
   if (itemsError) throw itemsError;
 
@@ -615,7 +615,7 @@ async function loadRemoteEntries(client: SupabaseClient, userId: string, product
       entryId: item.id,
       mealId: item.meal_id,
       name: item.product_name,
-      brand: product?.brand ?? 'Без бренда',
+      brand: product?.brand ?? item.external_brand_name ?? 'Без бренда',
       amount,
       unit,
       servingSizeG: Number(item.amount_g),
@@ -624,6 +624,10 @@ async function loadRemoteEntries(client: SupabaseClient, userId: string, product
       fat: Math.round(Number(item.fat_g)),
       carbs: Math.round(Number(item.carbohydrates_g)),
       icon: product?.icon ?? 'curd',
+      source: item.external_source === 'nutriapix' ? 'nutriapix' : undefined,
+      externalFoodId: item.external_food_id ?? undefined,
+      externalBrandId: item.external_brand_id ?? undefined,
+      externalServingId: item.external_serving_id ?? undefined,
       meal: mealFromDatabase(meal.meal_type),
       time: formatTime(meal.eaten_at),
       eatenAt: meal.eaten_at,
@@ -664,7 +668,7 @@ async function loadRemotePreviousMealEntries(client: SupabaseClient, userId: str
 
   const { data: items, error: itemsError } = await client
     .from('meal_items')
-    .select('id,meal_id,product_id,product_name,portion_quantity,portion_unit,amount_g,energy_kcal,protein_g,carbohydrates_g,fat_g')
+    .select('id,meal_id,product_id,product_name,portion_quantity,portion_unit,amount_g,energy_kcal,protein_g,carbohydrates_g,fat_g,external_source,external_food_id,external_brand_id,external_serving_id,external_brand_name')
     .in('meal_id', meals.map((candidate) => candidate.id));
   if (itemsError) throw itemsError;
   if (!items?.length) return [];
@@ -691,7 +695,7 @@ async function loadRemotePreviousMealEntries(client: SupabaseClient, userId: str
       entryId: item.id,
       mealId: item.meal_id,
       name: item.product_name,
-      brand: product?.brand ?? 'Без бренда',
+      brand: product?.brand ?? item.external_brand_name ?? 'Без бренда',
       amount: Number(item.portion_quantity) || Number(item.amount_g),
       unit: unitFromDatabase(item.portion_unit),
       servingSizeG: Number(item.amount_g),
@@ -700,6 +704,10 @@ async function loadRemotePreviousMealEntries(client: SupabaseClient, userId: str
       fat: Math.round(Number(item.fat_g) * 10) / 10,
       carbs: Math.round(Number(item.carbohydrates_g) * 10) / 10,
       icon: product?.icon ?? 'curd',
+      source: item.external_source === 'nutriapix' ? 'nutriapix' : undefined,
+      externalFoodId: item.external_food_id ?? undefined,
+      externalBrandId: item.external_brand_id ?? undefined,
+      externalServingId: item.external_serving_id ?? undefined,
       meal: mealFromDatabase(storedMeal.meal_type),
       time: formatTime(storedMeal.eaten_at),
       eatenAt: storedMeal.eaten_at,
@@ -745,6 +753,31 @@ async function addRemoteMealEntryWithClient(
   scope: Extract<NutritionStorageScope, { kind: 'user' }>,
   entry: MealEntry,
 ) {
+  if (entry.source === 'nutriapix') {
+    if (!entry.externalFoodId) return false;
+    const { error } = await client.rpc('add_external_meal_item', {
+      p_source: 'nutriapix',
+      p_source_food_id: entry.externalFoodId,
+      p_source_brand_id: entry.externalBrandId ?? '',
+      p_source_serving_id: entry.externalServingId ?? '',
+      p_product_name: entry.name,
+      p_brand_name: entry.brand,
+      p_meal_type: mealToDatabase(entry.meal),
+      p_portion_quantity: entry.amount,
+      p_portion_unit: databaseUnit(entry.unit),
+      p_amount_g: entry.unit === 'шт' ? entry.servingSizeG : entry.amount,
+      p_energy_kcal: entry.kcal,
+      p_protein_g: entry.protein,
+      p_carbohydrates_g: entry.carbs,
+      p_fat_g: entry.fat,
+      p_eaten_at: entry.eatenAt,
+      p_meal_id: entry.mealId,
+      p_item_id: entry.entryId,
+    });
+    if (error) throw error;
+    markLocalAdditionSynced(scope, entry.entryId);
+    return true;
+  }
   if (!entry.productId) return false;
   const productId = await ensureRemoteProduct(client, scope, entry);
   const { error } = await client.rpc('add_meal_item', {
@@ -765,6 +798,22 @@ async function updateRemoteMealEntryWithClient(
   scope: Extract<NutritionStorageScope, { kind: 'user' }>,
   entry: MealEntry,
 ) {
+  if (entry.source === 'nutriapix') {
+    const { error } = await client.rpc('update_external_meal_item', {
+      p_item_id: entry.entryId,
+      p_meal_type: mealToDatabase(entry.meal),
+      p_portion_quantity: entry.amount,
+      p_portion_unit: databaseUnit(entry.unit),
+      p_amount_g: entry.unit === 'шт' ? entry.servingSizeG : entry.amount,
+      p_energy_kcal: entry.kcal,
+      p_protein_g: entry.protein,
+      p_carbohydrates_g: entry.carbs,
+      p_fat_g: entry.fat,
+    });
+    if (error) throw error;
+    markLocalUpdateSynced(scope, entry.entryId);
+    return true;
+  }
   const { error } = await client.rpc('update_meal_item', {
     p_item_id: entry.entryId,
     p_meal_type: mealToDatabase(entry.meal),
@@ -837,7 +886,7 @@ export async function bootstrapNutrition(scope: NutritionStorageScope, localEntr
 }
 
 export async function addRemoteMealEntry(scope: NutritionStorageScope, entry: MealEntry) {
-  if (!isSupabaseConfigured || scope.kind !== 'user' || !entry.productId) return false;
+  if (!isSupabaseConfigured || scope.kind !== 'user' || (!entry.productId && entry.source !== 'nutriapix')) return false;
   const client = await getSupabaseClientForUser(scope.userId);
   return addRemoteMealEntryWithClient(client, scope, entry);
 }

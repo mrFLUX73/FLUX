@@ -31,6 +31,10 @@ type Product = {
   fat: number;
   carbs: number;
   icon: "wheat" | "curd" | "banana" | "coffee";
+  source?: "nutriapix";
+  externalFoodId?: string;
+  externalBrandId?: string;
+  externalServingId?: string;
 };
 
 type SearchResult =
@@ -38,6 +42,20 @@ type SearchResult =
   | { status: "incomplete"; name: string }
   | { status: "not_found" }
   | { status: "error"; message: string };
+
+type NutriapixCandidate = { name: string; brand: string; slug: string };
+type NutriapixSearchResult =
+  | { status: "found"; candidates: NutriapixCandidate[] }
+  | { status: "not_found" }
+  | { status: "error"; message: string };
+type NutriapixFoodResult =
+  | { status: "found"; product: Product }
+  | { status: "not_found" }
+  | { status: "error"; message: string };
+type FunctionResult = SearchResult | NutriapixSearchResult | NutriapixFoodResult;
+type CachedNutriapixFood = { expiresAt: number; result: NutriapixFoodResult };
+const nutriapixFoodCache = new Map<string, CachedNutriapixFood>();
+const NUTRIAPIX_CACHE_MS = 24 * 60 * 60 * 1000;
 
 type NameCandidate = { name: string; rating: number };
 type FatSecretHit = {
@@ -61,7 +79,7 @@ function corsHeaders(request: Request) {
   };
 }
 
-function json(request: Request, body: SearchResult | { error: string }, status = 200) {
+function json(request: Request, body: FunctionResult | { error: string }, status = 200) {
   return Response.json(body, { status, headers: corsHeaders(request) });
 }
 
@@ -312,16 +330,135 @@ async function lookupFatSecret(barcode: string, rawName: string): Promise<Search
   };
 }
 
+function text(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function nutriapixNumber(value: unknown) {
+  const parsed = typeof value === "number" ? value : Number.parseFloat(String(value ?? "").replace(",", "."));
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function nutriapixServing(food: Record<string, unknown>) {
+  const servings = Array.isArray(food.servings) ? food.servings.filter((value): value is Record<string, unknown> => Boolean(value && typeof value === "object")) : [];
+  const source = servings.find((serving) => serving.is_default === true) ?? servings[0];
+  const amount = nutriapixNumber(source?.metric_serving_amount) ?? 100;
+  const rawUnit = text(source?.metric_serving_unit).toLocaleLowerCase("ru");
+  const isLiquid = /мл|ml|миллилитр/.test(rawUnit) || /напит|сок|вода|чай|кофе/.test(`${text(food.category)} ${text(food.food_name)}`.toLocaleLowerCase("ru"));
+  return {
+    amount: rounded(amount),
+    unit: isLiquid ? "мл" as const : "г" as const,
+    servingSizeG: rounded(amount),
+    servingId: text(source?.serving_id),
+  };
+}
+
+async function nutriapixFetch(path: string) {
+  const apiKey = Deno.env.get("NUTRIAPIX_API_KEY");
+  if (!apiKey) throw new Error("Ключ Nutriapix не настроен на сервере.");
+  return fetchWithTimeout(`https://nutriapix.ru/api/v1${path}`, 6500, {
+    Accept: "application/json",
+    "NUTRIAPIX-API-KEY": apiKey,
+  });
+}
+
+async function searchNutriapix(query: string): Promise<NutriapixSearchResult> {
+  try {
+    const url = new URL("https://nutriapix.ru/api/v1/food/search");
+    url.searchParams.set("q", query);
+    url.searchParams.set("page", "1");
+    url.searchParams.set("limit", "8");
+    const apiKey = Deno.env.get("NUTRIAPIX_API_KEY");
+    if (!apiKey) return { status: "error", message: "Ключ Nutriapix не настроен на сервере." };
+    const response = await fetchWithTimeout(url.toString(), 6500, { Accept: "application/json", "NUTRIAPIX-API-KEY": apiKey });
+    if (response.status === 404) return { status: "not_found" };
+    if (response.status === 429) return { status: "error", message: "Nutriapix временно ограничил частоту поиска. Попробуйте чуть позже." };
+    if (!response.ok) return { status: "error", message: `Nutriapix временно недоступен (HTTP ${response.status}).` };
+    const payload = await response.json() as Record<string, unknown>;
+    const rows = Array.isArray(payload.results) ? payload.results : [];
+    const candidates = rows.flatMap((row): NutriapixCandidate[] => {
+      if (!row || typeof row !== "object") return [];
+      const record = row as Record<string, unknown>;
+      const name = text(record.food_name);
+      const slug = text(record.food_slug);
+      return name && slug ? [{ name, slug, brand: text(record.food_brand) || "Без бренда" }] : [];
+    });
+    return candidates.length ? { status: "found", candidates } : { status: "not_found" };
+  } catch (error) {
+    return { status: "error", message: error instanceof Error ? error.message : "Не удалось связаться с Nutriapix." };
+  }
+}
+
+async function getNutriapixFood(slug: string): Promise<NutriapixFoodResult> {
+  const cached = nutriapixFoodCache.get(slug);
+  if (cached && cached.expiresAt > Date.now()) return cached.result;
+  nutriapixFoodCache.delete(slug);
+  let result: NutriapixFoodResult;
+  try {
+    const response = await nutriapixFetch(`/food?slug=${encodeURIComponent(slug)}`);
+    if (response.status === 404) result = { status: "not_found" };
+    else if (response.status === 429) result = { status: "error", message: "Nutriapix временно ограничил запросы карточек. Попробуйте чуть позже." };
+    else if (!response.ok) result = { status: "error", message: `Nutriapix временно недоступен (HTTP ${response.status}).` };
+    else {
+      const food = await response.json() as Record<string, unknown>;
+      const kcal = nutriapixNumber((food.nutritions as Record<string, unknown> | undefined)?.calories);
+      const protein = nutriapixNumber(((food.nutritions as Record<string, unknown> | undefined)?.protein as Record<string, unknown> | undefined)?.total_protein);
+      const fat = nutriapixNumber(((food.nutritions as Record<string, unknown> | undefined)?.fat as Record<string, unknown> | undefined)?.total_fat);
+      const carbs = nutriapixNumber(((food.nutritions as Record<string, unknown> | undefined)?.carbohydrate as Record<string, unknown> | undefined)?.total_carbohydrate);
+      const name = text(food.food_name);
+      const foodId = text(food.food_id);
+      if (!name || !foodId || kcal === null || protein === null || fat === null || carbs === null) result = { status: "error", message: "В карточке Nutriapix не хватает полного КБЖУ." };
+      else {
+        const serving = nutriapixServing(food);
+        const scale = serving.servingSizeG / 100;
+        result = { status: "found", product: {
+          id: `nutriapix:${foodId}`,
+          name,
+          brand: text(food.brand_name) || "Без бренда",
+          amount: serving.amount,
+          unit: serving.unit,
+          servingSizeG: serving.servingSizeG,
+          kcal: Math.round(kcal * scale),
+          protein: rounded(protein * scale),
+          fat: rounded(fat * scale),
+          carbs: rounded(carbs * scale),
+          icon: productIcon(`${name} ${text(food.category)}`),
+          source: "nutriapix",
+          externalFoodId: foodId,
+          externalBrandId: text(food.brand_id),
+          externalServingId: serving.servingId,
+        }};
+      }
+    }
+  } catch (error) {
+    result = { status: "error", message: error instanceof Error ? error.message : "Не удалось связаться с Nutriapix." };
+  }
+  nutriapixFoodCache.set(slug, { result, expiresAt: Date.now() + NUTRIAPIX_CACHE_MS });
+  return result;
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(request) });
   if (request.method !== "POST") return json(request, { error: "Method not allowed" }, 405);
 
-  let barcode = "";
+  let payload: Record<string, unknown> = {};
   try {
-    barcode = String((await request.json())?.barcode ?? "").replace(/\D/g, "");
+    const body = await request.json();
+    payload = body && typeof body === "object" ? body as Record<string, unknown> : {};
   } catch {
     return json(request, { error: "Некорректный JSON" }, 400);
   }
+  if (payload.mode === "nutriapix-search") {
+    const query = text(payload.query);
+    if (query.length < 3 || query.length > 100) return json(request, { error: "Введите от 3 до 100 символов для поиска" }, 400);
+    return json(request, await searchNutriapix(query));
+  }
+  if (payload.mode === "nutriapix-food") {
+    const slug = text(payload.slug);
+    if (slug.length < 3 || slug.length > 100) return json(request, { error: "Некорректный идентификатор продукта" }, 400);
+    return json(request, await getNutriapixFood(slug));
+  }
+  const barcode = String(payload.barcode ?? "").replace(/\D/g, "");
   if (!/^\d{8,14}$/.test(barcode)) return json(request, { error: "Некорректный штрихкод" }, 400);
 
   const offPromise = lookupOpenFoodFacts(barcode);

@@ -61,7 +61,7 @@ import { Progress } from '@/components/ui/progress';
 import { Toaster, toast } from '@/components/ui/toast';
 import { fallbackProducts, matchesProductSearch, productSearchRank } from './features/nutrition/catalog';
 import { decodeBarcodeImage, startBarcodeScanner, type BarcodeScannerSession } from './features/nutrition/barcodeScanner';
-import { lookupProductByBarcode } from './features/nutrition/productSearch';
+import { getNutriapixProduct, lookupProductByBarcode, searchNutriapixProducts, type NutriapixSearchCandidate } from './features/nutrition/productSearch';
 import {
   addRemoteMealEntry,
   bootstrapNutrition,
@@ -240,6 +240,10 @@ function QuickAddDrawer({
   const [manualProductOpen, setManualProductOpen] = useState(false);
   const [manualProduct, setManualProduct] = useState<ManualProductDraft>(() => emptyManualProduct());
   const [barcodeProducts, setBarcodeProducts] = useState<Product[]>([]);
+  const [nameCandidates, setNameCandidates] = useState<NutriapixSearchCandidate[]>([]);
+  const [nameLookupState, setNameLookupState] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [nameLookupMessage, setNameLookupMessage] = useState('');
+  const [selectingCandidate, setSelectingCandidate] = useState('');
   const [lookupState, setLookupState] = useState<'idle' | 'loading' | 'found' | 'not_found' | 'incomplete' | 'error'>('idle');
   const [lookupMessage, setLookupMessage] = useState('');
   const [lookupProductName, setLookupProductName] = useState('');
@@ -266,6 +270,10 @@ function QuickAddDrawer({
     setManualProductOpen(false);
     setManualProduct(emptyManualProduct());
     setBarcodeProducts([]);
+    setNameCandidates([]);
+    setNameLookupState('idle');
+    setNameLookupMessage('');
+    setSelectingCandidate('');
     setLookupState('idle');
     setLookupMessage('');
     setLookupProductName('');
@@ -410,6 +418,40 @@ function QuickAddDrawer({
     };
   }, [barcodeQuery, isBarcodeQuery, open, products]);
 
+  useEffect(() => {
+    const normalized = query.trim();
+    if (!open || isBarcodeQuery || normalized.length < 3) {
+      setNameCandidates([]);
+      setNameLookupState('idle');
+      setNameLookupMessage('');
+      return;
+    }
+    const controller = new AbortController();
+    let active = true;
+    setNameLookupState('loading');
+    setNameLookupMessage('');
+    const timer = window.setTimeout(async () => {
+      try {
+        const result = await searchNutriapixProducts(normalized, controller.signal);
+        if (!active) return;
+        if (result.status === 'found') {
+          setNameCandidates(result.candidates);
+          setNameLookupState('idle');
+          return;
+        }
+        setNameCandidates([]);
+        setNameLookupState(result.status === 'error' ? 'error' : 'idle');
+        setNameLookupMessage(result.status === 'error' ? result.message : '');
+      } catch (error) {
+        if (!active || (error instanceof DOMException && error.name === 'AbortError')) return;
+        setNameCandidates([]);
+        setNameLookupState('error');
+        setNameLookupMessage('Поиск Nutriapix временно недоступен.');
+      }
+    }, 400);
+    return () => { active = false; window.clearTimeout(timer); controller.abort(); };
+  }, [isBarcodeQuery, open, query]);
+
   const recentIds = [...entries]
     .sort((a, b) => b.eatenAt.localeCompare(a.eatenAt))
     .map((entry) => entry.productId)
@@ -445,6 +487,19 @@ function QuickAddDrawer({
     setAmount(product.amount);
     setScannerOpen(false);
     setManualProductOpen(false);
+  }
+
+  async function chooseNutriapixCandidate(candidate: NutriapixSearchCandidate) {
+    if (selectingCandidate) return;
+    const controller = new AbortController();
+    setSelectingCandidate(candidate.slug);
+    try {
+      const result = await getNutriapixProduct(candidate.slug, controller.signal);
+      if (result.status === 'found') choose(result.product);
+      else toast.add({ title: 'Карточка пока недоступна', description: result.status === 'error' ? result.message : 'Попробуйте выбрать другой результат или добавьте продукт вручную.', type: 'warning' });
+    } finally {
+      setSelectingCandidate('');
+    }
   }
 
   function updateManualProduct(field: keyof ManualProductDraft, value: string) {
@@ -547,6 +602,10 @@ function QuickAddDrawer({
       setManualProductOpen(false);
       setManualProduct(emptyManualProduct());
       setBarcodeProducts([]);
+      setNameCandidates([]);
+      setNameLookupState('idle');
+      setNameLookupMessage('');
+      setSelectingCandidate('');
       setLookupState('idle');
       setLookupMessage('');
     }, 250);
@@ -569,6 +628,10 @@ function QuickAddDrawer({
         setManualProductOpen(false);
         setManualProduct(emptyManualProduct());
         setBarcodeProducts([]);
+        setNameCandidates([]);
+        setNameLookupState('idle');
+        setNameLookupMessage('');
+        setSelectingCandidate('');
         setLookupState('idle');
         setLookupMessage('');
       }, 250);
@@ -589,7 +652,7 @@ function QuickAddDrawer({
   const numericAmount = typeof amount === 'number' ? amount : 0;
   const scale = selected ? numericAmount / selected.amount : 1;
   const selectedSource = selected ? productLookupSource(selected) : null;
-  const selectedIsNewToCatalog = Boolean(selected?.barcode && !products.some((product) => product.barcode === selected.barcode));
+  const selectedIsNewToCatalog = Boolean(selected && selected.source !== 'nutriapix' && selected.barcode && !products.some((product) => product.barcode === selected.barcode));
   const amountStep = selected?.unit === 'шт' ? 1 : 10;
   const amountMinimum = selected?.unit === 'шт' ? 1 : 10;
   const portionPresets = selected
@@ -688,7 +751,9 @@ function QuickAddDrawer({
                 <span><Check /></span>
                 <p>
                   <strong>{selectedSource ? `Найдено через ${selectedSource}` : 'Продукт из вашего каталога'}</strong>
-                  {selectedIsNewToCatalog
+                  {selected.source === 'nutriapix'
+                    ? 'КБЖУ показаны из Nutriapix. В дневник сохранится выбранная порция, а карточка не будет добавлена в каталог.'
+                    : selectedIsNewToCatalog
                     ? 'Сверьте название и КБЖУ с упаковкой. После добавления сохраним продукт в вашем каталоге.'
                     : 'Можно сразу добавить — этот продукт уже сохранён в вашем каталоге.'}
                 </p>
@@ -776,6 +841,15 @@ function QuickAddDrawer({
                   </div>
                 );
               })}
+              {!isBarcodeQuery && nameLookupState === 'loading' && <div className="flux-lookup-state"><LoaderCircle className="is-spinning" /><span>Ищем в Nutriapix…</span></div>}
+              {!isBarcodeQuery && nameCandidates.map((candidate) => (
+                <button type="button" className="flux-product-row" key={candidate.slug} onClick={() => { void chooseNutriapixCandidate(candidate); }} disabled={Boolean(selectingCandidate)}>
+                  <span className="flux-food-icon"><ProductIcon type="curd" /></span>
+                  <span><strong>{candidate.name}</strong><small>{candidate.brand} · Nutriapix</small></span>
+                  {selectingCandidate === candidate.slug ? <LoaderCircle className="is-spinning" /> : <ChevronRight aria-hidden="true" />}
+                </button>
+              ))}
+              {!isBarcodeQuery && nameLookupState === 'error' && <div className="flux-lookup-state is-error"><span>{nameLookupMessage}</span></div>}
               {filtered.length === 0 && lookupState !== 'loading' && (
                 <div className="flux-empty">
                   <strong>{isBarcodeQuery && lookupState === 'incomplete' ? 'Нужно дополнить КБЖУ' : 'Ничего не нашли'}</strong>
@@ -1818,7 +1892,7 @@ export default function App() {
 
   async function addProduct(product: Product, amount = product.amount, meal: MealKind = currentMeal()) {
     const scope = diary.scope;
-    const productIsNewToCatalog = !catalog.some((candidate) => product.barcode
+    const productIsNewToCatalog = product.source !== 'nutriapix' && !catalog.some((candidate) => product.barcode
       ? candidate.barcode === product.barcode
       : candidate.id === product.id);
     const scale = amount / product.amount;
@@ -1832,7 +1906,7 @@ export default function App() {
       carbs: Math.round(product.carbs * scale * 10) / 10,
       entryId: crypto.randomUUID(),
       mealId: crypto.randomUUID(),
-      productId: product.id,
+      productId: product.source === 'nutriapix' ? null : product.id,
       meal,
       time: new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit' }).format(new Date(eatenAt)),
       eatenAt,
