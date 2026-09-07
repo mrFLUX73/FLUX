@@ -83,7 +83,7 @@ export function productSearchRank(product: Product, query: string) {
   // When a preparation method was not requested, a neutral product is the
   // safer default than a cooked variation. "варёное яйцо" still ranks the
   // cooked result first because that word is explicitly present in the query.
-  if (hasPreparation && !queryHasPreparation) rank -= 70;
+  if (hasPreparation && !queryHasPreparation) rank -= 200;
   if (nameTokens.length === 1) rank += 8;
   return rank;
 }
