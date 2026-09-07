@@ -850,7 +850,7 @@ function QuickAddDrawer({
                 </button>
               ))}
               {!isBarcodeQuery && nameLookupState === 'error' && <div className="flux-lookup-state is-error"><span>{nameLookupMessage}</span></div>}
-              {filtered.length === 0 && lookupState !== 'loading' && (
+              {filtered.length === 0 && nameCandidates.length === 0 && lookupState !== 'loading' && nameLookupState !== 'loading' && (
                 <div className="flux-empty">
                   <strong>{isBarcodeQuery && lookupState === 'incomplete' ? 'Нужно дополнить КБЖУ' : 'Ничего не нашли'}</strong>
                   <span>{isBarcodeQuery ? lookupMessage || 'Введите от 8 до 14 цифр штрихкода.' : 'Укажите КБЖУ с упаковки — продукт сохранится в вашем каталоге.'}</span>
