@@ -488,7 +488,7 @@ function QuickAddDrawer({
   }
 
   function openManualProduct() {
-    setManualProduct(emptyManualProduct(lookupProductName));
+    setManualProduct(emptyManualProduct(isBarcodeQuery ? lookupProductName : query.trim()));
     setManualProductOpen(true);
   }
 
@@ -510,8 +510,8 @@ function QuickAddDrawer({
     if (!manualProductIsValid || manualAmount === null || manualKcal === null || manualProtein === null || manualFat === null || manualCarbs === null) return;
     const scale = manualAmount / 100;
     choose({
-      id: `manual-barcode:${barcodeQuery}:${Date.now()}`,
-      barcode: barcodeQuery,
+      id: isBarcodeQuery ? `manual-barcode:${barcodeQuery}:${Date.now()}` : `manual:${Date.now()}`,
+      ...(isBarcodeQuery ? { barcode: barcodeQuery } : {}),
       name: manualProduct.name.trim(),
       brand: manualProduct.brand.trim() || 'Без бренда',
       amount: manualAmount,
@@ -603,7 +603,7 @@ function QuickAddDrawer({
           {(scannerOpen || manualProductOpen) && <button type="button" className="flux-drawer-back" onClick={() => scannerOpen ? setScannerOpen(false) : setManualProductOpen(false)} aria-label="Назад к поиску"><ArrowLeft /></button>}
           <div>
             <DrawerTitle>{scannerOpen ? 'Сканировать штрихкод' : manualProductOpen ? 'Новый продукт' : selected ? selected.name : 'Добавить еду'}</DrawerTitle>
-            <DrawerDescription>{scannerOpen ? 'Наведите камеру на код упаковки' : manualProductOpen ? `Штрихкод ${barcodeQuery}` : selected ? selected.brand : `Сегодня · ${meal}`}</DrawerDescription>
+            <DrawerDescription>{scannerOpen ? 'Наведите камеру на код упаковки' : manualProductOpen ? (isBarcodeQuery ? `Штрихкод ${barcodeQuery}` : 'Укажите данные с упаковки') : selected ? selected.brand : `Сегодня · ${meal}`}</DrawerDescription>
           </div>
         </DrawerHeader>
         {!scannerOpen && !manualProductOpen && <div className="flux-meal-picker" role="group" aria-label="Приём пищи">
@@ -773,8 +773,8 @@ function QuickAddDrawer({
               {filtered.length === 0 && lookupState !== 'loading' && (
                 <div className="flux-empty">
                   <strong>{isBarcodeQuery && lookupState === 'incomplete' ? 'Нужно дополнить КБЖУ' : 'Ничего не нашли'}</strong>
-                  <span>{isBarcodeQuery ? lookupMessage || 'Введите от 8 до 14 цифр штрихкода.' : 'Проверьте название — создание своего продукта добавим следующим шагом.'}</span>
-                  {isBarcodeQuery && ['not_found', 'incomplete', 'error'].includes(lookupState) && <Button variant="secondary" onClick={openManualProduct}><Plus /> Добавить вручную</Button>}
+                  <span>{isBarcodeQuery ? lookupMessage || 'Введите от 8 до 14 цифр штрихкода.' : 'Укажите КБЖУ с упаковки — продукт сохранится в вашем каталоге.'}</span>
+                  {((isBarcodeQuery && ['not_found', 'incomplete', 'error'].includes(lookupState)) || (!isBarcodeQuery && query.trim())) && <Button variant="secondary" onClick={openManualProduct}><Plus /> {isBarcodeQuery ? 'Добавить вручную' : `Добавить «${query.trim()}» вручную`}</Button>}
                 </div>
               )}
             </section>
@@ -1805,7 +1805,9 @@ export default function App() {
 
   async function addProduct(product: Product, amount = product.amount, meal: MealKind = currentMeal()) {
     const scope = diary.scope;
-    const productIsNewToCatalog = Boolean(product.barcode && !catalog.some((candidate) => candidate.barcode === product.barcode));
+    const productIsNewToCatalog = !catalog.some((candidate) => product.barcode
+      ? candidate.barcode === product.barcode
+      : candidate.id === product.id);
     const scale = amount / product.amount;
     const eatenAt = new Date().toISOString();
     const entry: MealEntry = {
@@ -1827,12 +1829,14 @@ export default function App() {
       toast.add({ title: 'Не удалось сохранить запись', description: 'Локальное хранилище недоступно. Попробуйте ещё раз.', type: 'error' });
       return;
     }
-    const productWasStoredLocally = !product.barcode || persistLocalProduct(scope, product);
+    const productWasStoredLocally = !productIsNewToCatalog || persistLocalProduct(scope, product);
     nutritionEditRevision.current += 1;
     if (scope.kind === 'guest') setGuestDiaryEntryCount(countGuestDiaryEntries());
     setEntries((current) => [...current, entry]);
-    if (product.barcode) {
-      setCatalog((current) => current.some((candidate) => candidate.barcode === product.barcode)
+    if (productIsNewToCatalog) {
+      setCatalog((current) => current.some((candidate) => product.barcode
+        ? candidate.barcode === product.barcode
+        : candidate.id === product.id)
         ? current
         : [...current, product]);
     }

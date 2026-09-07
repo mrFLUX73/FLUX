@@ -193,7 +193,7 @@ function readLocalProducts(scope: NutritionStorageScope): Product[] {
 function persistLocalProducts(scope: NutritionStorageScope, products: Product[]) {
   const deduplicated = new Map<string, Product>();
   for (const product of products) {
-    deduplicated.set(product.barcode ? `barcode:${product.barcode}` : `id:${product.id}`, product);
+    deduplicated.set(productKey(product), product);
   }
   const envelope: ProductCatalogEnvelope = {
     version: 1,
@@ -203,11 +203,19 @@ function persistLocalProducts(scope: NutritionStorageScope, products: Product[])
   window.localStorage.setItem(productCatalogKey(scope), JSON.stringify(envelope));
 }
 
+function productKey(product: Product) {
+  if (product.barcode) return `barcode:${product.barcode}`;
+  // A manual product receives a local temporary id before it is synchronised.
+  // Name + brand lets the server-owned copy replace that temporary copy after
+  // the next bootstrap, instead of showing the same product twice.
+  return `name:${product.name.trim().toLocaleLowerCase('ru')}|${product.brand.trim().toLocaleLowerCase('ru')}`;
+}
+
 function mergeProducts(...lists: Product[][]) {
   const merged = new Map<string, Product>();
   for (const products of lists) {
     for (const product of products) {
-      merged.set(product.barcode ? `barcode:${product.barcode}` : `id:${product.id}`, product);
+      merged.set(productKey(product), product);
     }
   }
   return [...merged.values()];
@@ -515,14 +523,20 @@ async function ensureRemoteProduct(
   product: Product,
 ) {
   if (isDatabaseProductId(product.id)) return product.id;
-  if (!product.barcode) throw new Error('У продукта нет штрихкода');
 
   const selection = 'id,barcode,name,brand,category,serving_size_g,serving_unit,default_serving_quantity,energy_kcal_per_100g,protein_g_per_100g,carbohydrates_g_per_100g,fat_g_per_100g';
-  const { data: existing, error: existingError } = await client
-    .from('products')
-    .select(selection)
-    .eq('barcode', product.barcode)
-    .limit(1);
+  let existingQuery = client.from('products').select(selection).limit(1);
+  if (product.barcode) {
+    existingQuery = existingQuery.eq('barcode', product.barcode);
+  } else {
+    existingQuery = existingQuery
+      .eq('owner_id', scope.userId)
+      .eq('name', product.name);
+    existingQuery = product.brand === 'Без бренда'
+      ? existingQuery.is('brand', null)
+      : existingQuery.eq('brand', product.brand);
+  }
+  const { data: existing, error: existingError } = await existingQuery;
   if (existingError) throw existingError;
   if (existing?.[0]) return existing[0].id as string;
 
@@ -532,7 +546,7 @@ async function ensureRemoteProduct(
     barcode: product.barcode,
     name: product.name,
     brand: product.brand === 'Без бренда' ? null : product.brand,
-    category: 'Добавлено по штрихкоду',
+    category: product.barcode ? 'Добавлено по штрихкоду' : 'Добавлено вручную',
     serving_size_g: product.servingSizeG,
     serving_unit: databaseUnit(product.unit),
     default_serving_quantity: product.amount,
