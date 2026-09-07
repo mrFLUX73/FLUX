@@ -20,7 +20,7 @@ const OFF_FIELDS = [
 
 type Product = {
   id: string;
-  barcode: string;
+  barcode?: string;
   name: string;
   brand: string;
   amount: number;
@@ -38,7 +38,7 @@ type Product = {
 };
 
 type SearchResult =
-  | { status: "found"; product: Product; source: "Open Food Facts" | "FatSecret" }
+  | { status: "found"; product: Product; source: "Nutriapix" | "Open Food Facts" | "FatSecret" }
   | { status: "incomplete"; name: string }
   | { status: "not_found" }
   | { status: "error"; message: string };
@@ -474,52 +474,65 @@ async function searchNutriapix(query: string): Promise<NutriapixSearchResult> {
   }
 }
 
-async function getNutriapixFood(slug: string): Promise<NutriapixFoodResult> {
-  const cached = nutriapixFoodCache.get(slug);
+function nutriapixFoodResult(food: Record<string, unknown>, barcode?: string): NutriapixFoodResult {
+  const kcal = nutriapixNumber((food.nutritions as Record<string, unknown> | undefined)?.calories);
+  const protein = nutriapixNumber(((food.nutritions as Record<string, unknown> | undefined)?.protein as Record<string, unknown> | undefined)?.total_protein);
+  const fat = nutriapixNumber(((food.nutritions as Record<string, unknown> | undefined)?.fat as Record<string, unknown> | undefined)?.total_fat);
+  const carbs = nutriapixNumber(((food.nutritions as Record<string, unknown> | undefined)?.carbohydrate as Record<string, unknown> | undefined)?.total_carbohydrate);
+  const name = text(food.food_name);
+  const foodId = text(food.food_id);
+  if (!name || !foodId || kcal === null || protein === null || fat === null || carbs === null) {
+    return { status: "error", message: "В карточке Nutriapix не хватает полного КБЖУ." };
+  }
+  const serving = nutriapixServing(food);
+  const scale = serving.servingSizeG / 100;
+  return { status: "found", product: {
+    id: `nutriapix:${foodId}`,
+    ...(barcode ? { barcode } : {}),
+    name,
+    brand: text(food.brand_name) || "Без бренда",
+    amount: serving.amount,
+    unit: serving.unit,
+    servingSizeG: serving.servingSizeG,
+    kcal: Math.round(kcal * scale),
+    protein: rounded(protein * scale),
+    fat: rounded(fat * scale),
+    carbs: rounded(carbs * scale),
+    icon: productIcon(`${name} ${text(food.category)}`),
+    source: "nutriapix",
+    externalFoodId: foodId,
+    externalBrandId: text(food.brand_id),
+    externalServingId: serving.servingId,
+  }};
+}
+
+async function getNutriapixFood(cacheKey: string, path: string, barcode?: string): Promise<NutriapixFoodResult> {
+  const cached = nutriapixFoodCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.result;
-  nutriapixFoodCache.delete(slug);
+  nutriapixFoodCache.delete(cacheKey);
   let result: NutriapixFoodResult;
   try {
-    const response = await nutriapixFetch(`/food?slug=${encodeURIComponent(slug)}`);
+    const response = await nutriapixFetch(path);
     if (response.status === 404) result = { status: "not_found" };
     else if (response.status === 429) result = { status: "error", message: "Nutriapix временно ограничил запросы карточек. Попробуйте чуть позже." };
     else if (!response.ok) result = { status: "error", message: `Nutriapix временно недоступен (HTTP ${response.status}).` };
-    else {
-      const food = await response.json() as Record<string, unknown>;
-      const kcal = nutriapixNumber((food.nutritions as Record<string, unknown> | undefined)?.calories);
-      const protein = nutriapixNumber(((food.nutritions as Record<string, unknown> | undefined)?.protein as Record<string, unknown> | undefined)?.total_protein);
-      const fat = nutriapixNumber(((food.nutritions as Record<string, unknown> | undefined)?.fat as Record<string, unknown> | undefined)?.total_fat);
-      const carbs = nutriapixNumber(((food.nutritions as Record<string, unknown> | undefined)?.carbohydrate as Record<string, unknown> | undefined)?.total_carbohydrate);
-      const name = text(food.food_name);
-      const foodId = text(food.food_id);
-      if (!name || !foodId || kcal === null || protein === null || fat === null || carbs === null) result = { status: "error", message: "В карточке Nutriapix не хватает полного КБЖУ." };
-      else {
-        const serving = nutriapixServing(food);
-        const scale = serving.servingSizeG / 100;
-        result = { status: "found", product: {
-          id: `nutriapix:${foodId}`,
-          name,
-          brand: text(food.brand_name) || "Без бренда",
-          amount: serving.amount,
-          unit: serving.unit,
-          servingSizeG: serving.servingSizeG,
-          kcal: Math.round(kcal * scale),
-          protein: rounded(protein * scale),
-          fat: rounded(fat * scale),
-          carbs: rounded(carbs * scale),
-          icon: productIcon(`${name} ${text(food.category)}`),
-          source: "nutriapix",
-          externalFoodId: foodId,
-          externalBrandId: text(food.brand_id),
-          externalServingId: serving.servingId,
-        }};
-      }
-    }
+    else result = nutriapixFoodResult(await response.json() as Record<string, unknown>, barcode);
   } catch (error) {
     result = { status: "error", message: error instanceof Error ? error.message : "Не удалось связаться с Nutriapix." };
   }
-  nutriapixFoodCache.set(slug, { result, expiresAt: Date.now() + NUTRIAPIX_CACHE_MS });
+  nutriapixFoodCache.set(cacheKey, { result, expiresAt: Date.now() + NUTRIAPIX_CACHE_MS });
   return result;
+}
+
+function getNutriapixFoodBySlug(slug: string) {
+  return getNutriapixFood(`slug:${slug}`, `/food?slug=${encodeURIComponent(slug)}`);
+}
+
+async function lookupNutriapixBarcode(barcode: string): Promise<SearchResult> {
+  const result = await getNutriapixFood(`barcode:${barcode}`, `/food?barcode=${encodeURIComponent(barcode)}`, barcode);
+  if (result.status === "found") return { status: "found", source: "Nutriapix", product: result.product };
+  if (result.status === "error") return result;
+  return { status: "not_found" };
 }
 
 Deno.serve(async (request) => {
@@ -541,14 +554,16 @@ Deno.serve(async (request) => {
   if (payload.mode === "nutriapix-food") {
     const slug = text(payload.slug);
     if (slug.length < 3 || slug.length > 100) return json(request, { error: "Некорректный идентификатор продукта" }, 400);
-    return json(request, await getNutriapixFood(slug));
+    return json(request, await getNutriapixFoodBySlug(slug));
   }
   const barcode = String(payload.barcode ?? "").replace(/\D/g, "");
   if (!/^\d{8,14}$/.test(barcode)) return json(request, { error: "Некорректный штрихкод" }, 400);
 
+  const nutriapixPromise = lookupNutriapixBarcode(barcode);
   const offPromise = lookupOpenFoodFacts(barcode);
   const namePromise = lookupBarcodeName(barcode);
-  const off = await offPromise;
+  const [nutriapix, off] = await Promise.all([nutriapixPromise, offPromise]);
+  if (nutriapix.status === "found") return json(request, nutriapix);
   if (off.status === "found") return json(request, off);
 
   const rawName = await namePromise;

@@ -31,7 +31,7 @@ type OpenFoodFactsResponse = {
 };
 
 export type BarcodeLookupResult =
-  | { status: 'found'; product: Product; source: 'Open Food Facts' | 'FatSecret' }
+  | { status: 'found'; product: Product; source: 'Nutriapix' | 'Open Food Facts' | 'FatSecret' }
   | { status: 'not_found' }
   | { status: 'incomplete'; name: string }
   | { status: 'error'; message: string };

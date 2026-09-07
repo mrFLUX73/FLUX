@@ -59,11 +59,16 @@ export function matchesProductSearch(product: Product, query: string) {
   const queryTokens = searchTokens(query);
   if (!queryTokens.length) return true;
   const productTokens = searchTokens(`${product.name} ${product.brand} ${product.barcode ?? ''}`);
-  return queryTokens.every((queryToken) => productTokens.some((productToken) => (
-    productToken.includes(queryToken)
-    || searchStem(productToken).includes(searchStem(queryToken))
-    || searchStem(queryToken).includes(searchStem(productToken))
-  )));
+  return queryTokens.every((queryToken) => {
+    // A barcode must be a full match. Treating digits like words made a code
+    // containing "5" match any product labelled "5%" (for example, curd).
+    if (/^\d+$/u.test(queryToken)) return productTokens.some((productToken) => productToken === queryToken);
+    return productTokens.some((productToken) => (
+      productToken.includes(queryToken)
+      || searchStem(productToken).includes(searchStem(queryToken))
+      || searchStem(queryToken).includes(searchStem(productToken))
+    ));
+  });
 }
 
 export function productSearchRank(product: Product, query: string) {

@@ -178,6 +178,7 @@ function ProductIcon({ type }: { type: Product['icon'] }) {
 }
 
 function productLookupSource(product: Product) {
+  if (product.id.startsWith('nutriapix:')) return 'Nutriapix';
   if (product.id.startsWith('open-food-facts:')) return 'Open Food Facts';
   if (product.id.startsWith('fatsecret:')) return 'FatSecret';
   if (product.id.startsWith('manual-barcode:')) return 'вручную';
