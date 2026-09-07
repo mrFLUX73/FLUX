@@ -108,8 +108,21 @@ function isValidFullName(value: string) {
     && parts.every((part) => /^[\p{L}][\p{L}'’\-]*$/u.test(part));
 }
 
+// A login is deliberately stored in ASCII so it can be used as a technical
+// email address. On a Russian iPhone keyboard, however, typing `mrflux`
+// produces `ькадгч`. Convert the physical keyboard equivalents instead of
+// silently throwing the characters away.
+const russianKeyboardToLatin: Record<string, string> = {
+  й: 'q', ц: 'w', у: 'e', к: 'r', е: 't', н: 'y', г: 'u', ш: 'i', щ: 'o', з: 'p', х: '[', ъ: ']',
+  ф: 'a', ы: 's', в: 'd', а: 'f', п: 'g', р: 'h', о: 'j', л: 'k', д: 'l', ж: ';', э: "'",
+  я: 'z', ч: 'x', с: 'c', м: 'v', и: 'b', т: 'n', ь: 'm', б: ',', ю: '.', ё: '`',
+};
+
 function normalizeLogin(value: string) {
-  return value.trim().toLocaleLowerCase('en-US');
+  return Array.from(value.trim().toLocaleLowerCase('ru-RU'))
+    .map((character) => russianKeyboardToLatin[character] ?? character)
+    .join('')
+    .replace(/[^a-z0-9._-]/g, '');
 }
 
 function nationalPhoneDigits(value: string) {
@@ -346,9 +359,10 @@ export function PhonePasswordAuthGate({
               <Input
                 autoCapitalize="none"
                 autoComplete="username"
+                autoCorrect="off"
                 enterKeyHint="next"
                 maxLength={32}
-                onChange={(event) => setLogin(event.target.value.toLocaleLowerCase('en-US').replace(/[^a-z0-9._-]/g, ''))}
+                onChange={(event) => setLogin(normalizeLogin(event.target.value))}
                 placeholder="danil73"
                 spellCheck={false}
                 value={login}
