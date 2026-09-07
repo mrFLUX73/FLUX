@@ -356,6 +356,12 @@ button:active { transform: scale(.97); }
 .flux-profile-header span, .flux-profile-header strong { display: block; }
 .flux-profile-header span { color: var(--flux-muted); font-size: 9px; }
 .flux-profile-header strong { margin-top: 2px; font-size: 13px; font-weight: 500; }
+.flux-build-info { position: relative; display: flex; justify-content: flex-end; }
+.flux-build-badge { min-width: 37px; min-height: 25px; padding: 0 6px; border: 1px solid var(--flux-border); border-radius: 999px; background: var(--flux-card); color: var(--flux-muted); font-size: 8px; font-weight: 600; letter-spacing: .01em; }
+.flux-build-badge:active { transform: scale(.95); }
+.flux-build-popover { width: 162px; position: absolute; z-index: 3; top: 32px; right: 0; display: grid; gap: 3px; padding: 10px 11px; border: 1px solid var(--flux-border); border-radius: 13px; background: var(--flux-card); box-shadow: 0 12px 30px color-mix(in srgb, var(--flux-ink) 14%, transparent); text-align: left; animation: flux-build-popover-enter .18s ease-out both; }
+.flux-build-popover strong { margin: 0; color: var(--flux-ink); font-size: 9px; font-weight: 600; }
+.flux-build-popover span, .flux-build-popover small { color: var(--flux-muted); font-size: 8px; line-height: 1.35; }
 .flux-profile-content { min-height: 0; flex: 1; overflow-y: auto; padding: 14px 20px calc(28px + env(safe-area-inset-bottom)); scrollbar-width: none; }
 .flux-profile-content::-webkit-scrollbar { display: none; }
 .flux-profile-hero { padding: 16px; border-radius: 24px; background: var(--flux-soft); display: grid; grid-template-columns: 70px 1fr; gap: 13px; align-items: center; }
@@ -429,6 +435,8 @@ button:active { transform: scale(.97); }
 .flux-profile-footnote { margin: 9px 14px 0; color: var(--flux-nav-muted); font-size: 8px; line-height: 1.45; text-align: center; }
 .flux-profile-signout { width: 100%; margin-top: 5px; color: var(--flux-muted) !important; font-size: 9px !important; }
 .flux-profile-signout svg { width: 13px; height: 13px; }
+
+@keyframes flux-build-popover-enter { from { opacity: 0; transform: translateY(-4px) scale(.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
 
 .flux-page-heading { padding: 15px 2px 22px; }
 .flux-page-heading-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }

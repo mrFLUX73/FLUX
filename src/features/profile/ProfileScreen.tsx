@@ -1,5 +1,5 @@
 import { ArrowLeft, CalendarDays, Check, ChevronDown, LogOut, MessageCircle } from 'lucide-react';
-import type { CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -102,6 +102,24 @@ function formatBirthDate(value: string) {
   }).format(date);
 }
 
+const appVersion = import.meta.env.VITE_APP_VERSION ?? '0.1.0';
+const buildRun = import.meta.env.VITE_BUILD_RUN;
+const buildSha = import.meta.env.VITE_BUILD_SHA;
+const buildAt = import.meta.env.VITE_BUILD_AT;
+
+function formatBuildTime(value: string | undefined) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat('ru-RU', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Europe/Samara',
+  }).format(date);
+}
+
 function ProfileField({
   children,
   label,
@@ -139,6 +157,7 @@ export function ProfileScreen({
   onSignOut: () => Promise<void> | void;
   saving: boolean;
 }) {
+  const [buildInfoOpen, setBuildInfoOpen] = useState(false);
   const set = <Key extends keyof ProfileDraft>(key: Key, value: ProfileDraft[Key]) => {
     onChange({ ...draft, [key]: value });
   };
@@ -167,7 +186,25 @@ export function ProfileScreen({
       <header className="flux-profile-header">
         <Button variant="secondary" size="icon" onClick={onClose} aria-label="Закрыть профиль"><ArrowLeft /></Button>
         <div><span>Профиль</span><strong>Данные для точного расчёта</strong></div>
-        <span aria-hidden="true" />
+        <aside className="flux-build-info">
+          <button
+            aria-expanded={buildInfoOpen}
+            aria-label="Показать версию приложения"
+            className="flux-build-badge"
+            onClick={() => setBuildInfoOpen((open) => !open)}
+            type="button"
+          >
+            v{appVersion.replace(/\.\d+$/, '')}
+          </button>
+          {buildInfoOpen && (
+            <div className="flux-build-popover" role="status">
+              <strong>FLUX v{appVersion}</strong>
+              <span>{buildRun ? `Сборка #${buildRun}` : 'Локальная сборка'}</span>
+              {buildSha && <small>commit {buildSha.slice(0, 7)}</small>}
+              {formatBuildTime(buildAt) && <small>Собрана {formatBuildTime(buildAt)} (Самара)</small>}
+            </div>
+          )}
+        </aside>
       </header>
 
       <form className="flux-profile-content" onSubmit={(event) => { event.preventDefault(); void onDone(); }}>
