@@ -1,4 +1,4 @@
-import { ArrowLeft, CalendarDays, Check, ChevronDown } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Check, ChevronDown, MessageCircle } from 'lucide-react';
 import type { CSSProperties } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -114,6 +114,7 @@ export function ProfileScreen({
   onChange,
   onClose,
   onDone,
+  onFeedback,
   saving,
 }: {
   account: FluxAccount;
@@ -123,6 +124,7 @@ export function ProfileScreen({
   onChange: (draft: ProfileDraft) => void;
   onClose: () => void;
   onDone: () => Promise<void> | void;
+  onFeedback: () => void;
   saving: boolean;
 }) {
   const set = <Key extends keyof ProfileDraft>(key: Key, value: ProfileDraft[Key]) => {
@@ -272,6 +274,12 @@ export function ProfileScreen({
               <span className="flux-profile-select"><select value={draft.workoutsPerWeek} onChange={(event) => set('workoutsPerWeek', event.target.value)}><option value="">Выберите</option>{[0, 1, 2, 3, 4, 5, 6, 7].map((count) => <option key={count} value={count}>{count}</option>)}</select><ChevronDown aria-hidden="true" /></span>
             </ProfileField>
           </div>
+        </section>
+
+        <section className="flux-profile-card flux-profile-feedback">
+          <div className="flux-profile-card-heading"><div><span>Обратная связь</span><strong>Помочь улучшить FLUX</strong></div><MessageCircle aria-hidden="true" /></div>
+          <p className="flux-profile-card-note">Ошибка, идея или вопрос — сообщение попадёт в рабочую очередь команды.</p>
+          <Button type="button" variant="secondary" onClick={onFeedback}>Написать команде</Button>
         </section>
 
         <Button className="flux-profile-done" disabled={saving} size="lg" type="submit">{saving ? 'Сохраняю…' : 'Сохранить профиль'}</Button>

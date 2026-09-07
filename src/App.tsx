@@ -24,6 +24,7 @@ import {
   RefreshCw,
   ScanBarcode,
   Search,
+  ShieldCheck,
   Sprout,
   Trash2,
   Utensils,
@@ -93,6 +94,7 @@ import {
   type ProfileDraft,
 } from './features/profile/ProfileScreen';
 import { loadCachedProfileDraft, loadCachedProfileTheme, loadProfileDraft, saveProfileDraft } from './features/profile/repository';
+import { AdminFeedbackScreen, FeedbackDrawer } from './features/feedback/FeedbackUI';
 import {
   MEAL_KINDS,
   type MealEntry,
@@ -101,7 +103,7 @@ import {
   type Product,
 } from './features/nutrition/types';
 
-type Tab = 'today' | 'food' | 'workouts' | 'progress';
+type Tab = 'today' | 'food' | 'workouts' | 'progress' | 'admin';
 type ScannerState = 'idle' | 'requesting' | 'scanning' | 'error';
 type ManualProductDraft = {
   name: string;
@@ -1282,6 +1284,8 @@ export default function App() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileDraft, setProfileDraft] = useState<ProfileDraft | null>(startupProfileRef.current?.draft ?? null);
   const [profileSaving, setProfileSaving] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackScreen, setFeedbackScreen] = useState('Сегодня');
   const [defaultAvatar, setDefaultAvatar] = useState<DefaultAvatar>(startupProfileRef.current?.avatar ?? 'short-hair');
   const profileEditRevision = useRef(0);
   const calorieTarget = 2000;
@@ -1401,6 +1405,7 @@ export default function App() {
             displayName: String(user.user_metadata?.display_name ?? '').trim(),
             login: user.email?.endsWith('@flux.local') ? user.email.slice(0, -('@flux.local'.length)) : '',
             phone: '',
+            isAdmin: false,
           } : null;
 
           window.setTimeout(() => {
@@ -1507,6 +1512,19 @@ export default function App() {
     setProfileDraft((current) => current ?? createProfileDraft(account));
     setProfileOpen(true);
   }
+
+  function openFeedback(screen = tab === 'admin' ? 'Управление' : ({ today: 'Сегодня', food: 'Питание', workouts: 'Тренировки', progress: 'Прогресс' }[tab])) {
+    if (!account) {
+      openAuth('signup');
+      return;
+    }
+    setFeedbackScreen(screen);
+    setFeedbackOpen(true);
+  }
+
+  useEffect(() => {
+    if (tab === 'admin' && !account?.isAdmin) setTab('today');
+  }, [account?.isAdmin, tab]);
 
   async function completeProfile() {
     if (!account || !profileDraft || profileSaving) return;
@@ -1887,6 +1905,7 @@ export default function App() {
     { id: 'food', label: 'Питание', icon: Utensils },
     { id: 'workouts', label: 'Тренировки', icon: Dumbbell },
     { id: 'progress', label: 'Прогресс', icon: ChartNoAxesColumnIncreasing },
+    ...(account?.isAdmin ? [{ id: 'admin' as const, label: 'Управление', icon: ShieldCheck }] : []),
   ];
 
   return (
@@ -1907,8 +1926,9 @@ export default function App() {
               {tab === 'food' && <FoodScreen entries={entries} target={calorieTarget} mode={nutritionMode} isConnecting={nutritionConnecting} isAuthenticated={Boolean(account)} canConnect={canConnectNutrition} onConnect={openSync} onRefresh={refreshNutrition} onAdd={(meal) => openFood(meal ?? currentMeal())} onEdit={setEditingEntry} onRemove={removeEntry} onRepeat={openPreviousMeal} repeatLoadingMeal={repeatLoadingMeal} />}
               {tab === 'workouts' && <WorkoutsScreen onStart={() => setWorkoutOpen(true)} />}
               {tab === 'progress' && <ProgressScreen />}
+              {tab === 'admin' && account?.isAdmin && <AdminFeedbackScreen userId={account.id} />}
             </div>
-            <nav className="flux-bottom-nav" aria-label="Основная навигация">{navItems.map((item) => { const Icon = item.icon; return <button key={item.id} type="button" className={tab === item.id ? 'is-active' : ''} onClick={() => setTab(item.id)} aria-current={tab === item.id ? 'page' : undefined}><Icon /><span>{item.label}</span></button>; })}</nav>
+            <nav className={`flux-bottom-nav${account?.isAdmin ? ' has-admin' : ''}`} aria-label="Основная навигация">{navItems.map((item) => { const Icon = item.icon; return <button key={item.id} type="button" className={tab === item.id ? 'is-active' : ''} onClick={() => setTab(item.id)} aria-current={tab === item.id ? 'page' : undefined}><Icon /><span>{item.label}</span></button>; })}</nav>
           </div>
           {workoutOpen && <WorkoutFlow onClose={() => setWorkoutOpen(false)} />}
           {profileOpen && account && profileDraft && (
@@ -1923,6 +1943,7 @@ export default function App() {
               }}
               onClose={() => setProfileOpen(false)}
               onDone={completeProfile}
+              onFeedback={() => { setProfileOpen(false); openFeedback('Профиль'); }}
               saving={profileSaving}
             />
           )}
@@ -1964,6 +1985,7 @@ export default function App() {
         onOpenChange={setAuthGateOpen}
         onAuthenticated={authenticate}
       />
+      {account && <FeedbackDrawer open={feedbackOpen} onOpenChange={setFeedbackOpen} userId={account.id} screen={feedbackScreen} onSubmitted={() => toast.add({ title: 'Спасибо за обратную связь', description: 'Обращение уже в очереди команды FLUX.', type: 'success' })} />}
     </Toaster>
   );
 }

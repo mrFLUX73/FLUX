@@ -342,6 +342,7 @@ button:active { transform: scale(.97); }
 .flux-workout-icon svg { width: 18px; height: 18px; }
 .flux-workout-card [data-slot='button'] { width: 38px; height: 38px; border-radius: 50%; background: var(--flux-cta-soft); color: var(--flux-primary); }
 .flux-bottom-nav { position: relative; flex: 0 0 84px; min-height: 84px; display: grid; grid-template-columns: repeat(4, 1fr); padding: 10px 12px 13px; border-top: 1px solid var(--flux-border); background: color-mix(in srgb, var(--flux-bg) 97%, transparent); }
+.flux-bottom-nav.has-admin { grid-template-columns: repeat(5, 1fr); padding-inline: 7px; }
 .flux-bottom-nav button { min-height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; border: 0; border-radius: 16px; background: transparent; color: var(--flux-nav-muted); font-size: 9px; }
 .flux-bottom-nav button svg { width: 18px; height: 18px; transition: transform .28s cubic-bezier(.2,.9,.3,1.35), stroke-width .28s ease; }
 .flux-bottom-nav button.is-active { background: var(--flux-soft); color: var(--flux-primary); }
@@ -386,6 +387,7 @@ button:active { transform: scale(.97); }
 .flux-sex-options small { color: inherit; font-size: 8px; }
 .flux-sex-options svg { width: 15px; height: 15px; position: absolute; top: 8px; right: 8px; padding: 3px; border-radius: 50%; background: var(--flux-accent); color: #fff; }
 .flux-profile-card-note { margin: 11px 1px 0; color: var(--flux-muted); font-size: 8px; line-height: 1.5; }
+.flux-profile-feedback [data-slot='button'] { width: 100%; min-height: 37px; margin-top: 12px; border-radius: 13px; color: var(--flux-primary); }
 .flux-profile-sex-locked { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .flux-profile-sex-locked span, .flux-profile-sex-locked strong { display: block; }
 .flux-profile-sex-locked span { color: var(--flux-muted); font-size: 8px; }
@@ -553,6 +555,48 @@ button:active { transform: scale(.97); }
 .flux-drawer-header.is-scanner { display: grid; grid-template-columns: 34px 1fr; gap: 9px; align-items: start; }
 .flux-drawer-back { width: 31px; height: 31px; display: grid; place-items: center; border: 0; border-radius: 50%; background: var(--flux-soft); color: var(--flux-primary); }
 .flux-drawer-back svg { width: 16px; height: 16px; }
+.flux-feedback-drawer { --drawer-content-height: min(632px, calc(100dvh - 18px)); padding-bottom: max(22px, env(safe-area-inset-bottom)); }
+.flux-feedback-body { padding: 9px 22px 0; }
+.flux-feedback-categories { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.flux-feedback-categories button { min-height: 59px; display: grid; grid-template-columns: 25px 1fr; gap: 8px; align-items: center; padding: 9px; border: 1px solid var(--flux-border); border-radius: 15px; background: var(--flux-card); color: var(--flux-muted); text-align: left; }
+.flux-feedback-categories button.is-active { border-color: var(--flux-accent); background: var(--flux-selection); color: var(--flux-primary); }
+.flux-feedback-categories button svg { width: 16px; height: 16px; }
+.flux-feedback-categories strong, .flux-feedback-categories small { display: block; }
+.flux-feedback-categories strong { color: var(--flux-ink); font-size: 9px; font-weight: 600; }
+.flux-feedback-categories small { margin-top: 2px; color: var(--flux-muted); font-size: 7px; line-height: 1.25; }
+.flux-feedback-message { display: grid; gap: 7px; margin-top: 18px; color: var(--flux-muted); font-size: 9px; }
+.flux-feedback-message textarea { width: 100%; min-height: 126px; resize: vertical; padding: 13px; border: 1px solid var(--flux-border); border-radius: 16px; outline: 0; background: var(--flux-bg); color: var(--flux-ink); font: inherit; font-size: 11px; line-height: 1.45; }
+.flux-feedback-message textarea:focus { border-color: var(--flux-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--flux-accent) 13%, transparent); }
+.flux-feedback-meta { display: flex; justify-content: space-between; gap: 10px; margin-top: 7px; color: var(--flux-muted); font-size: 8px; }
+.flux-feedback-error { margin: 11px 0 0; color: #b34a42; font-size: 9px; line-height: 1.45; }
+.flux-feedback-submit { width: 100%; min-height: 45px !important; margin-top: 15px; border-radius: 15px !important; }
+
+.flux-admin-screen { min-height: 100%; padding-bottom: 12px; }
+.flux-admin-screen .flux-page-heading { padding-bottom: 15px; }
+.flux-admin-screen .flux-page-heading h1 { margin: 0; color: var(--flux-ink); font-size: 25px; font-weight: 500; letter-spacing: -.035em; }
+.flux-admin-screen .flux-page-heading p { margin: 7px 0 0; color: var(--flux-muted); font-size: 10px; }
+.flux-admin-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.flux-admin-stats > div { padding: 14px 16px; border-radius: 18px; background: var(--flux-soft); }
+.flux-admin-stats span, .flux-admin-stats strong { display: block; }
+.flux-admin-stats span { color: var(--flux-muted); font-size: 8px; }
+.flux-admin-stats strong { margin-top: 3px; color: var(--flux-primary); font-size: 22px; font-weight: 500; }
+.flux-admin-filters { display: flex; gap: 6px; margin: 18px 0 10px; overflow-x: auto; scrollbar-width: none; }
+.flux-admin-filters::-webkit-scrollbar { display: none; }
+.flux-admin-filters button { flex: 0 0 auto; padding: 7px 10px; border: 1px solid var(--flux-border); border-radius: 999px; background: var(--flux-card); color: var(--flux-muted); font-size: 8px; }
+.flux-admin-filters button.is-active { border-color: transparent; background: var(--flux-primary); color: var(--flux-on-primary); }
+.flux-admin-list { display: grid; gap: 9px; }
+.flux-admin-feedback { padding: 13px; border: 1px solid var(--flux-border); border-radius: 17px; background: var(--flux-card); }
+.flux-admin-feedback header, .flux-admin-feedback footer { display: flex; align-items: center; justify-content: space-between; gap: 9px; }
+.flux-admin-feedback time, .flux-admin-feedback footer > span { min-width: 0; overflow: hidden; color: var(--flux-muted); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.flux-admin-category { display: inline-flex; align-items: center; gap: 4px; padding: 5px 7px; border-radius: 9px; background: var(--flux-soft); color: var(--flux-primary); font-size: 8px; font-weight: 600; }
+.flux-admin-category svg { width: 11px; height: 11px; }
+.flux-admin-category.is-bug { background: color-mix(in srgb, #d7655b 11%, var(--flux-card)); color: #b7544c; }
+.flux-admin-feedback > p { margin: 10px 0 11px; color: var(--flux-ink); font-size: 10px; line-height: 1.48; white-space: pre-wrap; }
+.flux-admin-feedback select { max-width: 92px; height: 28px; padding: 0 6px; border: 1px solid var(--flux-border); border-radius: 9px; outline: 0; background: var(--flux-bg); color: var(--flux-primary); font: inherit; font-size: 8px; }
+.flux-admin-state { min-height: 145px; display: grid; place-content: center; gap: 9px; padding: 20px; border-radius: 20px; background: var(--flux-soft-2); color: var(--flux-muted); font-size: 10px; line-height: 1.45; text-align: center; }
+.flux-admin-state svg { width: 23px; height: 23px; justify-self: center; color: var(--flux-primary); }
+.flux-admin-state.is-error p { margin: 0; }
+.flux-admin-inline-error { margin: 10px 2px; color: #b7544c; font-size: 9px; }
 .flux-repeat-drawer { --drawer-content-height: min(620px, calc(100dvh - 18px)); padding-bottom: max(22px, env(safe-area-inset-bottom)); }
 .flux-repeat-toolbar { min-height: 34px; margin: 0 22px 4px; display: flex; align-items: center; justify-content: space-between; color: var(--flux-muted); font-size: 9px; }
 .flux-repeat-toolbar button { padding: 7px 0 7px 12px; border: 0; background: transparent; color: var(--flux-primary); font-size: 9px; }

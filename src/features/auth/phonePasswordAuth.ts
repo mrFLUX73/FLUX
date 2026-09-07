@@ -7,6 +7,7 @@ export type FluxAccount = {
   displayName: string;
   login: string;
   phone: string;
+  isAdmin: boolean;
 };
 
 export type LoginPasswordCredentials = {
@@ -32,6 +33,7 @@ export function loadCachedAccount(): FluxAccount | null {
       displayName: typeof parsed.displayName === 'string' ? parsed.displayName : '',
       login: typeof parsed.login === 'string' ? parsed.login : '',
       phone: typeof parsed.phone === 'string' ? parsed.phone : '',
+      isAdmin: parsed.isAdmin === true,
     };
   } catch {
     return null;
@@ -91,6 +93,7 @@ function fallbackAccount(user: User): FluxAccount {
     displayName: String(user.user_metadata?.display_name ?? '').trim(),
     login,
     phone: '',
+    isAdmin: false,
   };
 }
 
@@ -110,6 +113,13 @@ async function accountFromVerifiedUser(user: User, fallbackName = ''): Promise<F
     .maybeSingle();
   if (profileError) throw profileError;
 
+  const { data: role, error: roleError } = await client
+    .from('user_roles')
+    .select('role')
+    .eq('user_id', user.id)
+    .maybeSingle();
+  if (roleError) throw roleError;
+
   const displayName = String(profile?.display_name ?? fallbackName).trim();
   const fallbackLogin = user.email?.endsWith(`@${LOGIN_DOMAIN}`)
     ? user.email.slice(0, -(`@${LOGIN_DOMAIN}`.length))
@@ -119,6 +129,7 @@ async function accountFromVerifiedUser(user: User, fallbackName = ''): Promise<F
     displayName,
     login: String(profile?.login ?? fallbackLogin),
     phone: String(profile?.phone_e164 ?? ''),
+    isAdmin: role?.role === 'admin',
   };
 }
 
