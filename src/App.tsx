@@ -59,7 +59,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Toaster, toast } from '@/components/ui/toast';
-import { fallbackProducts } from './features/nutrition/catalog';
+import { fallbackProducts, matchesProductSearch, productSearchRank } from './features/nutrition/catalog';
 import { decodeBarcodeImage, startBarcodeScanner, type BarcodeScannerSession } from './features/nutrition/barcodeScanner';
 import { lookupProductByBarcode } from './features/nutrition/productSearch';
 import {
@@ -417,9 +417,12 @@ function QuickAddDrawer({
     ]
     : products;
   const filtered = searchableProducts
-    .filter((product) => `${product.name} ${product.brand} ${product.barcode ?? ''}`.toLocaleLowerCase('ru').includes(normalizedQuery))
+    .filter((product) => matchesProductSearch(product, normalizedQuery))
     .sort((a, b) => {
-      if (query.trim()) return a.name.localeCompare(b.name, 'ru');
+      if (query.trim()) {
+        const rankDifference = productSearchRank(b, normalizedQuery) - productSearchRank(a, normalizedQuery);
+        return rankDifference || a.name.localeCompare(b.name, 'ru');
+      }
       const aIndex = recentIds.indexOf(a.id);
       const bIndex = recentIds.indexOf(b.id);
       if (aIndex === -1 && bIndex === -1) return 0;

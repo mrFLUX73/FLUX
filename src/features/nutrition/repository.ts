@@ -804,7 +804,10 @@ export async function bootstrapNutrition(scope: NutritionStorageScope, localEntr
 
     return {
       mode: 'supabase' as const,
-      products: mergeProducts(localProducts, products),
+      // Keep the small verified starter catalogue available even before a
+      // newly deployed catalogue migration has reached a device. Database rows
+      // still win when their ids coincide.
+      products: mergeProducts(fallbackProducts, localProducts, products),
       entries: [...merged.values()].sort((a, b) => a.eatenAt.localeCompare(b.eatenAt)),
     };
   } catch (error) {
