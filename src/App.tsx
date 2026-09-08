@@ -1295,7 +1295,6 @@ function TodayScreen({
         <div className="flux-week-dots">{weekActivity.map((day) => <div key={day.key} className={day.hasFood ? 'is-filled' : ''}><small>{day.weekday}</small><span>{day.day}</span></div>)}</div>
         <p>{weekActivity.filter((day) => day.hasFood).length} из 7 дней с записями питания</p>
       </section>
-      <section className="flux-motivation-capsule"><span>Капсула мотивации</span><strong>Сегодня не нужно делать всё. Достаточно продолжить.</strong></section>
     </>
   );
 }

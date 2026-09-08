@@ -108,6 +108,7 @@ export function loadCachedProfileDraft(userId: string, account: FluxAccount) {
       dailyCarbsG: stringValue('dailyCarbsG'),
       activity: stringValue('activity'),
       workoutsPerWeek: stringValue('workoutsPerWeek'),
+      motivationCapsule: stringValue('motivationCapsule'),
     };
     return { draft, avatar: (calculationSex === 'female' ? 'bun' : 'short-hair') as DefaultAvatar };
   } catch {
@@ -172,6 +173,9 @@ export async function loadProfileDraft(userId: string, account: FluxAccount) {
     dailyCarbsG: goal?.carbohydrates_g == null ? initial.dailyCarbsG : String(Number(goal.carbohydrates_g)),
     activity: activityFromDatabase(goal?.activity_level ?? null),
     workoutsPerWeek: goal?.workouts_per_week == null ? '' : String(goal.workouts_per_week),
+    motivationCapsule: typeof userResult.data.user?.user_metadata?.motivation_capsule === 'string'
+      ? userResult.data.user.user_metadata.motivation_capsule
+      : '',
   };
   const avatar: DefaultAvatar = calculationSex === 'female' ? 'bun' : 'short-hair';
 
@@ -229,7 +233,7 @@ export async function saveProfileDraft(userId: string, draft: ProfileDraft) {
   if (sessionData.session?.user.id !== userId) throw new SupabaseAuthScopeError();
 
   const { error: themeError } = await authClient.auth.updateUser({
-    data: { theme_id: draft.theme },
+    data: { theme_id: draft.theme, motivation_capsule: draft.motivationCapsule.trim() },
   });
   if (themeError) throw themeError;
 }

@@ -1,4 +1,4 @@
-import { ArrowLeft, CalendarDays, Check, ChevronDown, LogOut, MessageCircle } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Check, ChevronDown, LogOut, MessageCircle, Pill } from 'lucide-react';
 import { useState, type CSSProperties } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -25,6 +25,7 @@ export type ProfileDraft = {
   dailyCarbsG: string;
   activity: '' | 'low' | 'medium' | 'high';
   workoutsPerWeek: string;
+  motivationCapsule: string;
 };
 
 export function createProfileDraft(account: FluxAccount): ProfileDraft {
@@ -44,6 +45,7 @@ export function createProfileDraft(account: FluxAccount): ProfileDraft {
     dailyCarbsG: '230',
     activity: '',
     workoutsPerWeek: '',
+    motivationCapsule: '',
   };
 }
 
@@ -130,6 +132,33 @@ function ProfileField({
   wide?: boolean;
 }) {
   return <label className={`flux-profile-field${wide ? ' is-wide' : ''}`}><span>{label}</span>{children}</label>;
+}
+
+function ProfileAccordion({
+  eyebrow,
+  title,
+  children,
+  defaultOpen = false,
+  icon,
+  className = '',
+}: {
+  eyebrow: string;
+  title: string;
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+  icon?: React.ReactNode;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <section className={`flux-profile-card flux-profile-accordion${open ? ' is-open' : ''} ${className}`}>
+      <button className="flux-profile-accordion-trigger" type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
+        <span>{icon}<i><small>{eyebrow}</small><strong>{title}</strong></i></span>
+        <ChevronDown aria-hidden="true" />
+      </button>
+      {open && <div className="flux-profile-accordion-body">{children}</div>}
+    </section>
+  );
 }
 
 export function ProfileScreen({
@@ -246,8 +275,7 @@ export function ProfileScreen({
           </section>
         )}
 
-        <section className="flux-profile-card">
-          <div className="flux-profile-card-heading"><div><span>Оформление</span><strong>Выберите настроение FLUX</strong></div></div>
+        <ProfileAccordion eyebrow="Оформление" title="Настроение FLUX">
           <div className="flux-theme-options">
             {fluxThemes.map((theme) => {
               const previewStyle = {
@@ -271,10 +299,9 @@ export function ProfileScreen({
               );
             })}
           </div>
-        </section>
+        </ProfileAccordion>
 
-        <section className="flux-profile-card">
-          <div className="flux-profile-card-heading"><div><span>О себе</span><strong>Основа персонального расчёта</strong></div></div>
+        <ProfileAccordion eyebrow="О себе" title="Основа персонального расчёта" defaultOpen>
           <div className="flux-profile-grid">
             <ProfileField label="Имя и фамилия" wide>
               <Input autoComplete="name" value={draft.displayName} onChange={(event) => set('displayName', event.target.value)} />
@@ -300,10 +327,9 @@ export function ProfileScreen({
               <span className="flux-profile-unit"><Input inputMode="decimal" min="30" max="350" step="0.1" type="number" value={draft.currentWeightKg} onChange={(event) => set('currentWeightKg', event.target.value)} /><i>кг</i></span>
             </ProfileField>
           </div>
-        </section>
+        </ProfileAccordion>
 
-        <section className="flux-profile-card">
-          <div className="flux-profile-card-heading"><div><span>Моя цель</span><strong>Спокойный и реалистичный темп</strong></div></div>
+        <ProfileAccordion eyebrow="Моя цель" title="Спокойный и реалистичный темп">
           <div className="flux-profile-grid">
             <ProfileField label="Цель">
               <span className="flux-profile-select"><select value={draft.goal} onChange={(event) => set('goal', event.target.value as ProfileDraft['goal'])}><option value="">Выберите</option><option value="lose">Похудеть</option><option value="maintain">Поддерживать вес</option><option value="gain">Набрать вес</option></select><ChevronDown aria-hidden="true" /></span>
@@ -311,10 +337,9 @@ export function ProfileScreen({
             {draft.goal !== 'maintain' && <ProfileField label="Желаемый вес"><span className="flux-profile-unit"><Input inputMode="decimal" min="30" max="350" step="0.1" type="number" value={draft.targetWeightKg} onChange={(event) => set('targetWeightKg', event.target.value)} /><i>кг</i></span></ProfileField>}
             {draft.goal !== 'maintain' && <ProfileField label="Темп в неделю"><span className="flux-profile-select"><select value={draft.paceKgPerWeek} onChange={(event) => set('paceKgPerWeek', event.target.value as ProfileDraft['paceKgPerWeek'])}><option value="0.25">0,25 кг · мягко</option><option value="0.5">0,5 кг · комфортно</option><option value="0.75">0,75 кг · интенсивно</option></select><ChevronDown aria-hidden="true" /></span></ProfileField>}
           </div>
-        </section>
+        </ProfileAccordion>
 
-        <section className="flux-profile-card">
-          <div className="flux-profile-card-heading"><div><span>Дневная цель</span><strong>Баланс на каждый день</strong></div><small>Можно настроить вручную</small></div>
+        <ProfileAccordion eyebrow="Дневная цель" title="Баланс на каждый день">
           <p className="flux-profile-card-note">Эти значения показываются в дневнике как ориентир. Изменения не затронут уже добавленные продукты.</p>
           <div className="flux-profile-grid">
             <ProfileField label="Калории" wide>
@@ -330,10 +355,9 @@ export function ProfileScreen({
               <span className="flux-profile-unit"><Input inputMode="decimal" min="0" max="1500" step="0.1" type="number" value={draft.dailyCarbsG} onChange={(event) => set('dailyCarbsG', event.target.value)} /><i>г</i></span>
             </ProfileField>
           </div>
-        </section>
+        </ProfileAccordion>
 
-        <section className="flux-profile-card">
-          <div className="flux-profile-card-heading"><div><span>Активность</span><strong>Движение вне и внутри тренировок</strong></div></div>
+        <ProfileAccordion eyebrow="Активность" title="Движение и тренировки">
           <div className="flux-profile-grid">
             <ProfileField label="Обычный день">
               <span className="flux-profile-select"><select value={draft.activity} onChange={(event) => set('activity', event.target.value as ProfileDraft['activity'])}><option value="">Выберите</option><option value="low">В основном сижу</option><option value="medium">Много хожу</option><option value="high">Физически активен</option></select><ChevronDown aria-hidden="true" /></span>
@@ -342,13 +366,17 @@ export function ProfileScreen({
               <span className="flux-profile-select"><select value={draft.workoutsPerWeek} onChange={(event) => set('workoutsPerWeek', event.target.value)}><option value="">Выберите</option>{[0, 1, 2, 3, 4, 5, 6, 7].map((count) => <option key={count} value={count}>{count}</option>)}</select><ChevronDown aria-hidden="true" /></span>
             </ProfileField>
           </div>
-        </section>
+        </ProfileAccordion>
 
-        <section className="flux-profile-card flux-profile-feedback">
-          <div className="flux-profile-card-heading"><div><span>Обратная связь</span><strong>Помочь улучшить FLUX</strong></div><MessageCircle aria-hidden="true" /></div>
+        <ProfileAccordion eyebrow="Личное" title="Капсула мотивации" icon={<Pill aria-hidden="true" />}>
+          <p className="flux-profile-card-note">Фраза или обещание себе. Она сохранится в вашем профиле и позже сможет появляться на главном экране.</p>
+          <label className="flux-profile-capsule-input"><span>Моя капсула</span><textarea value={draft.motivationCapsule} maxLength={180} onChange={(event) => set('motivationCapsule', event.target.value)} placeholder="Например: Я выбираю устойчивый темп, а не идеальный день." /></label>
+        </ProfileAccordion>
+
+        <ProfileAccordion eyebrow="Обратная связь" title="Помочь улучшить FLUX" icon={<MessageCircle aria-hidden="true" />} className="flux-profile-feedback">
           <p className="flux-profile-card-note">{feedbackReplyCount ? `Команда ответила на ${feedbackReplyCount} ${feedbackReplyCount === 1 ? 'обращение' : 'обращения'}.` : 'Ошибка, идея или вопрос — сообщение попадёт в рабочую очередь команды.'}</p>
           <Button type="button" variant="secondary" onClick={onFeedback}>{feedbackReplyCount ? `Есть ответ от FLUX · ${feedbackReplyCount}` : 'Написать команде'}</Button>
-        </section>
+        </ProfileAccordion>
 
         <Button className="flux-profile-done" disabled={saving} size="lg" type="submit">{saving ? 'Сохраняю…' : 'Сохранить профиль'}</Button>
         <p className="flux-profile-footnote">Данные сохраняются в вашем профиле FLUX и доступны после входа на другом устройстве.</p>
