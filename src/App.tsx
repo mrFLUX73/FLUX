@@ -1252,21 +1252,25 @@ function TodayScreen({
   totals,
   target,
   macroTargets,
-  products,
-  onSelectProduct,
-  onOpenFood,
-  onWorkout,
+  entries,
+  weekActivity,
 }: {
   totals: NutritionTotals;
   target: number;
   macroTargets: typeof defaultMacroTargets;
-  products: Product[];
-  onSelectProduct: (product: Product) => void;
-  onOpenFood: () => void;
-  onWorkout: () => void;
+  entries: MealEntry[];
+  weekActivity: { key: string; weekday: string; day: number; hasFood: boolean }[];
 }) {
   const remaining = Math.max(0, target - totals.kcal);
   const progress = Math.min(100, Math.round((totals.kcal / target) * 100));
+  const mealsLogged = new Set(entries.map((entry) => entry.meal)).size;
+  const overFat = totals.fat - macroTargets.fat;
+  const remainingProtein = Math.max(0, macroTargets.protein - totals.protein);
+  const focus = overFat > 0
+    ? { eyebrow: 'Фокус дня', title: `Жиры выше цели на ${formatMacro(overFat)} г`, body: 'Следующий приём можно сделать легче по жирам.' }
+    : remainingProtein > 0
+      ? { eyebrow: 'Фокус дня', title: `До цели по белку ${formatMacro(remainingProtein)} г`, body: 'Небольшой белковый продукт поможет собрать баланс.' }
+      : { eyebrow: 'Фокус дня', title: 'Баланс на сегодня собран', body: 'Вы держите выбранный ориентир спокойно и без спешки.' };
   const macros = [
     { label: 'Белки', value: totals.protein, target: macroTargets.protein },
     { label: 'Жиры', value: totals.fat, target: macroTargets.fat },
@@ -1279,8 +1283,20 @@ function TodayScreen({
         <div className="flux-balance-heading"><div><span className="flux-eyebrow">Баланс на сегодня</span><strong><MorphNumber value={remaining.toLocaleString('ru-RU')} /> <small>ккал осталось</small></strong></div><div className="flux-ring" style={{ '--flux-progress': `${progress * 3.6}deg` } as CSSProperties}><span>{progress}%</span></div></div>
         <div className="flux-macro-grid">{macros.map((macro) => <div key={macro.label}><span>{macro.label}</span><strong>{macro.value} / {macro.target} г</strong><Progress value={(macro.value / macro.target) * 100} aria-label={`${macro.label}: ${macro.value} из ${macro.target} грамм`} /></div>)}</div>
       </section>
-      <section className="flux-section"><div className="flux-section-heading"><h2>Быстро добавить</h2><button type="button" onClick={onOpenFood}>Все продукты</button></div><div className="flux-quick-grid">{products.slice(0, 3).map((product) => <button type="button" className="flux-quick-food" key={product.id} onClick={() => onSelectProduct(product)}><span className={`flux-food-icon ${product.icon === 'curd' ? 'flux-food-icon-warm' : ''}`}><ProductIcon type={product.icon} /></span><span><strong>{product.name.replace(' на молоке', '')}</strong><small>{product.amount} {product.unit}</small></span><Plus /></button>)}</div></section>
-      <section className="flux-workout-card"><span className="flux-workout-icon"><Activity /></span><div><span className="flux-eyebrow">Тренировка дня</span><h2>Всё тело · 28 мин</h2><p>6 упражнений, спокойный темп</p></div><Button size="icon" aria-label="Открыть тренировку" onClick={onWorkout}><ArrowRight /></Button></section>
+      <section className="flux-today-rhythm" aria-label="Ритм дня">
+        <div className="flux-section-heading"><h2>Ритм дня</h2><span>Спокойно, по шагам</span></div>
+        <div className="flux-rhythm-grid">
+          <article><span className="flux-rhythm-icon"><Utensils /></span><small>Питание</small><strong>{mealsLogged} из 4 приёмов</strong><p>{entries.length ? `${entries.length} ${productCountLabel(entries.length)} в дневнике` : 'Дневник пока пуст'}</p></article>
+          <article><span className="flux-rhythm-icon"><Dumbbell /></span><small>Тренировка</small><strong>Запланирована</strong><p>Всё тело · 28 мин</p></article>
+        </div>
+      </section>
+      <section className="flux-daily-focus"><span className="flux-focus-mark"><Sprout /></span><div><small>{focus.eyebrow}</small><strong>{focus.title}</strong><p>{focus.body}</p></div></section>
+      <section className="flux-week-glance" aria-label="Неделя в движении">
+        <div className="flux-section-heading"><h2>Эта неделя</h2><span>Дневник питания</span></div>
+        <div className="flux-week-dots">{weekActivity.map((day) => <div key={day.key} className={day.hasFood ? 'is-filled' : ''}><small>{day.weekday}</small><span>{day.day}</span></div>)}</div>
+        <p>{weekActivity.filter((day) => day.hasFood).length} из 7 дней с записями питания</p>
+      </section>
+      <section className="flux-motivation-capsule"><span>Капсула мотивации</span><strong>Сегодня не нужно делать всё. Достаточно продолжить.</strong></section>
     </>
   );
 }
@@ -1733,6 +1749,24 @@ export default function App() {
   }, [diary, selectedNutritionDay]);
 
   const totals = useMemo(() => entries.reduce((sum, entry) => ({ kcal: sum.kcal + entry.kcal, protein: sum.protein + entry.protein, fat: sum.fat + entry.fat, carbs: sum.carbs + entry.carbs }), { kcal: 0, protein: 0, fat: 0, carbs: 0 }), [entries]);
+  const weekActivity = useMemo(() => {
+    const today = new Date();
+    const mondayOffset = (today.getDay() + 6) % 7;
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - mondayOffset);
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(monday);
+      date.setDate(monday.getDate() + index);
+      const key = localDayKey(date);
+      const dayEntries = key === localDayKey() ? entries : loadLocalEntriesForDay(diary.scope, key);
+      return {
+        key,
+        day: date.getDate(),
+        weekday: new Intl.DateTimeFormat('ru-RU', { weekday: 'short' }).format(date).replace('.', ''),
+        hasFood: dayEntries.length > 0,
+      };
+    });
+  }, [diary.scope, entries]);
 
   // Turnstile protects registration and sign-in only. A signed-in user must be
   // able to refresh their existing diary regardless of that widget's state.
@@ -2184,7 +2218,7 @@ export default function App() {
               {tab === 'today' && <h1 className="flux-home-title"><span>Сегодня достаточно</span><span>просто продолжить.</span></h1>}
             </header>
             <div key={tab} className="flux-content" id="top">
-              {tab === 'today' && <TodayScreen totals={totals} target={calorieTarget} macroTargets={macroTargets} products={catalog} onSelectProduct={(product) => openFood(currentMeal(), product)} onOpenFood={() => openFood()} onWorkout={() => setWorkoutOpen(true)} />}
+              {tab === 'today' && <TodayScreen totals={totals} target={calorieTarget} macroTargets={macroTargets} entries={entries} weekActivity={weekActivity} />}
               {tab === 'food' && <FoodScreen entries={entries} target={calorieTarget} selectedDay={selectedNutritionDay} onSelectDay={setSelectedNutritionDay} historyLoading={historyLoading} mode={nutritionMode} isConnecting={nutritionConnecting} isAuthenticated={Boolean(account)} canConnect={canConnectNutrition} onConnect={openSync} onRefresh={refreshNutrition} onAdd={(meal) => openFood(meal ?? currentMeal())} onEdit={setEditingEntry} onRemove={removeEntry} onRepeat={openPreviousMeal} repeatLoadingMeal={repeatLoadingMeal} />}
               {tab === 'workouts' && <WorkoutsScreen onStart={() => setWorkoutOpen(true)} />}
               {tab === 'progress' && <ProgressScreen />}

@@ -516,6 +516,29 @@ button:active { transform: scale(.97); }
 .flux-auth-verification .flux-auth-error { width: 100%; margin-top: 10px; text-align: center; }
 .is-spinning { animation: flux-spin .9s linear infinite; }
 .flux-meal-list { margin-top: 25px; }
+.flux-today-rhythm, .flux-week-glance { margin-top: 24px; }
+.flux-today-rhythm .flux-section-heading, .flux-week-glance .flux-section-heading { margin-bottom: 10px; }
+.flux-rhythm-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.flux-rhythm-grid article { min-height: 144px; padding: 15px; border: 1px solid var(--flux-border-soft); border-radius: 20px; background: var(--flux-card); display: flex; flex-direction: column; align-items: flex-start; }
+.flux-rhythm-icon { width: 32px; height: 32px; margin-bottom: auto; border-radius: 11px; background: var(--flux-soft); color: var(--flux-primary); display: grid; place-items: center; }
+.flux-rhythm-icon svg { width: 16px; height: 16px; }
+.flux-rhythm-grid small { margin-top: 12px; color: var(--flux-muted); font-size: 9px; }
+.flux-rhythm-grid strong { margin-top: 4px; color: var(--flux-ink); font-size: 12px; font-weight: 500; line-height: 1.25; }
+.flux-rhythm-grid p { margin: 4px 0 0; color: var(--flux-muted); font-size: 8px; line-height: 1.35; }
+.flux-daily-focus { min-height: 112px; margin-top: 12px; padding: 17px; border-radius: 21px; background: var(--flux-soft); display: grid; grid-template-columns: 36px 1fr; gap: 12px; align-items: start; }
+.flux-focus-mark { width: 36px; height: 36px; border-radius: 12px; background: color-mix(in srgb, var(--flux-card) 58%, transparent); color: var(--flux-primary); display: grid; place-items: center; }
+.flux-focus-mark svg { width: 18px; height: 18px; }
+.flux-daily-focus small, .flux-motivation-capsule > span { color: var(--flux-muted); font-size: 9px; }
+.flux-daily-focus strong { display: block; margin-top: 4px; color: var(--flux-ink); font-size: 14px; font-weight: 500; line-height: 1.25; }
+.flux-daily-focus p { margin: 5px 0 0; color: var(--flux-muted); font-size: 9px; line-height: 1.45; }
+.flux-week-dots { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+.flux-week-dots > div { min-height: 53px; border-radius: 14px; background: var(--flux-soft-2); color: var(--flux-muted); display: grid; place-items: center; align-content: center; gap: 2px; }
+.flux-week-dots > div.is-filled { background: var(--flux-primary); color: var(--flux-on-primary); }
+.flux-week-dots small { font-size: 8px; text-transform: capitalize; }
+.flux-week-dots span { font-size: 12px; font-weight: 500; }
+.flux-week-glance > p { margin: 8px 3px 0; color: var(--flux-muted); font-size: 9px; }
+.flux-motivation-capsule { min-height: 104px; margin-top: 24px; padding: 18px; border: 1px solid var(--flux-border-soft); border-radius: 22px; background: var(--flux-card); display: flex; flex-direction: column; justify-content: space-between; }
+.flux-motivation-capsule > strong { max-width: 290px; color: var(--flux-ink); font-size: 17px; font-weight: 500; line-height: 1.25; letter-spacing: -.025em; }
 .flux-diary-empty { min-height: 130px; margin-bottom: 14px; padding: 20px; border-radius: 21px; background: var(--flux-soft-2); color: var(--flux-muted); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
 .flux-diary-empty svg { width: 24px; height: 24px; margin-bottom: 8px; color: var(--flux-accent); }
 .flux-diary-empty strong { color: var(--flux-ink); font-size: 13px; font-weight: 500; }
