@@ -54,7 +54,14 @@ export type OpenFoodFactsSearchCandidate = {
   product: Product;
 };
 
-export type ProductSearchCandidate = NutriapixSearchCandidate | OpenFoodFactsSearchCandidate;
+export type FatSecretSearchCandidate = {
+  source: 'fatsecret';
+  name: string;
+  brand: string;
+  product: Product;
+};
+
+export type ProductSearchCandidate = NutriapixSearchCandidate | OpenFoodFactsSearchCandidate | FatSecretSearchCandidate;
 
 type NutriapixSearchResponse =
   | { status: 'found'; candidates: ProductSearchCandidate[] }
@@ -221,12 +228,12 @@ export async function lookupProductByBarcode(barcode: string, signal?: AbortSign
   return lookupOpenFoodFactsByBarcode(barcode, signal);
 }
 
-export async function searchNutriapixProducts(query: string, signal?: AbortSignal): Promise<NutriapixSearchResponse> {
+export async function searchProductsByName(query: string, signal?: AbortSignal): Promise<NutriapixSearchResponse> {
   const normalized = query.trim();
   if (normalized.length < 3 || normalized.length > 100) return { status: 'not_found' };
   try {
     const remoteSearch = invokeSupabaseFunction<NutriapixSearchResponse>('product-search', {
-      mode: 'nutriapix-search', query: normalized,
+      mode: 'name-search', query: normalized,
     }, signal).catch((error): NutriapixSearchResponse => {
       if (error instanceof DOMException && error.name === 'AbortError') throw error;
       return { status: 'not_found' };
@@ -243,7 +250,9 @@ export async function searchNutriapixProducts(query: string, signal?: AbortSigna
         ? candidate.product.id === other.product.id
         : candidate.source === 'nutriapix' && other.source === 'nutriapix'
           ? candidate.slug === other.slug
-          : false
+          : candidate.source === 'fatsecret' && other.source === 'fatsecret'
+            ? candidate.product.id === other.product.id
+            : false
     )) === index).sort((left, right) => nameCandidateScore(normalized, right) - nameCandidateScore(normalized, left)).slice(0, 8);
     if (candidates.length) return { status: 'found', candidates };
     return remote.status === 'error' ? remote : { status: 'not_found' };

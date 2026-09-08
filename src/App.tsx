@@ -61,7 +61,7 @@ import { Progress } from '@/components/ui/progress';
 import { Toaster, toast } from '@/components/ui/toast';
 import { fallbackProducts, matchesProductSearch, productSearchRank } from './features/nutrition/catalog';
 import { decodeBarcodeImage, startBarcodeScanner, type BarcodeScannerSession } from './features/nutrition/barcodeScanner';
-import { getNutriapixProduct, lookupProductByBarcode, searchNutriapixProducts, type ProductSearchCandidate } from './features/nutrition/productSearch';
+import { getNutriapixProduct, lookupProductByBarcode, searchProductsByName, type ProductSearchCandidate } from './features/nutrition/productSearch';
 import { submitProductSuggestion } from './features/nutrition/productSuggestions';
 import {
   addRemoteMealEntry,
@@ -466,7 +466,7 @@ function QuickAddDrawer({
     setNameLookupMessage('');
     const timer = window.setTimeout(async () => {
       try {
-        const result = await searchNutriapixProducts(normalized, controller.signal);
+        const result = await searchProductsByName(normalized, controller.signal);
         if (!active) return;
         if (result.status === 'found') {
           setNameCandidates(result.candidates);
@@ -480,7 +480,7 @@ function QuickAddDrawer({
         if (!active || (error instanceof DOMException && error.name === 'AbortError')) return;
         setNameCandidates([]);
         setNameLookupState('error');
-        setNameLookupMessage('Поиск Nutriapix временно недоступен.');
+        setNameLookupMessage('Поиск источников временно недоступен.');
       }
     }, 400);
     return () => { active = false; window.clearTimeout(timer); controller.abort(); };
@@ -525,7 +525,7 @@ function QuickAddDrawer({
   }
 
   async function chooseSearchCandidate(candidate: ProductSearchCandidate) {
-    if (candidate.source === 'open_food_facts') {
+    if (candidate.source === 'open_food_facts' || candidate.source === 'fatsecret') {
       choose(candidate.product);
       return;
     }
@@ -903,11 +903,11 @@ function QuickAddDrawer({
                   </div>
                 );
               })}
-              {!isBarcodeQuery && nameLookupState === 'loading' && <div className="flux-lookup-state"><LoaderCircle className="is-spinning" /><span>Ищем в Nutriapix…</span></div>}
+              {!isBarcodeQuery && nameLookupState === 'loading' && <div className="flux-lookup-state"><LoaderCircle className="is-spinning" /><span>Ищем в базах продуктов…</span></div>}
               {!isBarcodeQuery && nameCandidates.map((candidate) => (
                 <button type="button" className="flux-product-row" key={candidate.source === 'nutriapix' ? candidate.slug : candidate.product.id} onClick={() => { void chooseSearchCandidate(candidate); }} disabled={candidate.source === 'nutriapix' && Boolean(selectingCandidate)}>
                   <span className="flux-food-icon"><ProductIcon type="curd" /></span>
-                  <span><strong>{candidate.name}</strong><small>{candidate.brand} · {candidate.source === 'nutriapix' ? 'Nutriapix' : 'Open Food Facts'}</small></span>
+                  <span><strong>{candidate.name}</strong><small>{candidate.brand} · {candidate.source === 'nutriapix' ? 'Nutriapix' : candidate.source === 'fatsecret' ? 'FatSecret' : 'Open Food Facts'}</small></span>
                   {candidate.source === 'nutriapix' && selectingCandidate === candidate.slug ? <LoaderCircle className="is-spinning" /> : <ChevronRight aria-hidden="true" />}
                 </button>
               ))}

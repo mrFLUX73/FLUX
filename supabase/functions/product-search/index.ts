@@ -45,12 +45,13 @@ type SearchResult =
 
 type NutriapixCandidate = { source: "nutriapix"; name: string; brand: string; slug: string };
 type OpenFoodFactsCandidate = { source: "open_food_facts"; name: string; brand: string; product: Product };
+type FatSecretCandidate = { source: "fatsecret"; name: string; brand: string; product: Product };
 type NutriapixSearchResult =
   | { status: "found"; candidates: NutriapixCandidate[] }
   | { status: "not_found" }
   | { status: "error"; message: string };
 type NameSearchResult =
-  | { status: "found"; candidates: Array<NutriapixCandidate | OpenFoodFactsCandidate> }
+  | { status: "found"; candidates: Array<NutriapixCandidate | OpenFoodFactsCandidate | FatSecretCandidate> }
   | { status: "not_found" }
   | { status: "error"; message: string };
 type NutriapixFoodResult =
@@ -474,6 +475,48 @@ async function lookupFatSecret(barcode: string, rawName: string): Promise<Search
   };
 }
 
+function fatSecretProduct(hit: FatSecretHit, key: string): Product {
+  const serving = packageSize(hit.serving);
+  const scaleTo100 = serving.amount > 0 ? 100 / serving.amount : 1;
+  const portionScale = serving.amount / 100;
+  const normalized = `${hit.name}|${hit.brand}|${hit.serving}`.toLocaleLowerCase("ru");
+  return {
+    id: `fatsecret:search:${encodeURIComponent(`${key}|${normalized}`)}`,
+    name: hit.name,
+    brand: hit.brand || "Без бренда",
+    amount: rounded(serving.amount),
+    unit: serving.unit,
+    servingSizeG: rounded(serving.amount),
+    kcal: Math.round(hit.kcal * scaleTo100 * portionScale),
+    protein: rounded(hit.protein * scaleTo100 * portionScale),
+    fat: rounded(hit.fat * scaleTo100 * portionScale),
+    carbs: rounded(hit.carbs * scaleTo100 * portionScale),
+    icon: productIcon(`${hit.name} ${hit.brand}`),
+  };
+}
+
+async function searchFatSecretByName(query: string): Promise<FatSecretCandidate[]> {
+  // The official API is primary. The Russian public catalogue remains a
+  // compatibility source: it is the catalogue familiar to FLUX's Russian users
+  // and often has products which the official free API does not return.
+  const variants = [...new Set([query, ...cleanNameVariants(query)])].slice(0, 4);
+  const [apiGroups, webGroups] = await Promise.all([
+    Promise.all(variants.map((variant) => searchFatSecretApi(variant, query))),
+    Promise.all(variants.map((variant) => searchFatSecretWeb(variant, query))),
+  ]);
+  const unique = new Map<string, FatSecretHit>();
+  for (const hit of [...apiGroups.flat(), ...webGroups.flat()]) {
+    if (hit.score < 45) continue;
+    const key = `${hit.name}|${hit.brand}|${hit.serving}`.toLocaleLowerCase("ru");
+    const prior = unique.get(key);
+    if (!prior || hit.score > prior.score) unique.set(key, hit);
+  }
+  return [...unique.values()]
+    .sort((left, right) => right.score - left.score)
+    .slice(0, 5)
+    .map((hit) => ({ source: "fatsecret" as const, name: hit.name, brand: hit.brand || "Без бренда", product: fatSecretProduct(hit, query) }));
+}
+
 function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -546,10 +589,15 @@ function nameSearchScore(query: string, candidate: { name: string; brand: string
 }
 
 async function searchByName(query: string): Promise<NameSearchResult> {
-  const [nutriapix, openFoodFacts] = await Promise.all([searchNutriapix(query), searchOpenFoodFacts(query)]);
+  const [nutriapix, openFoodFacts, fatSecret] = await Promise.all([
+    searchNutriapix(query),
+    searchOpenFoodFacts(query),
+    searchFatSecretByName(query),
+  ]);
   const candidates = [
     ...openFoodFacts,
     ...(nutriapix.status === "found" ? nutriapix.candidates : []),
+    ...fatSecret,
   ]
     .sort((left, right) => nameSearchScore(query, right) - nameSearchScore(query, left))
     .slice(0, 8);
@@ -630,7 +678,7 @@ Deno.serve(async (request) => {
   } catch {
     return json(request, { error: "Некорректный JSON" }, 400);
   }
-  if (payload.mode === "nutriapix-search") {
+  if (payload.mode === "name-search" || payload.mode === "nutriapix-search") {
     const query = text(payload.query);
     if (query.length < 3 || query.length > 100) return json(request, { error: "Введите от 3 до 100 символов для поиска" }, 400);
     return json(request, await searchByName(query));
