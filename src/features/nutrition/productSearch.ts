@@ -33,7 +33,7 @@ type OpenFoodFactsProduct = {
 };
 
 type OpenFoodFactsResponse = {
-  status?: number;
+  status?: number | string;
   product?: OpenFoodFactsProduct;
 };
 
@@ -132,7 +132,7 @@ async function lookupOpenFoodFactsByBarcode(barcode: string, signal?: AbortSigna
     if (!response.ok) return { status: 'error', message: `Источник временно недоступен (${response.status})` };
 
     const payload = await response.json() as OpenFoodFactsResponse;
-    if (payload.status !== 1 || !payload.product) return { status: 'not_found' };
+    if ((payload.status !== 1 && payload.status !== 'success') || !payload.product) return { status: 'not_found' };
 
     const source = payload.product;
     const name = source.product_name_ru?.trim() || source.product_name?.trim() || '';

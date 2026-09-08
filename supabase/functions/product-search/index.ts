@@ -156,7 +156,7 @@ async function lookupOpenFoodFacts(barcode: string): Promise<SearchResult> {
     if (response.status === 404) return { status: "not_found" };
     if (!response.ok) return { status: "error", message: `Open Food Facts: HTTP ${response.status}` };
     const payload = await response.json();
-    const source = payload?.status === 1 ? payload.product : null;
+    const source = (payload?.status === 1 || payload?.status === "success") ? payload.product : null;
     if (!source) return { status: "not_found" };
 
     const name = String(source.product_name_ru || source.product_name || "").trim();
