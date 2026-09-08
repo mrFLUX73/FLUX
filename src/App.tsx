@@ -1469,6 +1469,8 @@ export default function App() {
   const pullStartY = useRef<number | null>(null);
   const pullDistanceRef = useRef(0);
   const [pullDistance, setPullDistance] = useState(0);
+  const [pullFeedback, setPullFeedback] = useState<'idle' | 'refreshing' | 'updated' | 'error'>('idle');
+  const pullFeedbackTimer = useRef<number | null>(null);
   const [account, setAccount] = useState<FluxAccount | null>(startupAccountRef.current);
   const [sessionResolved, setSessionResolved] = useState(false);
   const [profileHydratedUserId, setProfileHydratedUserId] = useState<string | null>(
@@ -1864,24 +1866,14 @@ export default function App() {
   }
 
   function refreshNutrition() {
-    void connectNutrition().then((result) => {
-      const entryCount = result.entries.length;
-      const totalKcal = result.entries.reduce((sum, entry) => sum + entry.kcal, 0);
-      const entryLabel = entryCount % 10 === 1 && entryCount % 100 !== 11
-        ? 'запись'
-        : entryCount % 10 >= 2 && entryCount % 10 <= 4 && (entryCount % 100 < 12 || entryCount % 100 > 14)
-          ? 'записи'
-          : 'записей';
-
-      toast.add({
-        title: 'Рацион обновлён',
-        description: entryCount
-          ? `Загружено ${entryCount} ${entryLabel} · ${totalKcal.toLocaleString('ru-RU')} ккал.`
-          : 'В Supabase на сегодня пока нет записей.',
-        type: 'success',
-      });
+    if (pullFeedbackTimer.current) window.clearTimeout(pullFeedbackTimer.current);
+    setPullFeedback('refreshing');
+    void connectNutrition().then(() => {
+      setPullFeedback('updated');
+      pullFeedbackTimer.current = window.setTimeout(() => setPullFeedback('idle'), 1800);
     }).catch(() => {
-      toast.add({ title: 'Не удалось обновить рацион', description: 'Показываем сохранённые данные. Попробуйте ещё раз, когда связь станет лучше.', type: 'error' });
+      setPullFeedback('error');
+      pullFeedbackTimer.current = window.setTimeout(() => setPullFeedback('idle'), 2800);
     });
   }
 
@@ -2230,9 +2222,9 @@ export default function App() {
               onTouchEnd={endFoodPull}
               onTouchCancel={endFoodPull}
             >
-              {tab === 'food' && <div className={`flux-pull-indicator${pullDistance >= 62 ? ' is-ready' : ''}${nutritionConnecting ? ' is-refreshing' : ''}`} style={{ '--flux-pull-distance': `${pullDistance}px` } as CSSProperties} aria-live="polite">
-                {nutritionConnecting ? <LoaderCircle className="is-spinning" /> : <RefreshCw />}
-                <span>{nutritionConnecting ? 'Обновляем рацион…' : pullDistance >= 62 ? 'Отпустите, чтобы обновить' : 'Потяните, чтобы обновить'}</span>
+              {tab === 'food' && <div className={`flux-pull-indicator${pullDistance > 0 || pullFeedback !== 'idle' ? ' is-visible' : ''}${pullDistance >= 62 ? ' is-ready' : ''}${pullFeedback === 'refreshing' ? ' is-refreshing' : ''}${pullFeedback === 'updated' ? ' is-updated' : ''}${pullFeedback === 'error' ? ' is-error' : ''}`} style={{ '--flux-pull-distance': `${pullDistance}px` } as CSSProperties} aria-live="polite">
+                {pullFeedback === 'refreshing' ? <LoaderCircle className="is-spinning" /> : pullFeedback === 'updated' ? <Check /> : <RefreshCw />}
+                <span>{pullFeedback === 'refreshing' ? 'Обновляем рацион…' : pullFeedback === 'updated' ? 'Рацион обновлён' : pullFeedback === 'error' ? 'Не удалось обновить' : pullDistance >= 62 ? 'Отпустите, чтобы обновить' : 'Потяните, чтобы обновить'}</span>
               </div>}
               {tab === 'today' && <TodayScreen totals={totals} target={calorieTarget} macroTargets={macroTargets} entries={entries} weekActivity={weekActivity} />}
               {tab === 'food' && <FoodScreen entries={entries} target={calorieTarget} selectedDay={selectedNutritionDay} onSelectDay={setSelectedNutritionDay} historyLoading={historyLoading} mode={nutritionMode} isConnecting={nutritionConnecting} isAuthenticated={Boolean(account)} onAdd={(meal) => openFood(meal ?? currentMeal())} onEdit={setEditingEntry} onRemove={removeEntry} onRepeat={openPreviousMeal} repeatLoadingMeal={repeatLoadingMeal} />}

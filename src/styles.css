@@ -475,10 +475,13 @@ button:active { transform: scale(.97); }
 .flux-sync-status.is-actionable { border: 0; background: var(--flux-soft); color: var(--flux-primary); cursor: pointer; }
 .flux-sync-status:disabled { border: 0; opacity: 1; }
 .flux-sync-status svg { width: 12px; height: 12px; }
-.flux-pull-indicator { height: 34px; position: absolute; z-index: 2; top: 0; left: 50%; pointer-events: none; padding: 0 12px; border-radius: 0 0 14px 14px; background: var(--flux-card); box-shadow: 0 7px 18px color-mix(in srgb, var(--flux-primary) 12%, transparent); color: var(--flux-muted); display: flex; align-items: center; gap: 6px; font-size: 9px; transform: translate(-50%, calc(-100% + var(--flux-pull-distance, 0px))); opacity: calc(var(--flux-pull-distance, 0px) / 42); transition: transform .18s ease, opacity .18s ease, color .18s ease; }
+.flux-pull-indicator { height: 34px; position: absolute; z-index: 3; top: 0; left: 50%; pointer-events: none; padding: 0 14px; border-radius: 0 0 14px 14px; background: var(--flux-card); box-shadow: 0 7px 18px color-mix(in srgb, var(--flux-primary) 12%, transparent); color: var(--flux-muted); display: flex; align-items: center; gap: 6px; font-size: 9px; transform: translate(-50%, calc(-100% + var(--flux-pull-distance, 0px))); opacity: 0; transition: transform .18s ease, opacity .18s ease, color .18s ease; }
 .flux-pull-indicator svg { width: 13px; height: 13px; }
+.flux-pull-indicator.is-visible { opacity: 1; }
 .flux-pull-indicator.is-ready { color: var(--flux-primary); }
 .flux-pull-indicator.is-refreshing { color: var(--flux-primary); transform: translate(-50%, 0); opacity: 1; }
+.flux-pull-indicator.is-updated { color: var(--flux-primary); transform: translate(-50%, 0); }
+.flux-pull-indicator.is-error { color: #a55448; transform: translate(-50%, 0); }
 .flux-food-calendar { margin: -4px 0 15px; padding: 12px 10px 10px; border: 1px solid var(--flux-border-soft); border-radius: 20px; background: var(--flux-card); }
 .flux-food-calendar > header { display: grid; grid-template-columns: 58px minmax(0, 1fr) 58px; align-items: center; gap: 6px; }
 .flux-food-calendar > header strong { color: var(--flux-ink); font-size: 10px; font-weight: 500; text-align: center; }
