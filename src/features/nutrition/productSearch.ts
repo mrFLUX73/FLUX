@@ -30,6 +30,10 @@ type OpenFoodFactsResponse = {
   product?: OpenFoodFactsProduct;
 };
 
+type OpenFoodFactsNameResponse = {
+  products?: OpenFoodFactsProduct[];
+};
+
 export type BarcodeLookupResult =
   | { status: 'found'; product: Product; source: 'Nutriapix' | 'Open Food Facts' | 'FatSecret' }
   | { status: 'not_found' }
@@ -143,6 +147,59 @@ async function lookupOpenFoodFactsByBarcode(barcode: string, signal?: AbortSigna
   }
 }
 
+function productFromOpenFoodFacts(source: OpenFoodFactsProduct, barcode: string): Product | null {
+  const name = source.product_name_ru?.trim() || source.product_name?.trim() || '';
+  const kcal = number(source.nutriments?.['energy-kcal_100g']);
+  const protein = number(source.nutriments?.proteins_100g);
+  const fat = number(source.nutriments?.fat_100g);
+  const carbs = number(source.nutriments?.carbohydrates_100g);
+  if (!name || kcal === null || protein === null || fat === null || carbs === null) return null;
+  const portion = serving(source);
+  const scale = portion.servingSizeG / 100;
+  return {
+    id: `open-food-facts:${barcode}`, barcode, name,
+    brand: source.brands?.trim() || 'Без бренда', amount: portion.amount, unit: portion.unit,
+    servingSizeG: portion.servingSizeG, kcal: Math.round(kcal * scale), protein: rounded(protein * scale),
+    fat: rounded(fat * scale), carbs: rounded(carbs * scale), icon: productIcon(source),
+  };
+}
+
+async function searchOpenFoodFactsProducts(query: string, signal?: AbortSignal): Promise<OpenFoodFactsSearchCandidate[]> {
+  const url = new URL('https://world.openfoodfacts.org/cgi/search.pl');
+  url.searchParams.set('search_terms', query);
+  url.searchParams.set('search_simple', '1');
+  url.searchParams.set('action', 'process');
+  url.searchParams.set('json', '1');
+  url.searchParams.set('page_size', '8');
+  url.searchParams.set('fields', OPEN_FOOD_FACTS_FIELDS);
+  try {
+    const response = await fetch(url, { headers: { Accept: 'application/json' }, signal });
+    if (!response.ok) return [];
+    const payload = await response.json() as OpenFoodFactsNameResponse;
+    return (payload.products ?? []).flatMap((source) => {
+      const barcode = String(source.code ?? '').trim();
+      const product = barcode ? productFromOpenFoodFacts(source, barcode) : null;
+      return product ? [{ source: 'open_food_facts' as const, name: product.name, brand: product.brand, product }] : [];
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw error;
+    return [];
+  }
+}
+
+function nameCandidateScore(query: string, candidate: ProductSearchCandidate) {
+  const normalize = (value: string) => value.toLocaleLowerCase('ru').replace(/ё/g, 'е').replace(/\s+/g, ' ').trim();
+  const normalizedQuery = normalize(query);
+  const name = normalize(candidate.name);
+  if (name === normalizedQuery) return 1000;
+  if (name.includes(normalizedQuery)) return 500;
+  const queryTokens = new Set(normalizedQuery.match(/[\p{L}\p{N}]+/gu) ?? []);
+  const candidateTokens = new Set(`${name} ${normalize(candidate.brand)}`.match(/[\p{L}\p{N}]+/gu) ?? []);
+  let overlap = 0;
+  for (const token of queryTokens) if (candidateTokens.has(token)) overlap += 1;
+  return overlap * 50;
+}
+
 function isBarcodeLookupResult(value: unknown): value is BarcodeLookupResult {
   if (!value || typeof value !== 'object' || !('status' in value)) return false;
   const status = (value as { status?: unknown }).status;
@@ -168,9 +225,28 @@ export async function searchNutriapixProducts(query: string, signal?: AbortSigna
   const normalized = query.trim();
   if (normalized.length < 3 || normalized.length > 100) return { status: 'not_found' };
   try {
-    return await invokeSupabaseFunction<NutriapixSearchResponse>('product-search', {
+    const remoteSearch = invokeSupabaseFunction<NutriapixSearchResponse>('product-search', {
       mode: 'nutriapix-search', query: normalized,
-    }, signal);
+    }, signal).catch((error): NutriapixSearchResponse => {
+      if (error instanceof DOMException && error.name === 'AbortError') throw error;
+      return { status: 'not_found' };
+    });
+    const [remote, openFoodFacts] = await Promise.all([
+      remoteSearch,
+      searchOpenFoodFactsProducts(normalized, signal),
+    ]);
+    const candidates = [
+      ...openFoodFacts,
+      ...(remote.status === 'found' ? remote.candidates : []),
+    ].filter((candidate, index, list) => list.findIndex((other) => (
+      candidate.source === 'open_food_facts' && other.source === 'open_food_facts'
+        ? candidate.product.id === other.product.id
+        : candidate.source === 'nutriapix' && other.source === 'nutriapix'
+          ? candidate.slug === other.slug
+          : false
+    )) === index).sort((left, right) => nameCandidateScore(normalized, right) - nameCandidateScore(normalized, left)).slice(0, 8);
+    if (candidates.length) return { status: 'found', candidates };
+    return remote.status === 'error' ? remote : { status: 'not_found' };
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error;
     return { status: 'error', message: 'Поиск Nutriapix временно недоступен.' };
