@@ -42,7 +42,14 @@ type OpenFoodFactsNameResponse = {
 };
 
 export type BarcodeLookupResult =
-  | { status: 'found'; product: Product; source: 'Nutriapix' | 'Open Food Facts' | 'FatSecret' }
+  | {
+    status: 'found';
+    product: Product;
+    /** Other verified matches for the same barcode. The first product is the
+     * provider-preferred result, but the user can always inspect the rest. */
+    products?: Product[];
+    source: 'Nutriapix' | 'Open Food Facts' | 'FatSecret';
+  }
   | { status: 'not_found' }
   | { status: 'incomplete'; name: string }
   | { status: 'error'; message: string };

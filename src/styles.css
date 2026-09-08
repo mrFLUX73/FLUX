@@ -287,7 +287,7 @@ button:active { transform: scale(.97); }
 .flux-avatar .flux-avatar-art { width: 100%; height: 100%; }
 .flux-avatar-art { width: 58px; height: 58px; flex: 0 0 auto; position: relative; display: block; overflow: hidden; border-radius: 50%; background: var(--flux-avatar-bg); color: var(--flux-primary); transition: transform .32s cubic-bezier(.22,.75,.25,1), background-color .38s ease, color .38s ease; }
 .flux-avatar-art::after { content: ''; position: absolute; inset: 3%; background: currentColor; -webkit-mask: var(--flux-avatar-mask) center / contain no-repeat; mask: var(--flux-avatar-mask) center / contain no-repeat; }
-.flux-content { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 7px 22px 28px; scrollbar-width: none; animation: flux-page-enter .4s cubic-bezier(.22,.75,.25,1) both; }
+.flux-content { flex: 1; min-height: 0; position: relative; overflow-y: auto; overscroll-behavior: contain; padding: 7px 22px 28px; scrollbar-width: none; animation: flux-page-enter .4s cubic-bezier(.22,.75,.25,1) both; }
 .flux-content::-webkit-scrollbar { display: none; }
 .flux-content > * { animation: flux-block-enter .46s cubic-bezier(.22,.75,.25,1) both; }
 .flux-content > :nth-child(2) { animation-delay: .045s; }
@@ -475,6 +475,10 @@ button:active { transform: scale(.97); }
 .flux-sync-status.is-actionable { border: 0; background: var(--flux-soft); color: var(--flux-primary); cursor: pointer; }
 .flux-sync-status:disabled { border: 0; opacity: 1; }
 .flux-sync-status svg { width: 12px; height: 12px; }
+.flux-pull-indicator { height: 34px; position: absolute; z-index: 2; top: 0; left: 50%; pointer-events: none; padding: 0 12px; border-radius: 0 0 14px 14px; background: var(--flux-card); box-shadow: 0 7px 18px color-mix(in srgb, var(--flux-primary) 12%, transparent); color: var(--flux-muted); display: flex; align-items: center; gap: 6px; font-size: 9px; transform: translate(-50%, calc(-100% + var(--flux-pull-distance, 0px))); opacity: calc(var(--flux-pull-distance, 0px) / 42); transition: transform .18s ease, opacity .18s ease, color .18s ease; }
+.flux-pull-indicator svg { width: 13px; height: 13px; }
+.flux-pull-indicator.is-ready { color: var(--flux-primary); }
+.flux-pull-indicator.is-refreshing { color: var(--flux-primary); transform: translate(-50%, 0); opacity: 1; }
 .flux-food-calendar { margin: -4px 0 15px; padding: 12px 10px 10px; border: 1px solid var(--flux-border-soft); border-radius: 20px; background: var(--flux-card); }
 .flux-food-calendar > header { display: grid; grid-template-columns: 58px minmax(0, 1fr) 58px; align-items: center; gap: 6px; }
 .flux-food-calendar > header strong { color: var(--flux-ink); font-size: 10px; font-weight: 500; text-align: center; }

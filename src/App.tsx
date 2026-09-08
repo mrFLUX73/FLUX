@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type KeyboardEvent, type TouchEvent } from 'react';
 import {
   Activity,
   ArrowLeft,
@@ -447,12 +447,15 @@ function QuickAddDrawer({
     setLookupMessage('');
     setLookupProductName('');
     const searchTimer = window.setTimeout(async () => {
-      const requestTimer = window.setTimeout(() => controller.abort(), 8000);
+      // Barcode lookups query several independent sources. Give the complete
+      // chain enough time to include FatSecret rather than cancelling it while
+      // Open Food Facts and Nutriapix are still responding.
+      const requestTimer = window.setTimeout(() => controller.abort(), 15000);
       try {
         const result = await lookupProductByBarcode(barcodeQuery, controller.signal);
         if (!active) return;
         if (result.status === 'found') {
-          setBarcodeProducts([result.product]);
+          setBarcodeProducts(result.products?.length ? result.products : [result.product]);
           setLookupState('found');
           setLookupProductName(result.product.name);
           return;
@@ -1308,9 +1311,6 @@ function FoodScreen({
   mode,
   isConnecting,
   isAuthenticated,
-  canConnect,
-  onConnect,
-  onRefresh,
   onAdd,
   onEdit,
   onRemove,
@@ -1325,9 +1325,6 @@ function FoodScreen({
   mode: NutritionMode;
   isConnecting: boolean;
   isAuthenticated: boolean;
-  canConnect: boolean;
-  onConnect: () => void;
-  onRefresh: () => void;
   onAdd: (meal?: MealKind) => void;
   onEdit: (entry: MealEntry) => void;
   onRemove: (entry: MealEntry) => void;
@@ -1359,20 +1356,13 @@ function FoodScreen({
         })}</div>
         {!isToday && <p>История за {dayLabel(selectedDay)}. Редактирование доступно только для текущего дня.</p>}
       </section>
-      <button
-        className={`flux-sync-status ${isSynced ? 'is-cloud' : ''} ${canConnect ? 'is-actionable' : ''}`}
-        type="button"
-        disabled={isConnecting || !canConnect}
-        onClick={isSynced ? onRefresh : onConnect}
-      >
+      <p className={`flux-sync-status ${isSynced ? 'is-cloud' : ''}`} role="status">
         {isConnecting
-          ? <><LoaderCircle className="is-spinning" /> Подключаю данные…</>
+          ? <><LoaderCircle className="is-spinning" /> Обновляем данные…</>
           : isSynced
-            ? <><RefreshCw /> Синхронизировано · обновить</>
-            : canConnect
-              ? <><Cloud /> {isAuthenticated ? 'Повторить синхронизацию' : 'Войти или создать профиль'}</>
-              : 'Сохраняется на этом устройстве'}
-      </button>
+            ? <><Cloud /> Сохранено в профиле</>
+            : <><WifiOff /> {isAuthenticated ? 'Сохранено на устройстве' : 'Гостевой дневник на устройстве'}</>}
+      </p>
       {isToday && <button className="flux-food-search" type="button" onClick={() => onAdd()}><Search /><span>Что вы съели?</span></button>}
       <div className="flux-calorie-line"><span>{total.toLocaleString('ru-RU')} из {target.toLocaleString('ru-RU')} ккал</span><strong>{Math.round((total / target) * 100)}%</strong></div><Progress value={(total / target) * 100} />
       <section className="flux-meal-list">
@@ -1476,6 +1466,9 @@ export default function App() {
   const [catalog, setCatalog] = useState<Product[]>(fallbackProducts);
   const [nutritionMode, setNutritionMode] = useState<NutritionMode>('local');
   const [nutritionConnecting, setNutritionConnecting] = useState(true);
+  const pullStartY = useRef<number | null>(null);
+  const pullDistanceRef = useRef(0);
+  const [pullDistance, setPullDistance] = useState(0);
   const [account, setAccount] = useState<FluxAccount | null>(startupAccountRef.current);
   const [sessionResolved, setSessionResolved] = useState(false);
   const [profileHydratedUserId, setProfileHydratedUserId] = useState<string | null>(
@@ -1768,7 +1761,6 @@ export default function App() {
 
   // Turnstile protects registration and sign-in only. A signed-in user must be
   // able to refresh their existing diary regardless of that widget's state.
-  const canConnectNutrition = isSupabaseConfigured;
   const firstName = account?.displayName.split(/\s+/)[0];
   const fluxTheme: FluxTheme = profileDraft?.theme ?? 'sage';
 
@@ -1871,18 +1863,6 @@ export default function App() {
     setAuthGateOpen(true);
   }
 
-  function openSync() {
-    if (!account) {
-      openAuth('signup');
-      return;
-    }
-    void connectNutrition().then(() => {
-      toast.add({ title: 'Синхронизация подключена', description: 'Дневник теперь сохраняется в Supabase.', type: 'success' });
-    }).catch(() => {
-      toast.add({ title: 'Не удалось подключиться', description: 'Проверьте интернет и попробуйте ещё раз.', type: 'error' });
-    });
-  }
-
   function refreshNutrition() {
     void connectNutrition().then((result) => {
       const entryCount = result.entries.length;
@@ -1903,6 +1883,32 @@ export default function App() {
     }).catch(() => {
       toast.add({ title: 'Не удалось обновить рацион', description: 'Показываем сохранённые данные. Попробуйте ещё раз, когда связь станет лучше.', type: 'error' });
     });
+  }
+
+  function startFoodPull(event: TouchEvent<HTMLDivElement>) {
+    if (tab !== 'food' || nutritionConnecting || event.currentTarget.scrollTop > 0) return;
+    pullStartY.current = event.touches[0]?.clientY ?? null;
+  }
+
+  function moveFoodPull(event: TouchEvent<HTMLDivElement>) {
+    if (pullStartY.current === null || tab !== 'food' || event.currentTarget.scrollTop > 0) return;
+    const distance = (event.touches[0]?.clientY ?? pullStartY.current) - pullStartY.current;
+    if (distance <= 0) {
+      pullDistanceRef.current = 0;
+      setPullDistance(0);
+      return;
+    }
+    const nextDistance = Math.min(86, Math.round(distance * 0.46));
+    pullDistanceRef.current = nextDistance;
+    setPullDistance(nextDistance);
+  }
+
+  function endFoodPull() {
+    const shouldRefresh = pullDistanceRef.current >= 62 && !nutritionConnecting && tab === 'food';
+    pullStartY.current = null;
+    pullDistanceRef.current = 0;
+    setPullDistance(0);
+    if (shouldRefresh) refreshNutrition();
   }
 
   async function authenticate(submission: PhoneAuthSubmission) {
@@ -2215,9 +2221,21 @@ export default function App() {
               <Button className="flux-avatar" variant="secondary" size="icon" onClick={openProfile} aria-label={account ? 'Открыть профиль' : 'Войти или зарегистрироваться'}>{account ? <ProfileAvatar avatar={defaultAvatar} /> : '+'}</Button>
               {tab === 'today' && <h1 className="flux-home-title"><span>Сегодня достаточно</span><span>просто продолжить.</span></h1>}
             </header>
-            <div key={tab} className="flux-content" id="top">
+            <div
+              key={tab}
+              className="flux-content"
+              id="top"
+              onTouchStart={startFoodPull}
+              onTouchMove={moveFoodPull}
+              onTouchEnd={endFoodPull}
+              onTouchCancel={endFoodPull}
+            >
+              {tab === 'food' && <div className={`flux-pull-indicator${pullDistance >= 62 ? ' is-ready' : ''}${nutritionConnecting ? ' is-refreshing' : ''}`} style={{ '--flux-pull-distance': `${pullDistance}px` } as CSSProperties} aria-live="polite">
+                {nutritionConnecting ? <LoaderCircle className="is-spinning" /> : <RefreshCw />}
+                <span>{nutritionConnecting ? 'Обновляем рацион…' : pullDistance >= 62 ? 'Отпустите, чтобы обновить' : 'Потяните, чтобы обновить'}</span>
+              </div>}
               {tab === 'today' && <TodayScreen totals={totals} target={calorieTarget} macroTargets={macroTargets} entries={entries} weekActivity={weekActivity} />}
-              {tab === 'food' && <FoodScreen entries={entries} target={calorieTarget} selectedDay={selectedNutritionDay} onSelectDay={setSelectedNutritionDay} historyLoading={historyLoading} mode={nutritionMode} isConnecting={nutritionConnecting} isAuthenticated={Boolean(account)} canConnect={canConnectNutrition} onConnect={openSync} onRefresh={refreshNutrition} onAdd={(meal) => openFood(meal ?? currentMeal())} onEdit={setEditingEntry} onRemove={removeEntry} onRepeat={openPreviousMeal} repeatLoadingMeal={repeatLoadingMeal} />}
+              {tab === 'food' && <FoodScreen entries={entries} target={calorieTarget} selectedDay={selectedNutritionDay} onSelectDay={setSelectedNutritionDay} historyLoading={historyLoading} mode={nutritionMode} isConnecting={nutritionConnecting} isAuthenticated={Boolean(account)} onAdd={(meal) => openFood(meal ?? currentMeal())} onEdit={setEditingEntry} onRemove={removeEntry} onRepeat={openPreviousMeal} repeatLoadingMeal={repeatLoadingMeal} />}
               {tab === 'workouts' && <WorkoutsScreen onStart={() => setWorkoutOpen(true)} />}
               {tab === 'progress' && <ProgressScreen />}
               {tab === 'admin' && account?.isAdmin && <AdminFeedbackScreen userId={account.id} />}

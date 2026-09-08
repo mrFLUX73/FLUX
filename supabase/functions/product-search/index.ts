@@ -39,7 +39,7 @@ type Product = {
 };
 
 type SearchResult =
-  | { status: "found"; product: Product; source: "Nutriapix" | "Open Food Facts" | "FatSecret" }
+  | { status: "found"; product: Product; products?: Product[]; source: "Nutriapix" | "Open Food Facts" | "FatSecret" }
   | { status: "incomplete"; name: string }
   | { status: "not_found" }
   | { status: "error"; message: string };
@@ -706,15 +706,24 @@ Deno.serve(async (request) => {
   const barcode = String(payload.barcode ?? "").replace(/\D/g, "");
   if (!/^\d{8,14}$/.test(barcode)) return json(request, { error: "Некорректный штрихкод" }, 400);
 
+  // A barcode is an identity, not a reason to stop at the first provider.
+  // Run the authorised API, Open Food Facts and the FatSecret fallback as one
+  // chain and return every complete match. This lets a user compare sources
+  // instead of silently losing an Open Food Facts result when Nutriapix wins.
   const nutriapixPromise = lookupNutriapixBarcode(barcode);
   const offPromise = lookupOpenFoodFacts(barcode);
-  const namePromise = lookupBarcodeName(barcode);
-  const [nutriapix, off] = await Promise.all([nutriapixPromise, offPromise]);
-  if (nutriapix.status === "found") return json(request, nutriapix);
-  if (off.status === "found") return json(request, off);
+  const rawName = await lookupBarcodeName(barcode);
+  const fatSecretPromise = rawName ? lookupFatSecret(barcode, rawName) : Promise.resolve<SearchResult>({ status: "not_found" });
+  const [nutriapix, off, fatSecret] = await Promise.all([nutriapixPromise, offPromise, fatSecretPromise]);
+  const matches = [nutriapix, off, fatSecret].filter((result): result is Extract<SearchResult, { status: "found" }> => result.status === "found");
+  if (matches.length) {
+    const products = matches.map((match) => match.product).filter((product, index, all) =>
+      all.findIndex((other) => other.id === product.id) === index,
+    );
+    const primary = matches[0];
+    return json(request, { ...primary, products });
+  }
 
-  const rawName = await namePromise;
-  if (rawName) return json(request, await lookupFatSecret(barcode, rawName));
   if (off.status === "incomplete") return json(request, off);
   if (off.status === "error") return json(request, off, 503);
   return json(request, { status: "not_found" });
