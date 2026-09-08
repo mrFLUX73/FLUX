@@ -61,7 +61,7 @@ import { Progress } from '@/components/ui/progress';
 import { Toaster, toast } from '@/components/ui/toast';
 import { fallbackProducts, matchesProductSearch, productSearchRank } from './features/nutrition/catalog';
 import { decodeBarcodeImage, startBarcodeScanner, type BarcodeScannerSession } from './features/nutrition/barcodeScanner';
-import { getNutriapixProduct, lookupProductByBarcode, searchNutriapixProducts, type NutriapixSearchCandidate } from './features/nutrition/productSearch';
+import { getNutriapixProduct, lookupProductByBarcode, searchNutriapixProducts, type ProductSearchCandidate } from './features/nutrition/productSearch';
 import { submitProductSuggestion } from './features/nutrition/productSuggestions';
 import {
   addRemoteMealEntry,
@@ -244,7 +244,7 @@ function QuickAddDrawer({
   const [manualProductOpen, setManualProductOpen] = useState(false);
   const [manualProduct, setManualProduct] = useState<ManualProductDraft>(() => emptyManualProduct());
   const [barcodeProducts, setBarcodeProducts] = useState<Product[]>([]);
-  const [nameCandidates, setNameCandidates] = useState<NutriapixSearchCandidate[]>([]);
+  const [nameCandidates, setNameCandidates] = useState<ProductSearchCandidate[]>([]);
   const [nameLookupState, setNameLookupState] = useState<'idle' | 'loading' | 'error'>('idle');
   const [nameLookupMessage, setNameLookupMessage] = useState('');
   const [selectingCandidate, setSelectingCandidate] = useState('');
@@ -524,7 +524,11 @@ function QuickAddDrawer({
     setManualProductOpen(false);
   }
 
-  async function chooseNutriapixCandidate(candidate: NutriapixSearchCandidate) {
+  async function chooseSearchCandidate(candidate: ProductSearchCandidate) {
+    if (candidate.source === 'open_food_facts') {
+      choose(candidate.product);
+      return;
+    }
     if (selectingCandidate) return;
     const controller = new AbortController();
     setSelectingCandidate(candidate.slug);
@@ -901,10 +905,10 @@ function QuickAddDrawer({
               })}
               {!isBarcodeQuery && nameLookupState === 'loading' && <div className="flux-lookup-state"><LoaderCircle className="is-spinning" /><span>Ищем в Nutriapix…</span></div>}
               {!isBarcodeQuery && nameCandidates.map((candidate) => (
-                <button type="button" className="flux-product-row" key={candidate.slug} onClick={() => { void chooseNutriapixCandidate(candidate); }} disabled={Boolean(selectingCandidate)}>
+                <button type="button" className="flux-product-row" key={candidate.source === 'nutriapix' ? candidate.slug : candidate.product.id} onClick={() => { void chooseSearchCandidate(candidate); }} disabled={candidate.source === 'nutriapix' && Boolean(selectingCandidate)}>
                   <span className="flux-food-icon"><ProductIcon type="curd" /></span>
-                  <span><strong>{candidate.name}</strong><small>{candidate.brand} · Nutriapix</small></span>
-                  {selectingCandidate === candidate.slug ? <LoaderCircle className="is-spinning" /> : <ChevronRight aria-hidden="true" />}
+                  <span><strong>{candidate.name}</strong><small>{candidate.brand} · {candidate.source === 'nutriapix' ? 'Nutriapix' : 'Open Food Facts'}</small></span>
+                  {candidate.source === 'nutriapix' && selectingCandidate === candidate.slug ? <LoaderCircle className="is-spinning" /> : <ChevronRight aria-hidden="true" />}
                 </button>
               ))}
               {!isBarcodeQuery && nameLookupState === 'error' && <div className="flux-lookup-state is-error"><span>{nameLookupMessage}</span></div>}

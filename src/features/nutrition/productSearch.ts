@@ -37,13 +37,23 @@ export type BarcodeLookupResult =
   | { status: 'error'; message: string };
 
 export type NutriapixSearchCandidate = {
+  source: 'nutriapix';
   name: string;
   brand: string;
   slug: string;
 };
 
+export type OpenFoodFactsSearchCandidate = {
+  source: 'open_food_facts';
+  name: string;
+  brand: string;
+  product: Product;
+};
+
+export type ProductSearchCandidate = NutriapixSearchCandidate | OpenFoodFactsSearchCandidate;
+
 type NutriapixSearchResponse =
-  | { status: 'found'; candidates: NutriapixSearchCandidate[] }
+  | { status: 'found'; candidates: ProductSearchCandidate[] }
   | { status: 'not_found' }
   | { status: 'error'; message: string };
 

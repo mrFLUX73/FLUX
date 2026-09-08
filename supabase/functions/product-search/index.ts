@@ -43,16 +43,21 @@ type SearchResult =
   | { status: "not_found" }
   | { status: "error"; message: string };
 
-type NutriapixCandidate = { name: string; brand: string; slug: string };
+type NutriapixCandidate = { source: "nutriapix"; name: string; brand: string; slug: string };
+type OpenFoodFactsCandidate = { source: "open_food_facts"; name: string; brand: string; product: Product };
 type NutriapixSearchResult =
   | { status: "found"; candidates: NutriapixCandidate[] }
+  | { status: "not_found" }
+  | { status: "error"; message: string };
+type NameSearchResult =
+  | { status: "found"; candidates: Array<NutriapixCandidate | OpenFoodFactsCandidate> }
   | { status: "not_found" }
   | { status: "error"; message: string };
 type NutriapixFoodResult =
   | { status: "found"; product: Product }
   | { status: "not_found" }
   | { status: "error"; message: string };
-type FunctionResult = SearchResult | NutriapixSearchResult | NutriapixFoodResult;
+type FunctionResult = SearchResult | NameSearchResult | NutriapixFoodResult;
 type CachedNutriapixFood = { expiresAt: number; result: NutriapixFoodResult };
 const nutriapixFoodCache = new Map<string, CachedNutriapixFood>();
 const NUTRIAPIX_CACHE_MS = 24 * 60 * 60 * 1000;
@@ -171,6 +176,61 @@ async function lookupOpenFoodFacts(barcode: string): Promise<SearchResult> {
     };
   } catch {
     return { status: "error", message: "Open Food Facts недоступен" };
+  }
+}
+
+function openFoodFactsProduct(source: Record<string, unknown>, barcode: string): Product | null {
+  const name = text(source.product_name_ru) || text(source.product_name);
+  const nutriments = source.nutriments as Record<string, unknown> | undefined;
+  const kcal = numeric(nutriments?.["energy-kcal_100g"]);
+  const protein = numeric(nutriments?.proteins_100g);
+  const fat = numeric(nutriments?.fat_100g);
+  const carbs = numeric(nutriments?.carbohydrates_100g);
+  if (!name || kcal === null || protein === null || fat === null || carbs === null) return null;
+  const size = packageSize(`${text(source.product_quantity)} ${text(source.product_quantity_unit)}`);
+  const categories = Array.isArray(source.categories_tags) ? source.categories_tags.join(" ") : "";
+  const isLiquid = size.unit === "мл" || text(source.nutrition_data_per) === "100ml" || /beverage|drink|напит/iu.test(categories);
+  const portion = { amount: size.amount, unit: isLiquid ? "мл" as const : "г" as const };
+  const scale = portion.amount / 100;
+  return {
+    id: `open-food-facts:${barcode}`,
+    barcode,
+    name,
+    brand: text(source.brands) || "Без бренда",
+    amount: rounded(portion.amount),
+    unit: portion.unit,
+    servingSizeG: rounded(portion.amount),
+    kcal: Math.round(kcal * scale),
+    protein: rounded(protein * scale),
+    fat: rounded(fat * scale),
+    carbs: rounded(carbs * scale),
+    icon: productIcon(`${name} ${categories}`),
+  };
+}
+
+async function searchOpenFoodFacts(query: string): Promise<OpenFoodFactsCandidate[]> {
+  try {
+    const url = new URL("https://world.openfoodfacts.org/cgi/search.pl");
+    url.searchParams.set("search_terms", query);
+    url.searchParams.set("search_simple", "1");
+    url.searchParams.set("action", "process");
+    url.searchParams.set("json", "1");
+    url.searchParams.set("page_size", "8");
+    url.searchParams.set("fields", OFF_FIELDS);
+    const response = await fetchWithTimeout(url.toString(), 6500, { Accept: "application/json" });
+    if (!response.ok) return [];
+    const payload = await response.json() as { products?: unknown };
+    const rows = Array.isArray(payload.products) ? payload.products : [];
+    return rows.flatMap((row): OpenFoodFactsCandidate[] => {
+      if (!row || typeof row !== "object") return [];
+      const source = row as Record<string, unknown>;
+      const barcode = text(source.code);
+      if (!barcode) return [];
+      const product = openFoodFactsProduct(source, barcode);
+      return product ? [{ source: "open_food_facts", name: product.name, brand: product.brand, product }] : [];
+    });
+  } catch {
+    return [];
   }
 }
 
@@ -466,12 +526,36 @@ async function searchNutriapix(query: string): Promise<NutriapixSearchResult> {
       const record = row as Record<string, unknown>;
       const name = text(record.food_name);
       const slug = text(record.food_slug);
-      return name && slug ? [{ name, slug, brand: text(record.food_brand) || "Без бренда" }] : [];
+      return name && slug ? [{ source: "nutriapix", name, slug, brand: text(record.food_brand) || "Без бренда" }] : [];
     });
     return candidates.length ? { status: "found", candidates } : { status: "not_found" };
   } catch (error) {
     return { status: "error", message: error instanceof Error ? error.message : "Не удалось связаться с Nutriapix." };
   }
+}
+
+function nameSearchScore(query: string, candidate: { name: string; brand: string }) {
+  const normalize = (value: string) => value.toLocaleLowerCase("ru").replace(/ё/g, "е").replace(/\s+/g, " ").trim();
+  const normalizedQuery = normalize(query);
+  const normalizedName = normalize(candidate.name);
+  const queryTokens = new Set(tokens(normalizedQuery));
+  const candidateTokens = new Set(tokens(`${normalizedName} ${candidate.brand}`));
+  let overlap = 0;
+  for (const token of queryTokens) if (candidateTokens.has(token)) overlap += 1;
+  return (normalizedName === normalizedQuery ? 1000 : normalizedName.includes(normalizedQuery) ? 500 : 0) + overlap * 50;
+}
+
+async function searchByName(query: string): Promise<NameSearchResult> {
+  const [nutriapix, openFoodFacts] = await Promise.all([searchNutriapix(query), searchOpenFoodFacts(query)]);
+  const candidates = [
+    ...openFoodFacts,
+    ...(nutriapix.status === "found" ? nutriapix.candidates : []),
+  ]
+    .sort((left, right) => nameSearchScore(query, right) - nameSearchScore(query, left))
+    .slice(0, 8);
+  if (candidates.length) return { status: "found", candidates };
+  if (nutriapix.status === "error") return nutriapix;
+  return { status: "not_found" };
 }
 
 function nutriapixFoodResult(food: Record<string, unknown>, barcode?: string): NutriapixFoodResult {
@@ -549,7 +633,7 @@ Deno.serve(async (request) => {
   if (payload.mode === "nutriapix-search") {
     const query = text(payload.query);
     if (query.length < 3 || query.length > 100) return json(request, { error: "Введите от 3 до 100 символов для поиска" }, 400);
-    return json(request, await searchNutriapix(query));
+    return json(request, await searchByName(query));
   }
   if (payload.mode === "nutriapix-food") {
     const slug = text(payload.slug);
