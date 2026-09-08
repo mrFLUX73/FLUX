@@ -62,6 +62,7 @@ import { Toaster, toast } from '@/components/ui/toast';
 import { fallbackProducts, matchesProductSearch, productSearchRank } from './features/nutrition/catalog';
 import { decodeBarcodeImage, startBarcodeScanner, type BarcodeScannerSession } from './features/nutrition/barcodeScanner';
 import { getNutriapixProduct, lookupProductByBarcode, searchNutriapixProducts, type NutriapixSearchCandidate } from './features/nutrition/productSearch';
+import { submitProductSuggestion } from './features/nutrition/productSuggestions';
 import {
   addRemoteMealEntry,
   bootstrapNutrition,
@@ -215,6 +216,7 @@ function QuickAddDrawer({
   initialProduct,
   initialMeal,
   syncsProducts,
+  suggestionUserId,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -224,6 +226,7 @@ function QuickAddDrawer({
   initialProduct: Product | null;
   initialMeal: MealKind;
   syncsProducts: boolean;
+  suggestionUserId: string | null;
 }) {
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<Product | null>(null);
@@ -248,6 +251,7 @@ function QuickAddDrawer({
   const [lookupState, setLookupState] = useState<'idle' | 'loading' | 'found' | 'not_found' | 'incomplete' | 'error'>('idle');
   const [lookupMessage, setLookupMessage] = useState('');
   const [lookupProductName, setLookupProductName] = useState('');
+  const [suggestionState, setSuggestionState] = useState<'idle' | 'sending' | 'sent'>('idle');
   const barcodeQuery = query.replace(/\D/g, '');
   const isBarcodeQuery = /^\d{8,14}$/.test(barcodeQuery);
   const scannerVideoRef = useRef<HTMLVideoElement>(null);
@@ -515,6 +519,7 @@ function QuickAddDrawer({
   function choose(product: Product) {
     setSelected(product);
     setAmount(product.amount);
+    setSuggestionState('idle');
     setScannerOpen(false);
     setManualProductOpen(false);
   }
@@ -620,6 +625,7 @@ function QuickAddDrawer({
     onOpenChange(false);
     window.setTimeout(() => {
       setSelected(null);
+      setSuggestionState('idle');
       setQuery('');
       setIsAdding(false);
       setScannerOpen(false);
@@ -646,6 +652,7 @@ function QuickAddDrawer({
     if (!nextOpen) {
       window.setTimeout(() => {
         setSelected(null);
+        setSuggestionState('idle');
         setQuery('');
         setIsAdding(false);
         setScannerOpen(false);
@@ -694,6 +701,19 @@ function QuickAddDrawer({
           ? [100, selected.amount, selected.amount / 2]
           : [100, 150, selected.amount])]
     : [];
+
+  async function suggestForSharedCatalog() {
+    if (!selected || !suggestionUserId || suggestionState !== 'idle') return;
+    setSuggestionState('sending');
+    try {
+      await submitProductSuggestion(suggestionUserId, selected);
+      setSuggestionState('sent');
+      toast.add({ title: 'Отправлено на проверку', description: 'После проверки карточка сможет появиться в общей базе FLUX.', type: 'success' });
+    } catch (error) {
+      setSuggestionState('idle');
+      toast.add({ title: 'Не удалось отправить', description: error instanceof Error ? error.message : 'Проверьте интернет и попробуйте ещё раз.', type: 'error' });
+    }
+  }
 
   return (
     <Drawer open={open} onOpenChange={handleOpenChange} showSwipeHandle>
@@ -826,6 +846,14 @@ function QuickAddDrawer({
             <Button className="flux-main-button" size="lg" disabled={isAdding || numericAmount <= 0} onClick={() => submit(selected, numericAmount)}>
               <span>{isAdding ? 'Сохраняю…' : `Добавить в ${mealInSentence(meal)}`}</span><strong>{Math.round(selected.kcal * scale)} ккал</strong>
             </Button>
+            {suggestionUserId && selected.source !== 'nutriapix' && (selected.isManual || selectedIsNewToCatalog) && (
+              <div className="flux-product-suggestion">
+                <div><strong>Помочь общей базе?</strong><span>Карточка останется личной, пока команда FLUX не сверит её.</span></div>
+                <Button type="button" variant="secondary" disabled={suggestionState !== 'idle'} onClick={() => { void suggestForSharedCatalog(); }}>
+                  {suggestionState === 'sending' ? <><LoaderCircle className="is-spinning" /> Отправляю…</> : suggestionState === 'sent' ? <><Check /> Уже предложено</> : 'Предложить в общую базу'}
+                </Button>
+              </div>
+            )}
             <button type="button" className="flux-text-button" onClick={() => setSelected(null)}><ArrowLeft /> Назад к продуктам</button>
           </div>
         ) : (
@@ -2111,6 +2139,7 @@ export default function App() {
         initialProduct={quickAddProduct}
         initialMeal={quickAddMeal}
         syncsProducts={nutritionMode === 'supabase' && Boolean(account)}
+        suggestionUserId={nutritionMode === 'supabase' ? account?.id ?? null : null}
       />
       <RepeatMealDrawer
         open={repeatMealOpen}

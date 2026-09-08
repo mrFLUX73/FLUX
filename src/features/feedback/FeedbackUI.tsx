@@ -4,6 +4,7 @@ import { Archive, ArchiveRestore, Bell, Bug, CheckCircle2, ClipboardList, Heart,
 import { Button } from '@/components/ui/button';
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { archiveFeedback, getFeedbackAttachmentUrl, loadAdminFeedback, loadMyFeedback, markFeedbackMessagesSeen, resolveFeedback, restoreFeedback, sendFeedbackMessage, submitFeedback, updateFeedbackStatus, type FeedbackCategory, type FeedbackItem, type FeedbackMessage, type FeedbackStatus } from './repository';
+import { loadProductSuggestions, reviewProductSuggestion, type ProductSuggestion } from '../nutrition/productSuggestions';
 
 const categories: { id: FeedbackCategory; label: string; hint: string; icon: typeof Bug }[] = [
   { id: 'bug', label: 'Ошибка', hint: 'Что-то не сработало', icon: Bug },
@@ -17,6 +18,10 @@ function formatCreatedAt(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
   return new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(date);
+}
+
+function formatMacro(value: number) {
+  return (Math.round(value * 10) / 10).toLocaleString('ru-RU', { maximumFractionDigits: 1 });
 }
 
 function Conversation({ messages, viewer }: { messages: FeedbackMessage[]; viewer: 'author' | 'support' }) {
@@ -124,6 +129,40 @@ export function FeedbackDrawer({ open, onOpenChange, userId, screen, onSubmitted
 
 type AdminFilter = 'active' | FeedbackStatus | 'archive';
 
+function ProductSuggestionQueue({ userId }: { userId: string }) {
+  const [items, setItems] = useState<ProductSuggestion[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [error, setError] = useState('');
+
+  const refresh = async () => {
+    setLoading(true); setError('');
+    try { setItems(await loadProductSuggestions(userId)); }
+    catch { setError('Не удалось загрузить предложения продуктов.'); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { void refresh(); }, [userId]);
+  const review = async (item: ProductSuggestion, decision: 'approved' | 'rejected') => {
+    setUpdatingId(item.id); setError('');
+    try {
+      await reviewProductSuggestion(userId, item.id, decision);
+      setItems((current) => current.filter((candidate) => candidate.id !== item.id));
+    } catch { setError('Решение не сохранилось. Попробуйте ещё раз.'); }
+    finally { setUpdatingId(null); }
+  };
+
+  return <section className="flux-product-suggestions-admin">
+    <div className="flux-admin-section-heading"><div><span className="flux-eyebrow">Общая база</span><h2>Предложения продуктов</h2></div><span>{items.length}</span></div>
+    {loading ? <div className="flux-product-suggestions-state"><LoaderCircle className="animate-spin" /> Проверяем очередь…</div>
+      : items.length ? <div className="flux-product-suggestions-list">{items.map((item) => <article key={item.id} className="flux-product-suggestion-card">
+        <header><div><strong>{item.name}</strong><span>{item.brand ?? 'Без бренда'}{item.barcode ? ` · ${item.barcode}` : ''}</span></div><time>{formatCreatedAt(item.createdAt)}</time></header>
+        <div className="flux-product-suggestion-macros"><span>{Math.round(item.kcalPer100)} <small>ккал</small></span><span>Б {formatMacro(item.proteinPer100)}</span><span>Ж {formatMacro(item.fatPer100)}</span><span>У {formatMacro(item.carbsPer100)}</span></div>
+        <footer><span>на 100 {item.servingUnit === 'ml' ? 'мл' : 'г'} · {item.source === 'manual' ? 'вручную' : item.source.replace('_', ' ')}</span><div><button type="button" className="is-reject" disabled={updatingId === item.id} onClick={() => { void review(item, 'rejected'); }}>Отклонить</button><button type="button" className="is-approve" disabled={updatingId === item.id} onClick={() => { void review(item, 'approved'); }}>{updatingId === item.id ? <LoaderCircle className="animate-spin" /> : <CheckCircle2 />} В общую базу</button></div></footer>
+      </article>)}</div> : <div className="flux-product-suggestions-state"><CheckCircle2 /> Очередь продуктов пуста.</div>}
+    {error && <p className="flux-admin-inline-error" role="alert">{error}</p>}
+  </section>;
+}
+
 export function AdminFeedbackScreen({ userId }: { userId: string }) {
   const [items, setItems] = useState<FeedbackItem[]>([]);
   const [loading, setLoading] = useState(true); const [refreshing, setRefreshing] = useState(false); const [error, setError] = useState('');
@@ -154,6 +193,7 @@ export function AdminFeedbackScreen({ userId }: { userId: string }) {
   return <><section className="flux-admin-screen">
     <div className="flux-page-heading"><div className="flux-page-heading-row"><div><span className="flux-eyebrow">Администрирование</span><h1>Управление</h1></div><Button type="button" variant="secondary" size="icon" aria-label="Обновить обращения" onClick={() => { void refresh(true); }} disabled={refreshing}>{refreshing ? <LoaderCircle className="animate-spin" /> : <RefreshCw />}</Button></div><p>{filter === 'archive' ? 'Архив обращений. Записи и вложения сохранены.' : 'Рабочая очередь и диалоги с пользователями FLUX.'}</p></div>
     <section className="flux-admin-stats"><div><span>Новые</span><strong>{newCount}</strong></div><div><span>В работе</span><strong>{inProgressCount}</strong></div></section>
+    <ProductSuggestionQueue userId={userId} />
     <div className="flux-admin-filters" aria-label="Фильтр обращений">{([['active', 'Очередь'], ['new', 'Новые'], ['in_progress', 'В работе'], ['resolved', 'Готово'], ['archive', 'Архив']] as const).map(([id, label]) => <button key={id} type="button" className={filter === id ? 'is-active' : ''} onClick={() => selectFilter(id)}>{label}</button>)}</div>
     {loading ? <div className="flux-admin-state"><LoaderCircle className="animate-spin" /> Загружаем обращения…</div> : error && !items.length ? <div className="flux-admin-state is-error"><p>{error}</p><Button type="button" variant="secondary" onClick={() => { void refresh(); }}>Повторить</Button></div> : visibleItems.length ? <div className="flux-admin-list">{visibleItems.map((item) => { const categoryItem = categories.find((candidate) => candidate.id === item.category) ?? categories[1]; const Icon = categoryItem.icon; return <article className="flux-admin-feedback" key={item.id}><header><span className={`flux-admin-category is-${item.category}`}><Icon /> {categoryItem.label}</span><time>{formatCreatedAt(item.createdAt)}</time></header><p>{item.message}</p>{item.attachments.length > 0 && <div className="flux-admin-attachments">{item.attachments.map((path, index) => <button type="button" key={path} disabled={openingAttachment === path} onClick={() => { void openAttachment(path); }}><Paperclip /> {openingAttachment === path ? 'Открываю…' : `Вложение ${index + 1}`}</button>)}</div>}<Conversation messages={item.messages} viewer="support" /><footer><span>{item.reporterName}{item.reporterLogin ? ` · @${item.reporterLogin}` : ''}</span>{filter === 'archive' ? <button type="button" className="flux-admin-archive-button" disabled={updatingId === item.id} onClick={() => { void toggleArchive(item); }}><ArchiveRestore /> Вернуть</button> : <div className="flux-admin-actions"><button type="button" className="flux-admin-reply-button" disabled={updatingId === item.id} onClick={() => { setReplyingItem(item); setReplyText(''); setReplyError(''); }}>Ответить</button><select value={item.status} disabled={updatingId === item.id} onChange={(event) => { void changeStatus(item, event.target.value as FeedbackStatus); }} aria-label={`Статус обращения: ${item.message.slice(0, 40)}`}><option value="new">{statusLabels.new}</option><option value="in_progress">{statusLabels.in_progress}</option><option value="resolved">{statusLabels.resolved}</option></select>{item.status === 'resolved' && <button type="button" className="flux-admin-archive-button" disabled={updatingId === item.id} onClick={() => { void toggleArchive(item); }} aria-label="Архивировать обращение"><Archive /></button>}</div>}</footer></article>; })}</div> : <div className="flux-admin-state"><CheckCircle2 /> {filter === 'archive' ? 'Архив пока пуст.' : 'В этой очереди пока нет обращений.'}</div>}{error && items.length > 0 && <p className="flux-admin-inline-error" role="alert">{error}</p>}
   </section>

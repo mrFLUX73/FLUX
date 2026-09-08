@@ -633,6 +633,28 @@ button:active { transform: scale(.97); }
 .flux-admin-stats span, .flux-admin-stats strong { display: block; }
 .flux-admin-stats span { color: var(--flux-muted); font-size: 8px; }
 .flux-admin-stats strong { margin-top: 3px; color: var(--flux-primary); font-size: 22px; font-weight: 500; }
+.flux-product-suggestions-admin { margin-top: 20px; }
+.flux-admin-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.flux-admin-section-heading h2 { margin: 3px 0 0; color: var(--flux-ink); font-size: 15px; font-weight: 500; }
+.flux-admin-section-heading > span { min-width: 25px; height: 25px; display: grid; place-items: center; border-radius: 9px; background: var(--flux-soft); color: var(--flux-primary); font-size: 10px; font-weight: 600; }
+.flux-product-suggestions-list { display: grid; gap: 8px; margin-top: 10px; }
+.flux-product-suggestion-card { padding: 12px; border: 1px solid var(--flux-border); border-radius: 16px; background: var(--flux-card); }
+.flux-product-suggestion-card header, .flux-product-suggestion-card footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.flux-product-suggestion-card header > div { min-width: 0; }
+.flux-product-suggestion-card header strong, .flux-product-suggestion-card header span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flux-product-suggestion-card header strong { color: var(--flux-ink); font-size: 10px; font-weight: 600; }
+.flux-product-suggestion-card header span, .flux-product-suggestion-card time, .flux-product-suggestion-card footer > span { color: var(--flux-muted); font-size: 8px; }
+.flux-product-suggestion-card time { flex: 0 0 auto; }
+.flux-product-suggestion-macros { display: flex; gap: 6px; margin: 10px 0; }
+.flux-product-suggestion-macros span { padding: 5px 6px; border-radius: 8px; background: var(--flux-soft-2); color: var(--flux-primary); font-size: 8px; }
+.flux-product-suggestion-macros small { color: var(--flux-muted); font-size: 7px; }
+.flux-product-suggestion-card footer > span { max-width: 94px; line-height: 1.3; }
+.flux-product-suggestion-card footer > div { display: flex; gap: 5px; }
+.flux-product-suggestion-card footer button { min-height: 27px; display: inline-flex; align-items: center; gap: 4px; padding: 0 7px; border: 1px solid var(--flux-border); border-radius: 9px; background: var(--flux-soft); color: var(--flux-primary); font-size: 8px; }
+.flux-product-suggestion-card footer button.is-approve { border-color: transparent; background: var(--flux-primary); color: var(--flux-on-primary); }
+.flux-product-suggestion-card footer button svg { width: 11px; height: 11px; }
+.flux-product-suggestions-state { min-height: 72px; display: grid; place-content: center; gap: 6px; margin-top: 10px; padding: 12px; border-radius: 16px; background: var(--flux-soft-2); color: var(--flux-muted); font-size: 9px; text-align: center; }
+.flux-product-suggestions-state svg { width: 17px; height: 17px; justify-self: center; color: var(--flux-primary); }
 .flux-admin-filters { display: flex; gap: 6px; margin: 18px 0 10px; overflow-x: auto; scrollbar-width: none; }
 .flux-admin-filters::-webkit-scrollbar { display: none; }
 .flux-admin-filters button { flex: 0 0 auto; padding: 7px 10px; border: 1px solid var(--flux-border); border-radius: 999px; background: var(--flux-card); color: var(--flux-muted); font-size: 8px; }
@@ -742,6 +764,12 @@ button:active { transform: scale(.97); }
 .flux-product-confirmation > span svg { width: 14px; height: 14px; stroke-width: 2.25; }
 .flux-product-confirmation p { margin: 0; color: var(--flux-muted); font-size: 9px; line-height: 1.48; }
 .flux-product-confirmation strong { display: block; margin-bottom: 2px; color: var(--flux-primary); font-weight: 600; }
+.flux-product-suggestion { display: grid; grid-template-columns: 1fr auto; gap: 11px; align-items: center; margin-top: 12px; padding: 12px; border: 1px solid var(--flux-border); border-radius: 16px; background: var(--flux-soft-2); }
+.flux-product-suggestion strong, .flux-product-suggestion span { display: block; }
+.flux-product-suggestion strong { color: var(--flux-ink); font-size: 10px; font-weight: 600; }
+.flux-product-suggestion span { margin-top: 3px; color: var(--flux-muted); font-size: 8px; line-height: 1.4; }
+.flux-product-suggestion [data-slot='button'] { min-height: 34px; padding: 0 9px; border-radius: 11px; font-size: 8px; white-space: nowrap; }
+.flux-product-suggestion [data-slot='button'] svg { width: 13px; height: 13px; }
 .flux-alternative-products h3 { margin: 0 0 2px; font-size: 12px; font-weight: 600; }
 .flux-alternative-products > button { width: 100%; display: grid; grid-template-columns: 1fr auto; align-items: center; padding: 12px 2px; border: 0; border-bottom: 1px solid var(--flux-divider); background: transparent; color: var(--flux-ink); text-align: left; }
 .flux-alternative-products > button > span:first-child strong, .flux-alternative-products > button > span:first-child small { display: block; }
