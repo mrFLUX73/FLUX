@@ -108,7 +108,9 @@ function isSameLocalDay(isoDate: string, date = new Date()) {
 
 function dateFromLocalDayKey(dayKey: string) {
   const [year, month, day] = dayKey.split('-').map(Number);
-  const date = new Date(year, (month || 1) - 1, day || 1);
+  // localDayKey intentionally keeps Date#getMonth() (zero-based) so it does
+  // not shift when ISO dates cross a timezone boundary. Read that format as-is.
+  const date = new Date(year, Number.isFinite(month) ? month : 0, day || 1);
   date.setHours(0, 0, 0, 0);
   return date;
 }

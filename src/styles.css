@@ -460,11 +460,10 @@ button:active { transform: scale(.97); }
 .flux-sync-status:disabled { border: 0; opacity: 1; }
 .flux-sync-status svg { width: 12px; height: 12px; }
 .flux-food-calendar { margin: -4px 0 15px; padding: 12px 10px 10px; border: 1px solid var(--flux-border-soft); border-radius: 20px; background: var(--flux-card); }
-.flux-food-calendar > header { display: grid; grid-template-columns: 30px 1fr 30px; align-items: center; gap: 8px; }
+.flux-food-calendar > header { display: grid; grid-template-columns: 58px minmax(0, 1fr) 58px; align-items: center; gap: 6px; }
 .flux-food-calendar > header strong { color: var(--flux-ink); font-size: 10px; font-weight: 500; text-align: center; }
-.flux-food-calendar > header button { width: 30px; height: 30px; border: 0; border-radius: 10px; background: var(--flux-soft-2); color: var(--flux-primary); display: grid; place-items: center; }
+.flux-food-calendar > header button { min-height: 30px; padding: 0 7px; border: 0; border-radius: 10px; background: var(--flux-soft-2); color: var(--flux-primary); font-size: 8px; font-weight: 500; display: grid; place-items: center; }
 .flux-food-calendar > header button:disabled { opacity: .35; }
-.flux-food-calendar > header svg { width: 15px; height: 15px; }
 .flux-food-calendar > div { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 8px; }
 .flux-food-calendar > div > button { min-height: 48px; padding: 4px 1px; border: 0; border-radius: 13px; background: transparent; color: var(--flux-muted); display: grid; place-items: center; align-content: center; gap: 2px; }
 .flux-food-calendar > div > button small { font-size: 8px; text-transform: capitalize; }

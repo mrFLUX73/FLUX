@@ -7,7 +7,6 @@ import {
   Camera,
   ChartNoAxesColumnIncreasing,
   Check,
-  ChevronLeft,
   ChevronRight,
   Clock3,
   Cloud,
@@ -143,7 +142,7 @@ function localDayKey(date = new Date()) {
 
 function dateFromDayKey(dayKey: string) {
   const [year, month, day] = dayKey.split('-').map(Number);
-  return new Date(year, (month || 1) - 1, day || 1);
+  return new Date(year, Number.isFinite(month) ? month : 0, day || 1);
 }
 
 function dayLabel(dayKey: string) {
@@ -1353,7 +1352,7 @@ function FoodScreen({
     <>
       <div className="flux-page-heading flux-page-heading-row"><div><span className="flux-eyebrow">{isToday ? 'Сегодня' : `История · ${dayLabel(selectedDay)}`}</span><h1>Питание</h1></div>{isToday && <Button size="icon-lg" onClick={() => onAdd()} aria-label="Добавить продукт"><Plus /></Button>}</div>
       <section className="flux-food-calendar" aria-label="Календарь питания">
-        <header><button type="button" onClick={() => shiftWeek(-1)} aria-label="Предыдущая неделя"><ChevronLeft /></button><strong>{weekStart} — {weekEnd}</strong><button type="button" onClick={() => shiftWeek(1)} disabled={days[6].date >= new Date()} aria-label="Следующая неделя"><ChevronRight /></button></header>
+        <header><button type="button" onClick={() => shiftWeek(-1)} aria-label="Показать предыдущую неделю">Раньше</button><strong>{weekStart} — {weekEnd}</strong><button type="button" onClick={() => shiftWeek(1)} disabled={days[6].date >= new Date()} aria-label="Показать следующую неделю">Позже</button></header>
         <div>{days.map(({ key, date, weekday }) => {
           const future = date > new Date();
           const selected = key === selectedDay;
