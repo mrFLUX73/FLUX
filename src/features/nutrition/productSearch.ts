@@ -11,6 +11,7 @@ const OPEN_FOOD_FACTS_FIELDS = [
   'product_quantity_unit',
   'nutrition_data_per',
   'nutriments',
+  'nutrition',
 ].join(',');
 
 type OpenFoodFactsProduct = {
@@ -23,6 +24,12 @@ type OpenFoodFactsProduct = {
   product_quantity_unit?: string;
   nutrition_data_per?: string;
   nutriments?: Record<string, number | string | undefined>;
+  nutrition?: {
+    aggregated_set?: {
+      per?: string;
+      nutrients?: Record<string, { value?: number | string; value_computed?: number | string } | undefined>;
+    };
+  };
 };
 
 type OpenFoodFactsResponse = {
@@ -82,6 +89,15 @@ function rounded(value: number) {
   return Math.round(value * 10) / 10;
 }
 
+function offNutrient(product: OpenFoodFactsProduct, name: string) {
+  const v3 = product.nutrition?.aggregated_set?.nutrients?.[name];
+  return number(v3?.value) ?? number(v3?.value_computed) ?? number(product.nutriments?.[`${name}_100g`]);
+}
+
+function offNutritionPer(product: OpenFoodFactsProduct) {
+  return product.nutrition?.aggregated_set?.per ?? product.nutrition_data_per ?? '';
+}
+
 function productIcon(product: OpenFoodFactsProduct): ProductIconName {
   const categories = product.categories_tags?.join(' ').toLocaleLowerCase('ru') ?? '';
   if (/beverage|drink|напит/.test(categories)) return 'coffee';
@@ -94,7 +110,7 @@ function serving(product: OpenFoodFactsProduct): { amount: number; unit: Product
   const rawUnit = product.product_quantity_unit?.toLocaleLowerCase('ru') ?? '';
   const categories = product.categories_tags?.join(' ').toLocaleLowerCase('ru') ?? '';
   const isLiquid = /^(ml|мл|cl|л|l)$/.test(rawUnit)
-    || product.nutrition_data_per === '100ml'
+    || offNutritionPer(product) === '100ml'
     || /beverage|drink|напит/.test(categories);
   const rawQuantity = number(product.product_quantity);
   let amount = rawQuantity && rawQuantity <= 5000 ? rawQuantity : 100;
@@ -106,7 +122,7 @@ function serving(product: OpenFoodFactsProduct): { amount: number; unit: Product
 async function lookupOpenFoodFactsByBarcode(barcode: string, signal?: AbortSignal): Promise<BarcodeLookupResult> {
   if (!/^\d{8,14}$/.test(barcode)) return { status: 'not_found' };
 
-  const url = `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(barcode)}.json?fields=${OPEN_FOOD_FACTS_FIELDS}`;
+  const url = `https://world.openfoodfacts.org/api/v3.6/product/${encodeURIComponent(barcode)}.json?fields=${OPEN_FOOD_FACTS_FIELDS}`;
   try {
     const response = await fetch(url, {
       headers: { Accept: 'application/json' },
@@ -120,10 +136,10 @@ async function lookupOpenFoodFactsByBarcode(barcode: string, signal?: AbortSigna
 
     const source = payload.product;
     const name = source.product_name_ru?.trim() || source.product_name?.trim() || '';
-    const kcal = number(source.nutriments?.['energy-kcal_100g']);
-    const protein = number(source.nutriments?.proteins_100g);
-    const fat = number(source.nutriments?.fat_100g);
-    const carbs = number(source.nutriments?.carbohydrates_100g);
+    const kcal = offNutrient(source, 'energy-kcal');
+    const protein = offNutrient(source, 'proteins');
+    const fat = offNutrient(source, 'fat');
+    const carbs = offNutrient(source, 'carbohydrates');
     if (!name || kcal === null || protein === null || fat === null || carbs === null) {
       return { status: 'incomplete', name: name || `Товар ${barcode}` };
     }
@@ -156,10 +172,10 @@ async function lookupOpenFoodFactsByBarcode(barcode: string, signal?: AbortSigna
 
 function productFromOpenFoodFacts(source: OpenFoodFactsProduct, barcode: string): Product | null {
   const name = source.product_name_ru?.trim() || source.product_name?.trim() || '';
-  const kcal = number(source.nutriments?.['energy-kcal_100g']);
-  const protein = number(source.nutriments?.proteins_100g);
-  const fat = number(source.nutriments?.fat_100g);
-  const carbs = number(source.nutriments?.carbohydrates_100g);
+  const kcal = offNutrient(source, 'energy-kcal');
+  const protein = offNutrient(source, 'proteins');
+  const fat = offNutrient(source, 'fat');
+  const carbs = offNutrient(source, 'carbohydrates');
   if (!name || kcal === null || protein === null || fat === null || carbs === null) return null;
   const portion = serving(source);
   const scale = portion.servingSizeG / 100;

@@ -16,6 +16,7 @@ const OFF_FIELDS = [
   "product_quantity_unit",
   "nutrition_data_per",
   "nutriments",
+  "nutrition",
 ].join(",");
 
 type Product = {
@@ -98,6 +99,21 @@ function rounded(value: number) {
   return Math.round(value * 10) / 10;
 }
 
+function offNutrient(source: Record<string, unknown>, name: string) {
+  const nutrition = source.nutrition as Record<string, unknown> | undefined;
+  const aggregate = nutrition?.aggregated_set as Record<string, unknown> | undefined;
+  const nutrients = aggregate?.nutrients as Record<string, unknown> | undefined;
+  const v3 = nutrients?.[name] as Record<string, unknown> | undefined;
+  const legacy = source.nutriments as Record<string, unknown> | undefined;
+  return numeric(v3?.value) ?? numeric(v3?.value_computed) ?? numeric(legacy?.[`${name}_100g`]);
+}
+
+function offNutritionPer(source: Record<string, unknown>) {
+  const nutrition = source.nutrition as Record<string, unknown> | undefined;
+  const aggregate = nutrition?.aggregated_set as Record<string, unknown> | undefined;
+  return text(aggregate?.per) || text(source.nutrition_data_per);
+}
+
 async function fetchWithTimeout(url: string, timeoutMs: number, headers: HeadersInit = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -135,7 +151,7 @@ function packageSize(text: string): { amount: number; unit: "г" | "мл" } {
 
 async function lookupOpenFoodFacts(barcode: string): Promise<SearchResult> {
   try {
-    const url = `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(barcode)}.json?fields=${OFF_FIELDS}`;
+    const url = `https://world.openfoodfacts.org/api/v3.6/product/${encodeURIComponent(barcode)}.json?fields=${OFF_FIELDS}`;
     const response = await fetchWithTimeout(url, 6500, { Accept: "application/json" });
     if (response.status === 404) return { status: "not_found" };
     if (!response.ok) return { status: "error", message: `Open Food Facts: HTTP ${response.status}` };
@@ -144,16 +160,16 @@ async function lookupOpenFoodFacts(barcode: string): Promise<SearchResult> {
     if (!source) return { status: "not_found" };
 
     const name = String(source.product_name_ru || source.product_name || "").trim();
-    const kcal = numeric(source.nutriments?.["energy-kcal_100g"]);
-    const protein = numeric(source.nutriments?.proteins_100g);
-    const fat = numeric(source.nutriments?.fat_100g);
-    const carbs = numeric(source.nutriments?.carbohydrates_100g);
+    const kcal = offNutrient(source, "energy-kcal");
+    const protein = offNutrient(source, "proteins");
+    const fat = offNutrient(source, "fat");
+    const carbs = offNutrient(source, "carbohydrates");
     if (!name || kcal === null || protein === null || fat === null || carbs === null) {
       return { status: "incomplete", name: name || `Товар ${barcode}` };
     }
 
     const size = packageSize(`${source.product_quantity ?? ""} ${source.product_quantity_unit ?? ""}`);
-    const isLiquid = size.unit === "мл" || source.nutrition_data_per === "100ml"
+    const isLiquid = size.unit === "мл" || offNutritionPer(source) === "100ml"
       || /beverage|drink|напит/.test((source.categories_tags ?? []).join(" ").toLocaleLowerCase("ru"));
     const portion = { amount: size.amount, unit: isLiquid ? "мл" as const : "г" as const };
     const scale = portion.amount / 100;
@@ -182,15 +198,14 @@ async function lookupOpenFoodFacts(barcode: string): Promise<SearchResult> {
 
 function openFoodFactsProduct(source: Record<string, unknown>, barcode: string): Product | null {
   const name = text(source.product_name_ru) || text(source.product_name);
-  const nutriments = source.nutriments as Record<string, unknown> | undefined;
-  const kcal = numeric(nutriments?.["energy-kcal_100g"]);
-  const protein = numeric(nutriments?.proteins_100g);
-  const fat = numeric(nutriments?.fat_100g);
-  const carbs = numeric(nutriments?.carbohydrates_100g);
+  const kcal = offNutrient(source, "energy-kcal");
+  const protein = offNutrient(source, "proteins");
+  const fat = offNutrient(source, "fat");
+  const carbs = offNutrient(source, "carbohydrates");
   if (!name || kcal === null || protein === null || fat === null || carbs === null) return null;
   const size = packageSize(`${text(source.product_quantity)} ${text(source.product_quantity_unit)}`);
   const categories = Array.isArray(source.categories_tags) ? source.categories_tags.join(" ") : "";
-  const isLiquid = size.unit === "мл" || text(source.nutrition_data_per) === "100ml" || /beverage|drink|напит/iu.test(categories);
+  const isLiquid = size.unit === "мл" || offNutritionPer(source) === "100ml" || /beverage|drink|напит/iu.test(categories);
   const portion = { amount: size.amount, unit: isLiquid ? "мл" as const : "г" as const };
   const scale = portion.amount / 100;
   return {
