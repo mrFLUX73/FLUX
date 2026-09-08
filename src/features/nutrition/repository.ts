@@ -106,6 +106,13 @@ function isSameLocalDay(isoDate: string, date = new Date()) {
     && candidate.getDate() === date.getDate();
 }
 
+function dateFromLocalDayKey(dayKey: string) {
+  const [year, month, day] = dayKey.split('-').map(Number);
+  const date = new Date(year, (month || 1) - 1, day || 1);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
 function validMealEntries(value: unknown): MealEntry[] {
   if (!Array.isArray(value)) return [];
   return value.filter((entry): entry is MealEntry => {
@@ -243,6 +250,10 @@ export function loadLocalEntriesForToday(scope: NutritionStorageScope) {
   return readAllLocalEntries(scope).filter((entry) => isSameLocalDay(entry.eatenAt));
 }
 
+export function loadLocalEntriesForDay(scope: NutritionStorageScope, dayKey: string) {
+  return readAllLocalEntries(scope).filter((entry) => isSameLocalDay(entry.eatenAt, dateFromLocalDayKey(dayKey)));
+}
+
 function previousLocalMealEntries(scope: NutritionStorageScope, meal: MealKind) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -276,6 +287,19 @@ export function persistLocalEntriesForToday(scope: NutritionStorageScope, entrie
   } catch {
     return false;
   }
+}
+
+function persistLocalEntriesForDay(scope: NutritionStorageScope, dayKey: string, entries: MealEntry[]) {
+  const current = readLocalDiary(scope);
+  const date = dateFromLocalDayKey(dayKey);
+  const otherEntries = current.entries.filter((entry) => !isSameLocalDay(entry.eatenAt, date));
+  const nextEntries = [...otherEntries, ...entries];
+  const knownIds = new Set(nextEntries.map((entry) => entry.entryId));
+  persistLocalDiary({
+    ...current,
+    entries: nextEntries,
+    pendingAddEntryIds: current.pendingAddEntryIds.filter((entryId) => knownIds.has(entryId)),
+  });
 }
 
 export function persistUpdatedLocalEntry(scope: NutritionStorageScope, entry: MealEntry) {
@@ -578,8 +602,8 @@ async function ensureRemoteProduct(
   throw insertError;
 }
 
-async function loadRemoteEntries(client: SupabaseClient, userId: string, products: Product[]) {
-  const start = new Date();
+async function loadRemoteEntries(client: SupabaseClient, userId: string, products: Product[], date = new Date()) {
+  const start = new Date(date);
   start.setHours(0, 0, 0, 0);
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
@@ -633,6 +657,20 @@ async function loadRemoteEntries(client: SupabaseClient, userId: string, product
       eatenAt: meal.eaten_at,
     }];
   });
+}
+
+export async function loadNutritionEntriesForDay(scope: NutritionStorageScope, dayKey: string, products: Product[]) {
+  const localEntries = loadLocalEntriesForDay(scope, dayKey);
+  if (!isSupabaseConfigured || scope.kind === 'guest') return { entries: localEntries, mode: 'local' as const };
+
+  try {
+    const client = await getSupabaseClientForUser(scope.userId);
+    const remoteEntries = await loadRemoteEntries(client, scope.userId, products, dateFromLocalDayKey(dayKey));
+    persistLocalEntriesForDay(scope, dayKey, remoteEntries);
+    return { entries: remoteEntries, mode: 'supabase' as const };
+  } catch {
+    return { entries: localEntries, mode: 'local' as const };
+  }
 }
 
 async function loadRemotePreviousMealEntries(client: SupabaseClient, userId: string, meal: MealKind) {

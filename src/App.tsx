@@ -7,6 +7,7 @@ import {
   Camera,
   ChartNoAxesColumnIncreasing,
   Check,
+  ChevronLeft,
   ChevronRight,
   Clock3,
   Cloud,
@@ -71,7 +72,9 @@ import {
   deleteRemoteMealEntry,
   guestNutritionScope,
   isSameNutritionScope,
+  loadLocalEntriesForDay,
   loadLocalEntriesForToday,
+  loadNutritionEntriesForDay,
   loadPreviousMealEntries,
   nutritionScopeForUser,
   persistLocalEntriesForToday,
@@ -136,6 +139,32 @@ const themeBrowserColors: Record<FluxTheme, string> = {
 
 function localDayKey(date = new Date()) {
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+function dateFromDayKey(dayKey: string) {
+  const [year, month, day] = dayKey.split('-').map(Number);
+  return new Date(year, (month || 1) - 1, day || 1);
+}
+
+function dayLabel(dayKey: string) {
+  const date = dateFromDayKey(dayKey);
+  return new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long' }).format(date);
+}
+
+function weekDays(selectedDay: string) {
+  const selected = dateFromDayKey(selectedDay);
+  const mondayOffset = (selected.getDay() + 6) % 7;
+  const monday = new Date(selected);
+  monday.setDate(selected.getDate() - mondayOffset);
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(monday);
+    date.setDate(monday.getDate() + index);
+    return {
+      key: localDayKey(date),
+      date,
+      weekday: new Intl.DateTimeFormat('ru-RU', { weekday: 'short' }).format(date).replace('.', ''),
+    };
+  });
 }
 
 function currentMeal(): MealKind {
@@ -1259,6 +1288,9 @@ function TodayScreen({
 function FoodScreen({
   entries,
   target,
+  selectedDay,
+  onSelectDay,
+  historyLoading,
   mode,
   isConnecting,
   isAuthenticated,
@@ -1273,6 +1305,9 @@ function FoodScreen({
 }: {
   entries: MealEntry[];
   target: number;
+  selectedDay: string;
+  onSelectDay: (day: string) => void;
+  historyLoading: boolean;
   mode: NutritionMode;
   isConnecting: boolean;
   isAuthenticated: boolean;
@@ -1287,9 +1322,29 @@ function FoodScreen({
 }) {
   const total = entries.reduce((sum, entry) => sum + entry.kcal, 0);
   const isSynced = mode === 'supabase' && isAuthenticated;
+  const todayKey = localDayKey();
+  const isToday = selectedDay === todayKey;
+  const days = weekDays(selectedDay);
+  const weekStart = dayLabel(days[0].key);
+  const weekEnd = dayLabel(days[6].key);
+  const shiftWeek = (direction: -1 | 1) => {
+    const next = dateFromDayKey(selectedDay);
+    next.setDate(next.getDate() + direction * 7);
+    if (next > new Date()) return;
+    onSelectDay(localDayKey(next));
+  };
   return (
     <>
-      <div className="flux-page-heading flux-page-heading-row"><div><span className="flux-eyebrow">Сегодня</span><h1>Питание</h1></div><Button size="icon-lg" onClick={() => onAdd()} aria-label="Добавить продукт"><Plus /></Button></div>
+      <div className="flux-page-heading flux-page-heading-row"><div><span className="flux-eyebrow">{isToday ? 'Сегодня' : `История · ${dayLabel(selectedDay)}`}</span><h1>Питание</h1></div>{isToday && <Button size="icon-lg" onClick={() => onAdd()} aria-label="Добавить продукт"><Plus /></Button>}</div>
+      <section className="flux-food-calendar" aria-label="Календарь питания">
+        <header><button type="button" onClick={() => shiftWeek(-1)} aria-label="Предыдущая неделя"><ChevronLeft /></button><strong>{weekStart} — {weekEnd}</strong><button type="button" onClick={() => shiftWeek(1)} disabled={days[6].date >= new Date()} aria-label="Следующая неделя"><ChevronRight /></button></header>
+        <div>{days.map(({ key, date, weekday }) => {
+          const future = date > new Date();
+          const selected = key === selectedDay;
+          return <button key={key} type="button" disabled={future} className={selected ? 'is-selected' : ''} onClick={() => onSelectDay(key)} aria-pressed={selected}><small>{weekday}</small><strong>{date.getDate()}</strong></button>;
+        })}</div>
+        {!isToday && <p>История за {dayLabel(selectedDay)}. Редактирование доступно только для текущего дня.</p>}
+      </section>
       <button
         className={`flux-sync-status ${isSynced ? 'is-cloud' : ''} ${canConnect ? 'is-actionable' : ''}`}
         type="button"
@@ -1304,11 +1359,11 @@ function FoodScreen({
               ? <><Cloud /> {isAuthenticated ? 'Повторить синхронизацию' : 'Войти или создать профиль'}</>
               : 'Сохраняется на этом устройстве'}
       </button>
-      <button className="flux-food-search" type="button" onClick={() => onAdd()}><Search /><span>Что вы съели?</span></button>
+      {isToday && <button className="flux-food-search" type="button" onClick={() => onAdd()}><Search /><span>Что вы съели?</span></button>}
       <div className="flux-calorie-line"><span>{total.toLocaleString('ru-RU')} из {target.toLocaleString('ru-RU')} ккал</span><strong>{Math.round((total / target) * 100)}%</strong></div><Progress value={(total / target) * 100} />
       <section className="flux-meal-list">
-        <div className="flux-section-heading"><h2>Приёмы пищи</h2></div>
-        {entries.length === 0 && <div className="flux-diary-empty"><Sprout /><strong>Дневник пока пуст</strong><span>Добавьте первый продукт — баланс пересчитается сразу.</span></div>}
+        <div className="flux-section-heading"><h2>{historyLoading ? 'Загружаем день…' : 'Приёмы пищи'}</h2></div>
+        {!historyLoading && entries.length === 0 && <div className="flux-diary-empty"><Sprout /><strong>Дневник пока пуст</strong><span>{isToday ? 'Добавьте первый продукт — баланс пересчитается сразу.' : 'В этот день пока нет записей.'}</span></div>}
         {MEAL_KINDS.map((meal) => {
           const mealEntries = entries.filter((entry) => entry.meal === meal);
           const mealCalories = mealEntries.reduce((sum, entry) => sum + entry.kcal, 0);
@@ -1316,27 +1371,27 @@ function FoodScreen({
             <article className="flux-meal-group" key={meal}>
               <header>
                 <div><strong>{meal}</strong><span>{mealCalories ? `${mealCalories} ккал` : 'Пока пусто'}</span></div>
-                <div className="flux-meal-actions">
+                {isToday && <div className="flux-meal-actions">
                   <button type="button" onClick={() => onRepeat(meal)} disabled={repeatLoadingMeal !== null} aria-label={`Повторить предыдущий ${mealInSentence(meal)}`}>
                     {repeatLoadingMeal === meal ? <LoaderCircle className="is-spinning" /> : <Clock3 />}
                   </button>
                   <button type="button" onClick={() => onAdd(meal)} aria-label={`Добавить в ${mealInSentence(meal)}`}><Plus /></button>
-                </div>
+                </div>}
               </header>
               {mealEntries.map((entry) => (
-                <div className="flux-meal-row" key={entry.entryId}>
+                <div className={`flux-meal-row${isToday ? '' : ' is-history'}`} key={entry.entryId}>
                   <span>{entry.time}</span>
                   <p><strong>{entry.name}</strong><small>{entry.amount} {entry.unit} · {entry.brand}</small></p>
                   <b>{entry.kcal}</b>
-                  <button type="button" className="flux-edit-entry" onClick={() => onEdit(entry)} aria-label={`Изменить ${entry.name}`}><Pencil /></button>
-                  <button type="button" className="flux-remove-entry" onClick={() => onRemove(entry)} aria-label={`Удалить ${entry.name}`}><Trash2 /></button>
+                  {isToday && <><button type="button" className="flux-edit-entry" onClick={() => onEdit(entry)} aria-label={`Изменить ${entry.name}`}><Pencil /></button>
+                  <button type="button" className="flux-remove-entry" onClick={() => onRemove(entry)} aria-label={`Удалить ${entry.name}`}><Trash2 /></button></>}
                 </div>
               ))}
             </article>
           );
         })}
       </section>
-      <Button className="flux-main-button" size="lg" onClick={() => onAdd()}><Plus /> Добавить продукт</Button>
+      {isToday && <Button className="flux-main-button" size="lg" onClick={() => onAdd()}><Plus /> Добавить продукт</Button>}
     </>
   );
 }
@@ -1396,6 +1451,8 @@ export default function App() {
     entries: loadLocalEntriesForToday(startupScope),
     hydrated: true,
   }));
+  const [selectedNutritionDay, setSelectedNutritionDay] = useState(() => localDayKey());
+  const [historyLoading, setHistoryLoading] = useState(false);
   const entries = diary.entries;
   const nutritionScopeRef = useRef<NutritionStorageScope>(startupScope);
   const nutritionGeneration = useRef(0);
@@ -1518,6 +1575,7 @@ export default function App() {
       setNutritionConnecting(true);
       setQuickAddOpen(false);
       setRepeatMealOpen(false);
+      setSelectedNutritionDay(localDayKey());
       setDiary({ scope, entries: localEntries, hydrated: true });
       setSessionResolved(true);
 
@@ -1622,11 +1680,33 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const todayKey = localDayKey();
+    if (!sessionResolved) return;
+    if (selectedNutritionDay === todayKey) {
+      const scope = nutritionScopeRef.current;
+      setDiary((current) => isSameNutritionScope(current.scope, scope)
+        ? { scope, entries: loadLocalEntriesForToday(scope), hydrated: true }
+        : current);
+      return;
+    }
+    let active = true;
+    setHistoryLoading(true);
+    const scope = nutritionScopeRef.current;
+    void loadNutritionEntriesForDay(scope, selectedNutritionDay, catalog).then((result) => {
+      if (!active || !isSameNutritionScope(scope, nutritionScopeRef.current)) return;
+      setNutritionMode(result.mode);
+      setDiary({ scope, entries: result.entries, hydrated: true });
+    }).finally(() => { if (active) setHistoryLoading(false); });
+    return () => { active = false; };
+  }, [catalog, selectedNutritionDay, sessionResolved]);
+
+  useEffect(() => {
     let active = true;
     const timer = window.setInterval(async () => {
       const nextDay = localDayKey();
       if (nextDay === activeDay.current) return;
       activeDay.current = nextDay;
+      setSelectedNutritionDay(nextDay);
       setQuickAddOpen(false);
       setNutritionConnecting(true);
       const scope = nutritionScopeRef.current;
@@ -1649,8 +1729,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (diary.hydrated) persistLocalEntriesForToday(diary.scope, diary.entries);
-  }, [diary]);
+    if (diary.hydrated && selectedNutritionDay === localDayKey()) persistLocalEntriesForToday(diary.scope, diary.entries);
+  }, [diary, selectedNutritionDay]);
 
   const totals = useMemo(() => entries.reduce((sum, entry) => ({ kcal: sum.kcal + entry.kcal, protein: sum.protein + entry.protein, fat: sum.fat + entry.fat, carbs: sum.carbs + entry.carbs }), { kcal: 0, protein: 0, fat: 0, carbs: 0 }), [entries]);
 
@@ -2105,7 +2185,7 @@ export default function App() {
             </header>
             <div key={tab} className="flux-content" id="top">
               {tab === 'today' && <TodayScreen totals={totals} target={calorieTarget} macroTargets={macroTargets} products={catalog} onSelectProduct={(product) => openFood(currentMeal(), product)} onOpenFood={() => openFood()} onWorkout={() => setWorkoutOpen(true)} />}
-              {tab === 'food' && <FoodScreen entries={entries} target={calorieTarget} mode={nutritionMode} isConnecting={nutritionConnecting} isAuthenticated={Boolean(account)} canConnect={canConnectNutrition} onConnect={openSync} onRefresh={refreshNutrition} onAdd={(meal) => openFood(meal ?? currentMeal())} onEdit={setEditingEntry} onRemove={removeEntry} onRepeat={openPreviousMeal} repeatLoadingMeal={repeatLoadingMeal} />}
+              {tab === 'food' && <FoodScreen entries={entries} target={calorieTarget} selectedDay={selectedNutritionDay} onSelectDay={setSelectedNutritionDay} historyLoading={historyLoading} mode={nutritionMode} isConnecting={nutritionConnecting} isAuthenticated={Boolean(account)} canConnect={canConnectNutrition} onConnect={openSync} onRefresh={refreshNutrition} onAdd={(meal) => openFood(meal ?? currentMeal())} onEdit={setEditingEntry} onRemove={removeEntry} onRepeat={openPreviousMeal} repeatLoadingMeal={repeatLoadingMeal} />}
               {tab === 'workouts' && <WorkoutsScreen onStart={() => setWorkoutOpen(true)} />}
               {tab === 'progress' && <ProgressScreen />}
               {tab === 'admin' && account?.isAdmin && <AdminFeedbackScreen userId={account.id} />}
