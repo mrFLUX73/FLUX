@@ -10,6 +10,7 @@ import {
   ChevronRight,
   Clock3,
   Cloud,
+  CloudSun,
   Coffee,
   Dumbbell,
   Flashlight,
@@ -1401,12 +1402,54 @@ function FoodScreen({
 }
 
 function WorkoutsScreen({ onStart }: { onStart: () => void }) {
+  const [weather, setWeather] = useState<{ temperature: number; apparent: number; wind: number; label: string } | null>(null);
+  const [weatherState, setWeatherState] = useState<'idle' | 'loading' | 'denied' | 'error'>('idle');
+
+  const loadWeather = () => {
+    if (!navigator.geolocation) {
+      setWeatherState('error');
+      return;
+    }
+    setWeatherState('loading');
+    navigator.geolocation.getCurrentPosition(async ({ coords }) => {
+      try {
+        const query = new URLSearchParams({
+          latitude: String(coords.latitude),
+          longitude: String(coords.longitude),
+          current: 'temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m',
+          wind_speed_unit: 'ms',
+          timezone: 'auto',
+        });
+        const response = await fetch(`https://api.open-meteo.com/v1/forecast?${query}`);
+        if (!response.ok) throw new Error('weather unavailable');
+        const data = await response.json() as { current?: { temperature_2m?: number; apparent_temperature?: number; wind_speed_10m?: number; weather_code?: number } };
+        const current = data.current;
+        if (typeof current?.temperature_2m !== 'number') throw new Error('weather unavailable');
+        const weatherCode = current.weather_code ?? 0;
+        const label = weatherCode === 0 ? 'ясно' : weatherCode <= 2 ? 'переменная облачность' : weatherCode === 3 ? 'облачно' : weatherCode <= 48 ? 'туман' : weatherCode <= 67 ? 'дождь' : weatherCode <= 77 ? 'снег' : 'гроза';
+        setWeather({
+          temperature: Math.round(current.temperature_2m),
+          apparent: Math.round(current.apparent_temperature ?? current.temperature_2m),
+          wind: Math.round(current.wind_speed_10m ?? 0),
+          label,
+        });
+        setWeatherState('idle');
+      } catch {
+        setWeatherState('error');
+      }
+    }, () => setWeatherState('denied'), { enableHighAccuracy: false, timeout: 8000, maximumAge: 30 * 60 * 1000 });
+  };
+
   return (
     <>
-      <div className="flux-page-heading flux-page-heading-row"><div><span className="flux-eyebrow">План на сегодня</span><h1>Всё тело</h1></div><span className="flux-soft-pill">28 мин</span></div>
-      <section className="flux-workout-page-hero"><span>Без гонки за результатом</span><strong>Просто сделаем<br />следующий подход.</strong><div><Play /> 6 упражнений · 3 круга</div></section>
-      <section className="flux-exercise-list"><div className="flux-section-heading"><h2>Упражнения</h2><span>Начальный</span></div>{workoutExercises.map((exercise, index) => <div key={exercise.name}><span>0{index + 1}</span><p><strong>{exercise.name}</strong><small>{exercise.reps} повторений</small></p><ChevronRight /></div>)}</section>
-      <Button className="flux-main-button" size="lg" onClick={onStart}><Play /> Начать тренировку</Button>
+      <div className="flux-page-heading flux-page-heading-row"><div><span className="flux-eyebrow">Сегодня</span><h1>Тренировки</h1></div><span className="flux-soft-pill">28 мин</span></div>
+      <section className="flux-workout-weather" aria-label="Погода для тренировки на улице">
+        <span className="flux-workout-weather-icon"><CloudSun /></span>
+        <div>{weather ? <><small>На улице сейчас</small><strong>{weather.temperature > 0 ? '+' : ''}{weather.temperature}° · {weather.label}</strong><p>Ощущается как {weather.apparent > 0 ? '+' : ''}{weather.apparent}° · ветер {weather.wind} м/с</p></> : <><small>Для тренировки на улице</small><strong>{weatherState === 'denied' ? 'Геолокация не разрешена' : weatherState === 'error' ? 'Погода пока недоступна' : 'Узнать погоду рядом'}</strong><p>{weatherState === 'denied' ? 'Разрешите геолокацию в настройках браузера.' : 'Подскажем, что ждёт вас за дверью.'}</p></>}</div>
+        {!weather && <button type="button" onClick={loadWeather} disabled={weatherState === 'loading'}>{weatherState === 'loading' ? <LoaderCircle className="is-spinning" /> : 'Показать'}</button>}
+      </section>
+      <section className="flux-workout-page-hero"><span>План на сегодня</span><strong>Всё тело</strong><p>Спокойная тренировка без гонки за результатом.</p><div><Play /> {workoutExercises.length} упражнения · 3 круга</div><Button onClick={onStart}><Play /> Начать</Button></section>
+      <section className="flux-exercise-list"><div className="flux-section-heading"><h2>План</h2><span>Начальный</span></div>{workoutExercises.map((exercise, index) => <div key={exercise.name}><span>0{index + 1}</span><p><strong>{exercise.name}</strong><small>{exercise.reps} повторений</small></p><ChevronRight /></div>)}</section>
     </>
   );
 }
@@ -2207,6 +2250,10 @@ export default function App() {
           {startupVisible ? <InitializationScreen /> : <>
           {!isOnline && <div className="flux-offline-pill" role="status"><WifiOff /> Офлайн · изменения сохраняются</div>}
           <div className="flux-base-app" aria-hidden={workoutOpen || profileOpen || undefined} inert={workoutOpen || profileOpen || undefined}>
+            {tab === 'food' && <div className={`flux-pull-indicator${pullDistance > 0 || pullFeedback !== 'idle' ? ' is-visible' : ''}${pullDistance >= 62 ? ' is-ready' : ''}${pullFeedback === 'refreshing' ? ' is-refreshing' : ''}${pullFeedback === 'updated' ? ' is-updated' : ''}${pullFeedback === 'error' ? ' is-error' : ''}`} style={{ '--flux-pull-distance': `${pullDistance}px` } as CSSProperties} aria-live="polite">
+              {pullFeedback === 'refreshing' ? <LoaderCircle className="is-spinning" /> : pullFeedback === 'updated' ? <Check /> : <RefreshCw />}
+              <span>{pullFeedback === 'refreshing' ? 'Обновляем рацион…' : pullFeedback === 'updated' ? 'Рацион обновлён' : pullFeedback === 'error' ? 'Не удалось обновить' : pullDistance >= 62 ? 'Отпустите, чтобы обновить' : 'Потяните, чтобы обновить'}</span>
+            </div>}
             <header key={`header-${tab}`} className={`flux-topbar${tab === 'today' ? ' is-home' : ''}`}>
               <button className="flux-brand" type="button" onClick={() => setTab('today')} aria-label="FLUX — главная"><img className="flux-brand-lockup" src={`${import.meta.env.BASE_URL}brand/flux-lockup.png`} alt="" draggable="false" /></button>
               {tab === 'today' && <p className="flux-home-kicker">Доброе утро{firstName ? `, ${firstName}` : ''}</p>}
@@ -2222,10 +2269,6 @@ export default function App() {
               onTouchEnd={endFoodPull}
               onTouchCancel={endFoodPull}
             >
-              {tab === 'food' && <div className={`flux-pull-indicator${pullDistance > 0 || pullFeedback !== 'idle' ? ' is-visible' : ''}${pullDistance >= 62 ? ' is-ready' : ''}${pullFeedback === 'refreshing' ? ' is-refreshing' : ''}${pullFeedback === 'updated' ? ' is-updated' : ''}${pullFeedback === 'error' ? ' is-error' : ''}`} style={{ '--flux-pull-distance': `${pullDistance}px` } as CSSProperties} aria-live="polite">
-                {pullFeedback === 'refreshing' ? <LoaderCircle className="is-spinning" /> : pullFeedback === 'updated' ? <Check /> : <RefreshCw />}
-                <span>{pullFeedback === 'refreshing' ? 'Обновляем рацион…' : pullFeedback === 'updated' ? 'Рацион обновлён' : pullFeedback === 'error' ? 'Не удалось обновить' : pullDistance >= 62 ? 'Отпустите, чтобы обновить' : 'Потяните, чтобы обновить'}</span>
-              </div>}
               {tab === 'today' && <TodayScreen totals={totals} target={calorieTarget} macroTargets={macroTargets} entries={entries} weekActivity={weekActivity} />}
               {tab === 'food' && <FoodScreen entries={entries} target={calorieTarget} selectedDay={selectedNutritionDay} onSelectDay={setSelectedNutritionDay} historyLoading={historyLoading} mode={nutritionMode} isConnecting={nutritionConnecting} isAuthenticated={Boolean(account)} onAdd={(meal) => openFood(meal ?? currentMeal())} onEdit={setEditingEntry} onRemove={removeEntry} onRepeat={openPreviousMeal} repeatLoadingMeal={repeatLoadingMeal} />}
               {tab === 'workouts' && <WorkoutsScreen onStart={() => setWorkoutOpen(true)} />}

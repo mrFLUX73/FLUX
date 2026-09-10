@@ -275,7 +275,7 @@ button:active { transform: scale(.97); }
 @keyframes flux-initialization-orbit { 0%, 100% { transform: rotate(0deg) scale(.94); opacity: .35; } 50% { transform: rotate(90deg) scale(1); opacity: .8; } }
 @keyframes flux-initialization-breathe { 0%, 100% { transform: scale(.94); } 50% { transform: scale(1.04); } }
 @keyframes flux-initialization-dot { 0%, 70%, 100% { opacity: .28; transform: translateY(0); } 35% { opacity: 1; transform: translateY(-4px); } }
-.flux-base-app { min-height: 0; flex: 1; display: flex; flex-direction: column; }
+.flux-base-app { min-height: 0; flex: 1; position: relative; display: flex; flex-direction: column; }
 .flux-topbar { height: 104px; flex: 0 0 104px; padding: 12px 23px; display: flex; align-items: center; justify-content: space-between; animation: flux-header-enter .34s cubic-bezier(.22,.75,.25,1) both; }
 .flux-brand { min-width: 92px; min-height: 40px; display: inline-flex; align-items: center; padding: 4px 0; border: 0; background: transparent; }
 .flux-brand-lockup { width: auto; height: 30px; display: block; object-fit: contain; user-select: none; }
@@ -475,7 +475,7 @@ button:active { transform: scale(.97); }
 .flux-sync-status.is-actionable { border: 0; background: var(--flux-soft); color: var(--flux-primary); cursor: pointer; }
 .flux-sync-status:disabled { border: 0; opacity: 1; }
 .flux-sync-status svg { width: 12px; height: 12px; }
-.flux-pull-indicator { height: 34px; position: absolute; z-index: 3; top: 0; left: 50%; pointer-events: none; padding: 0 14px; border-radius: 0 0 14px 14px; background: var(--flux-card); box-shadow: 0 7px 18px color-mix(in srgb, var(--flux-primary) 12%, transparent); color: var(--flux-muted); display: flex; align-items: center; gap: 6px; font-size: 9px; transform: translate(-50%, calc(-100% + var(--flux-pull-distance, 0px))); opacity: 0; transition: transform .18s ease, opacity .18s ease, color .18s ease; }
+.flux-pull-indicator { height: 34px; position: absolute; z-index: 8; top: 0; left: 50%; pointer-events: none; padding: 0 14px; border-radius: 0 0 14px 14px; background: var(--flux-card); box-shadow: 0 7px 18px color-mix(in srgb, var(--flux-primary) 12%, transparent); color: var(--flux-muted); display: flex; align-items: center; gap: 6px; font-size: 9px; transform: translate(-50%, calc(-100% + var(--flux-pull-distance, 0px))); opacity: 0; transition: transform .18s ease, opacity .18s ease, color .18s ease; }
 .flux-pull-indicator svg { width: 13px; height: 13px; }
 .flux-pull-indicator.is-visible { opacity: 1; }
 .flux-pull-indicator.is-ready { color: var(--flux-primary); }
@@ -587,14 +587,27 @@ button:active { transform: scale(.97); }
 .flux-edit-entry:hover { background: var(--flux-soft); color: var(--flux-primary); }
 .flux-remove-entry:hover { background: #f5eee9; color: #9b5f4a; }
 .flux-edit-entry svg, .flux-remove-entry svg { width: 14px; height: 14px; }
-.flux-workout-page-hero { min-height: 195px; padding: 23px; border-radius: 26px; background: var(--flux-soft); display: flex; flex-direction: column; justify-content: flex-end; }
+.flux-workout-weather { min-height: 76px; display: grid; grid-template-columns: 39px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 11px 13px; border: 1px solid var(--flux-border-soft); border-radius: 19px; background: var(--flux-card); }
+.flux-workout-weather-icon { width: 39px; height: 39px; display: grid; place-items: center; border-radius: 13px; background: var(--flux-soft); color: var(--flux-primary); }
+.flux-workout-weather-icon svg { width: 19px; height: 19px; }
+.flux-workout-weather > div { min-width: 0; }
+.flux-workout-weather small, .flux-workout-weather strong, .flux-workout-weather p { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flux-workout-weather small, .flux-workout-weather p { color: var(--flux-muted); font-size: 8px; }
+.flux-workout-weather strong { margin: 2px 0; color: var(--flux-ink); font-size: 11px; font-weight: 500; }
+.flux-workout-weather p { margin: 0; }
+.flux-workout-weather > button { min-height: 29px; display: inline-flex; align-items: center; gap: 5px; padding: 0 9px; border: 0; border-radius: 10px; background: var(--flux-soft); color: var(--flux-primary); font-size: 8px; font-weight: 600; }
+.flux-workout-weather > button svg { width: 12px; height: 12px; }
+.flux-workout-page-hero { min-height: 143px; margin-top: 12px; padding: 18px; border-radius: 23px; background: var(--flux-soft); display: flex; flex-direction: column; justify-content: flex-end; }
 .flux-workout-page-hero > span { color: var(--flux-muted); font-size: 10px; }
-.flux-workout-page-hero > strong { margin-top: 7px; color: var(--flux-ink); font-size: 23px; font-weight: 500; line-height: 1.25; letter-spacing: -.03em; }
-.flux-workout-page-hero > div { margin-top: 15px; color: var(--flux-primary); display: flex; align-items: center; gap: 7px; font-size: 10px; }
+.flux-workout-page-hero > strong { margin-top: 4px; color: var(--flux-ink); font-size: 22px; font-weight: 500; line-height: 1.15; letter-spacing: -.03em; }
+.flux-workout-page-hero > p { margin: 5px 0 0; color: var(--flux-muted); font-size: 9px; }
+.flux-workout-page-hero > div { margin-top: 9px; color: var(--flux-primary); display: flex; align-items: center; gap: 7px; font-size: 9px; }
 .flux-workout-page-hero svg { width: 15px; height: 15px; }
-.flux-exercise-list { margin-top: 24px; }
+.flux-workout-page-hero [data-slot='button'] { width: auto; min-height: 32px; align-self: flex-end; margin-top: -28px; padding: 0 11px; border-radius: 11px; font-size: 9px; }
+.flux-workout-page-hero [data-slot='button'] svg { width: 13px; height: 13px; }
+.flux-exercise-list { margin-top: 17px; }
 .flux-exercise-list .flux-section-heading > span { color: var(--flux-muted); font-size: 9px; }
-.flux-exercise-list > div:not(.flux-section-heading) { min-height: 58px; display: grid; grid-template-columns: 32px 1fr 18px; align-items: center; gap: 8px; border-bottom: 1px solid var(--flux-border); }
+.flux-exercise-list > div:not(.flux-section-heading) { min-height: 51px; display: grid; grid-template-columns: 32px 1fr 18px; align-items: center; gap: 8px; border-bottom: 1px solid var(--flux-border); }
 .flux-exercise-list > div > span { color: var(--flux-muted); font-size: 9px; }
 .flux-exercise-list p { margin: 0; }
 .flux-exercise-list strong, .flux-exercise-list small { display: block; }
