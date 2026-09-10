@@ -1456,8 +1456,7 @@ function ProgressScreen() {
   const week = [42, 68, 55, 82, 71, 20, 12];
   return (
     <>
-      <div className="flux-page-heading flux-page-heading-row"><div><span className="flux-eyebrow">Без давления</span><h1>Прогресс</h1></div><span className="flux-soft-pill">4 недели</span></div>
-      <section className="flux-streak-card"><span><Sprout /></span><div><small>Ваш ритм</small><strong>12 дней в движении</strong><p>Не идеально. Зато стабильно.</p></div></section>
+      <section className="flux-streak-card"><span><Sprout /></span><div><small>Ваш ритм · 4 недели</small><strong>12 дней в движении</strong><p>Не идеально. Зато стабильно.</p></div></section>
       <section className="flux-week-card"><div className="flux-section-heading"><h2>Эта неделя</h2></div><div className="flux-week-bars">{week.map((height, index) => <div key={index}><i className={index === 4 ? 'is-today' : ''} style={{ height: `${height}%` }} /><span>{['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'][index]}</span></div>)}</div></section>
       <div className="flux-stat-grid"><div><span>Тренировки</span><strong>3</strong><small>из 3 на неделе</small></div><div><span>Средний баланс</span><strong>−240</strong><small>ккал в день</small></div></div>
     </>
@@ -2252,13 +2251,14 @@ export default function App() {
               {pullFeedback === 'refreshing' ? <LoaderCircle className="is-spinning" /> : pullFeedback === 'updated' ? <Check /> : <RefreshCw />}
               <span>{pullFeedback === 'refreshing' ? 'Обновляем рацион…' : pullFeedback === 'updated' ? 'Рацион обновлён' : pullFeedback === 'error' ? 'Не удалось обновить' : pullDistance >= 62 ? 'Отпустите, чтобы обновить' : 'Потяните, чтобы обновить'}</span>
             </div>}
-            <header key={`header-${tab}`} className={`flux-topbar${tab === 'today' || tab === 'food' || tab === 'workouts' ? ' is-home' : ''}`}>
+            <header key={`header-${tab}`} className={`flux-topbar${tab === 'today' || tab === 'food' || tab === 'workouts' || tab === 'progress' ? ' is-home' : ''}`}>
               <button className="flux-brand" type="button" onClick={() => setTab('today')} aria-label="FLUX — главная"><img className="flux-brand-lockup" src={`${import.meta.env.BASE_URL}brand/flux-lockup.png`} alt="" draggable="false" /></button>
-              {(tab === 'today' || tab === 'food' || tab === 'workouts') && <p className="flux-home-kicker">{tab === 'today' ? `Доброе утро${firstName ? `, ${firstName}` : ''}` : tab === 'food' ? 'Сегодня' : 'План на сегодня'}</p>}
+              {(tab === 'today' || tab === 'food' || tab === 'workouts' || tab === 'progress') && <p className="flux-home-kicker">{tab === 'today' ? `Доброе утро${firstName ? `, ${firstName}` : ''}` : tab === 'food' ? 'Сегодня' : tab === 'workouts' ? 'План на сегодня' : 'Без давления'}</p>}
               <Button className="flux-avatar" variant="secondary" size="icon" onClick={openProfile} aria-label={account ? 'Открыть профиль' : 'Войти или зарегистрироваться'}>{account ? <ProfileAvatar avatar={defaultAvatar} /> : '+'}</Button>
               {tab === 'today' && <h1 className="flux-home-title"><span>Сегодня достаточно</span><span>просто продолжить.</span></h1>}
               {tab === 'food' && <h1 className="flux-home-title"><span>Питание</span></h1>}
               {tab === 'workouts' && <h1 className="flux-home-title"><span>Тренировки</span></h1>}
+              {tab === 'progress' && <h1 className="flux-home-title"><span>Прогресс</span></h1>}
             </header>
             <div
               key={tab}
