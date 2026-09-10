@@ -36,11 +36,12 @@ function inlineMessage(now: string, id: string, body: string, isSupport: boolean
   return { id, body: body.trim(), isSupport, createdAt: now, seenAt: isSupport ? null : now };
 }
 
-export function FeedbackDrawer({ open, onOpenChange, userId, screen, onSubmitted, onRepliesRead }: {
+export function FeedbackDrawer({ open, onOpenChange, userId, screen, initialView, onSubmitted, onRepliesRead }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   userId: string;
   screen: string;
+  initialView?: 'compose' | 'inbox';
   onSubmitted?: () => void;
   onRepliesRead?: () => void;
 }) {
@@ -68,9 +69,9 @@ export function FeedbackDrawer({ open, onOpenChange, userId, screen, onSubmitted
 
   useEffect(() => {
     if (!open) return;
-    setCategory('idea'); setMessage(''); setError(''); setAttachments([]); setView('compose'); setReplyingId(null); setReplyText('');
+    setCategory('idea'); setMessage(''); setError(''); setAttachments([]); setView(initialView ?? 'compose'); setReplyingId(null); setReplyText('');
     void loadHistory();
-  }, [open, userId]);
+  }, [initialView, open, userId]);
 
   useEffect(() => {
     if (!open || view !== 'inbox') return;
@@ -108,8 +109,8 @@ export function FeedbackDrawer({ open, onOpenChange, userId, screen, onSubmitted
   const unreadCount = myItems.flatMap((item) => item.messages).filter((message) => message.isSupport && !message.seenAt).length;
 
   return <Drawer open={open} onOpenChange={onOpenChange}><DrawerContent className="flux-drawer flux-feedback-drawer">
-    <DrawerHeader className="flux-drawer-header"><DrawerTitle>Обратная связь</DrawerTitle><DrawerDescription>{view === 'compose' ? 'Сообщение увидит команда FLUX. Экран добавим автоматически.' : 'Здесь ведётся диалог с поддержкой FLUX.'}</DrawerDescription></DrawerHeader>
-    <div className="flux-feedback-tabs" aria-label="Раздел обратной связи"><button type="button" className={view === 'compose' ? 'is-active' : ''} onClick={() => setView('compose')}><MessageCircle /> Написать</button><button type="button" className={view === 'inbox' ? 'is-active' : ''} onClick={() => setView('inbox')}><Bell /> Мои обращения{unreadCount > 0 && <b>{unreadCount}</b>}</button></div>
+    <DrawerHeader className="flux-drawer-header"><DrawerTitle>Сообщения FLUX</DrawerTitle><DrawerDescription>{view === 'compose' ? 'Напишите команде — контекст текущего экрана добавим автоматически.' : 'Диалоги по вашим обращениям и ответы команды FLUX.'}</DrawerDescription></DrawerHeader>
+    <div className="flux-feedback-tabs" aria-label="Сообщения FLUX"><button type="button" className={view === 'inbox' ? 'is-active' : ''} onClick={() => setView('inbox')}><Bell /> Сообщения{unreadCount > 0 && <b>{unreadCount}</b>}</button><button type="button" className={view === 'compose' ? 'is-active' : ''} onClick={() => setView('compose')}><MessageCircle /> Новое сообщение</button></div>
     <div className="flux-feedback-body">
       {view === 'compose' ? <>
         <div className="flux-feedback-categories" aria-label="Тип обращения">{categories.map((item) => { const Icon = item.icon; return <button type="button" key={item.id} className={category === item.id ? 'is-active' : ''} onClick={() => setCategory(item.id)}><Icon /><span><strong>{item.label}</strong><small>{item.hint}</small></span></button>; })}</div>

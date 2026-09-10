@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Banana,
+  Bell,
   Camera,
   ChartNoAxesColumnIncreasing,
   Check,
@@ -1693,6 +1694,7 @@ export default function App() {
   const [trainerSaving, setTrainerSaving] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedbackScreen, setFeedbackScreen] = useState('Сегодня');
+  const [feedbackInitialView, setFeedbackInitialView] = useState<'compose' | 'inbox'>('compose');
   const [unreadFeedbackReplies, setUnreadFeedbackReplies] = useState(0);
   const [defaultAvatar, setDefaultAvatar] = useState<DefaultAvatar>(startupProfileRef.current?.avatar ?? 'short-hair');
   const profileEditRevision = useRef(0);
@@ -1776,17 +1778,28 @@ export default function App() {
 
   useEffect(() => { void refreshTrainerHub(); }, [refreshTrainerHub]);
 
-  useEffect(() => {
-    let active = true;
+  const refreshUnreadFeedbackReplies = useCallback(async () => {
     if (!account) {
       setUnreadFeedbackReplies(0);
-      return () => { active = false; };
+      return;
     }
-    void countUnreadFeedbackReplies(account.id)
-      .then((count) => { if (active) setUnreadFeedbackReplies(count); })
-      .catch(() => { if (active) setUnreadFeedbackReplies(0); });
-    return () => { active = false; };
+    try { setUnreadFeedbackReplies(await countUnreadFeedbackReplies(account.id)); }
+    catch { setUnreadFeedbackReplies(0); }
   }, [account?.id]);
+
+  useEffect(() => {
+    void refreshUnreadFeedbackReplies();
+    if (!account) return;
+    const refreshWhenVisible = () => { if (document.visibilityState === 'visible') void refreshUnreadFeedbackReplies(); };
+    const interval = window.setInterval(refreshWhenVisible, 30_000);
+    window.addEventListener('focus', refreshWhenVisible);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refreshWhenVisible);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, [account?.id, refreshUnreadFeedbackReplies]);
 
   function setEntries(update: MealEntry[] | ((current: MealEntry[]) => MealEntry[])) {
     setDiary((current) => {
@@ -2042,12 +2055,13 @@ export default function App() {
     }
   }
 
-  function openFeedback(screen = tab === 'admin' ? 'Управление' : ({ today: 'Сегодня', food: 'Питание', workouts: 'Тренировки', progress: 'Прогресс', clients: 'Клиенты' }[tab])) {
+  function openFeedback(screen = tab === 'admin' ? 'Управление' : ({ today: 'Сегодня', food: 'Питание', workouts: 'Тренировки', progress: 'Прогресс', clients: 'Клиенты' }[tab]), initialView: 'compose' | 'inbox' = 'compose') {
     if (!account) {
       openAuth('signup');
       return;
     }
     setFeedbackScreen(screen);
+    setFeedbackInitialView(initialView);
     setFeedbackOpen(true);
   }
 
@@ -2517,6 +2531,7 @@ export default function App() {
             <header key={`header-${tab}`} className={`flux-topbar${tab === 'today' || tab === 'food' || tab === 'workouts' || tab === 'progress' || tab === 'clients' ? ' is-home' : ''}`}>
               <button className="flux-brand" type="button" onClick={() => setTab('today')} aria-label="FLUX — главная"><img className="flux-brand-lockup" src={`${import.meta.env.BASE_URL}brand/flux-lockup.png`} alt="" draggable="false" /></button>
               {(tab === 'today' || tab === 'food' || tab === 'workouts' || tab === 'progress' || tab === 'clients') && <p className="flux-home-kicker">{tab === 'today' ? `Доброе утро${firstName ? `, ${firstName}` : ''}` : tab === 'food' ? 'Сегодня' : tab === 'workouts' ? 'План на сегодня' : tab === 'clients' ? 'Кабинет тренера' : 'Без давления'}</p>}
+              <button className="flux-messages-button" type="button" onClick={() => openFeedback(undefined, 'inbox')} aria-label={unreadFeedbackReplies ? `Сообщения FLUX: ${unreadFeedbackReplies} непрочитанных` : 'Сообщения FLUX'}><Bell />{unreadFeedbackReplies > 0 && <b>{unreadFeedbackReplies > 9 ? '9+' : unreadFeedbackReplies}</b>}</button>
               <Button className="flux-avatar" variant="secondary" size="icon" onClick={openProfile} aria-label={account ? 'Открыть мой профиль' : 'Войти или зарегистрироваться'}>{account ? <><ProfileAvatar avatar={defaultAvatar} /><span className="flux-avatar-label">Мой профиль</span></> : '+'}</Button>
               {tab === 'today' && <h1 className="flux-home-title"><span>Сегодня достаточно</span><span>просто продолжить.</span></h1>}
               {tab === 'food' && <h1 className="flux-home-title"><span>Питание</span></h1>}
@@ -2612,7 +2627,7 @@ export default function App() {
         onOpenChange={setAuthGateOpen}
         onAuthenticated={authenticate}
       />
-      {account && <FeedbackDrawer open={feedbackOpen} onOpenChange={setFeedbackOpen} userId={account.id} screen={feedbackScreen} onRepliesRead={() => setUnreadFeedbackReplies(0)} onSubmitted={() => toast.add({ title: 'Спасибо за обратную связь', description: 'Обращение уже в очереди команды FLUX.', type: 'success' })} />}
+      {account && <FeedbackDrawer open={feedbackOpen} onOpenChange={setFeedbackOpen} userId={account.id} screen={feedbackScreen} initialView={feedbackInitialView} onRepliesRead={() => setUnreadFeedbackReplies(0)} onSubmitted={() => toast.add({ title: 'Спасибо за обратную связь', description: 'Обращение уже в очереди команды FLUX.', type: 'success' })} />}
     </Toaster>
   );
 }

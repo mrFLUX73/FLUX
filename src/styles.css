@@ -321,11 +321,15 @@ button:active { transform: scale(.97); }
 .flux-content > :nth-child(2) { animation-delay: .045s; }
 .flux-content > :nth-child(3) { animation-delay: .09s; }
 .flux-content > :nth-child(4) { animation-delay: .135s; }
-.flux-topbar.is-home { display: grid; grid-template-columns: max-content minmax(0, 1fr) 80px; grid-template-rows: 26px 54px; column-gap: 14px; align-items: center; padding-inline: 22px; }
+.flux-topbar.is-home { display: grid; grid-template-columns: max-content minmax(0, 1fr) 36px 80px; grid-template-rows: 26px 54px; column-gap: 10px; align-items: center; padding-inline: 22px; }
 .flux-topbar.is-home .flux-brand { grid-column: 1; grid-row: 1; min-width: 0; min-height: 26px; padding: 0; }
 .flux-topbar.is-home .flux-brand-lockup { height: 26px; }
-.flux-topbar.is-home .flux-avatar { grid-column: 3; grid-row: 1 / 3; align-self: center; }
+.flux-topbar.is-home .flux-avatar { grid-column: 4; grid-row: 1 / 3; align-self: center; }
 .flux-home-kicker { grid-column: 2; grid-row: 1; min-width: 0; margin: 0; overflow: hidden; color: var(--flux-muted); font-size: 12px; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+.flux-messages-button { width: 36px; height: 36px; position: relative; display: grid; grid-column: 3; grid-row: 1 / 3; place-items: center; align-self: center; padding: 0; border: 1px solid var(--flux-border); border-radius: 13px; background: var(--flux-card); box-shadow: 0 4px 12px color-mix(in srgb, var(--flux-primary) 8%, transparent); color: var(--flux-primary); transition: transform .2s ease, background-color .2s ease, border-color .2s ease; }
+.flux-messages-button:active { transform: scale(.94); background: var(--flux-selection); }
+.flux-messages-button svg { width: 17px; height: 17px; }
+.flux-messages-button b { min-width: 16px; height: 16px; position: absolute; top: -5px; right: -5px; display: grid; place-items: center; padding: 0 3px; border: 2px solid var(--flux-bg); border-radius: 999px; background: var(--flux-primary); color: var(--flux-on-primary); font-size: 8px; font-weight: 700; line-height: 1; }
 .flux-home-title { grid-column: 1 / 3; grid-row: 2; align-self: center; margin: 0; color: var(--flux-primary); font-size: 25px; font-style: italic; font-weight: 600; line-height: 1.08; letter-spacing: -.035em; }
 .flux-home-title span { display: block; white-space: nowrap; }
 .flux-balance-card { padding: 20px; border-radius: 25px; background: var(--flux-soft); }
