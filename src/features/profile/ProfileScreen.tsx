@@ -7,7 +7,7 @@ import { Progress } from '@/components/ui/progress';
 import type { FluxAccount } from '../auth/phonePasswordAuth';
 
 export type DefaultAvatar = 'short-hair' | 'bun';
-export type FluxTheme = 'sage' | 'storm' | 'ocean' | 'bloom' | 'sand' | 'night';
+export type FluxTheme = 'sage' | 'storm' | 'ocean' | 'bloom' | 'sand' | 'night' | 'titan' | 'forge' | 'ranger';
 
 export type ProfileDraft = {
   displayName: string;
@@ -66,6 +66,9 @@ export const fluxThemes: {
   { id: 'bloom', label: 'Bloom', description: 'Мягкая пудровая', colors: ['#fdfafb', '#f0e2e8', '#775268'] },
   { id: 'sand', label: 'Sand', description: 'Тёплая бежевая', colors: ['#fdfbf7', '#efe6d4', '#6f5d42'] },
   { id: 'night', label: 'Night', description: 'Тёмная и спокойная', colors: ['#121816', '#24342a', '#7fc38e'] },
+  { id: 'titan', label: 'Titan', description: 'Сталь и синий свет', colors: ['#10161e', '#202d3b', '#61a8d8'] },
+  { id: 'forge', label: 'Forge', description: 'Уголь и тёплая медь', colors: ['#181412', '#30251f', '#d79a58'] },
+  { id: 'ranger', label: 'Ranger', description: 'Тёмная хвоя и хаки', colors: ['#121812', '#273125', '#9cb476'] },
 ];
 
 export function isFluxTheme(value: unknown): value is FluxTheme {

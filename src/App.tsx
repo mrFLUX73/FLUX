@@ -135,6 +135,9 @@ const themeBrowserColors: Record<FluxTheme, string> = {
   bloom: '#fdfafb',
   sand: '#fdfbf7',
   night: '#111714',
+  titan: '#10161e',
+  forge: '#181412',
+  ranger: '#121812',
 };
 
 function localDayKey(date = new Date()) {

@@ -247,6 +247,24 @@
   --ring: #70aa7b;
 }
 
+:root[data-flux-theme='titan'] {
+  color-scheme: dark;
+  --flux-bg: #10161e; --flux-stage-bg: #090d12; --flux-primary: #7ec0ee; --flux-soft: #202d3b; --flux-soft-2: #17222e; --flux-ink: #edf6fd; --flux-muted: #a3b3c2; --flux-accent: #5d9fc9; --flux-border: #344657; --flux-border-soft: #293a49; --flux-on-primary: #0b1720; --flux-cta-soft: #b6dcf5; --flux-nav-muted: #91a4b5; --flux-control-soft: #263747; --flux-selection: #243b4c; --flux-surface-soft: #151f29; --flux-avatar-bg: #263848; --flux-hover: #1b2935; --flux-card: #17212c; --flux-divider: #2b3b4b;
+  --background: #10161e; --foreground: #edf6fd; --card: #17212c; --card-foreground: #edf6fd; --popover: #17212c; --popover-foreground: #edf6fd; --primary: #7ec0ee; --primary-foreground: #0b1720; --secondary: #202d3b; --secondary-foreground: #dcecf7; --muted: #17222e; --muted-foreground: #a3b3c2; --accent: #263747; --accent-foreground: #dcecf7; --destructive: #e17c7c; --border: #344657; --input: #344657; --ring: #5d9fc9;
+}
+
+:root[data-flux-theme='forge'] {
+  color-scheme: dark;
+  --flux-bg: #181412; --flux-stage-bg: #0f0c0a; --flux-primary: #e0a260; --flux-soft: #30251f; --flux-soft-2: #251c18; --flux-ink: #fff3e8; --flux-muted: #bca99b; --flux-accent: #c48143; --flux-border: #4a382d; --flux-border-soft: #3c2d25; --flux-on-primary: #21150c; --flux-cta-soft: #f1c58f; --flux-nav-muted: #a69384; --flux-control-soft: #392b23; --flux-selection: #3a2b22; --flux-surface-soft: #211a16; --flux-avatar-bg: #3a2a21; --flux-hover: #2a201a; --flux-card: #211a17; --flux-divider: #3c2e25;
+  --background: #181412; --foreground: #fff3e8; --card: #211a17; --card-foreground: #fff3e8; --popover: #211a17; --popover-foreground: #fff3e8; --primary: #e0a260; --primary-foreground: #21150c; --secondary: #30251f; --secondary-foreground: #f7e5d5; --muted: #251c18; --muted-foreground: #bca99b; --accent: #392b23; --accent-foreground: #f7e5d5; --destructive: #e17c7c; --border: #4a382d; --input: #4a382d; --ring: #c48143;
+}
+
+:root[data-flux-theme='ranger'] {
+  color-scheme: dark;
+  --flux-bg: #121812; --flux-stage-bg: #0b100b; --flux-primary: #b2ca89; --flux-soft: #273125; --flux-soft-2: #1d271b; --flux-ink: #f0f6e9; --flux-muted: #abb5a0; --flux-accent: #8fa766; --flux-border: #3d4a37; --flux-border-soft: #323e2e; --flux-on-primary: #152012; --flux-cta-soft: #d5e7b8; --flux-nav-muted: #97a08d; --flux-control-soft: #303b2b; --flux-selection: #2f402b; --flux-surface-soft: #182017; --flux-avatar-bg: #2d3929; --flux-hover: #222c20; --flux-card: #1a2318; --flux-divider: #303c2c;
+  --background: #121812; --foreground: #f0f6e9; --card: #1a2318; --card-foreground: #f0f6e9; --popover: #1a2318; --popover-foreground: #f0f6e9; --primary: #b2ca89; --primary-foreground: #152012; --secondary: #273125; --secondary-foreground: #e4eed9; --muted: #1d271b; --muted-foreground: #abb5a0; --accent: #303b2b; --accent-foreground: #e4eed9; --destructive: #df7b7b; --border: #3d4a37; --input: #3d4a37; --ring: #8fa766;
+}
+
 * { box-sizing: border-box; }
 html { background: var(--flux-stage-bg); }
 body { margin: 0; background: var(--flux-stage-bg); color: var(--foreground); font-family: Manrope, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-weight: 400; }
@@ -281,7 +299,16 @@ button:active { transform: scale(.97); }
 .flux-brand-lockup { width: auto; height: 30px; display: block; object-fit: contain; user-select: none; }
 :root[data-flux-theme='night'] .flux-brand-lockup,
 :root[data-flux-theme='night'] .flux-initialization-lockup,
-:root[data-flux-theme='night'] .flux-initialization-mark img { filter: brightness(1.9) saturate(.85); }
+:root[data-flux-theme='night'] .flux-initialization-mark img,
+:root[data-flux-theme='titan'] .flux-brand-lockup,
+:root[data-flux-theme='titan'] .flux-initialization-lockup,
+:root[data-flux-theme='titan'] .flux-initialization-mark img,
+:root[data-flux-theme='forge'] .flux-brand-lockup,
+:root[data-flux-theme='forge'] .flux-initialization-lockup,
+:root[data-flux-theme='forge'] .flux-initialization-mark img,
+:root[data-flux-theme='ranger'] .flux-brand-lockup,
+:root[data-flux-theme='ranger'] .flux-initialization-lockup,
+:root[data-flux-theme='ranger'] .flux-initialization-mark img { filter: brightness(1.9) saturate(.85); }
 .flux-avatar { width: 80px !important; height: 80px !important; position: relative; padding: 0 !important; overflow: visible; border-radius: 50% !important; font-size: 11px !important; }
 .flux-avatar:hover .flux-avatar-art { transform: scale(1.035); }
 .flux-avatar .flux-avatar-art { width: 100%; height: 100%; }
