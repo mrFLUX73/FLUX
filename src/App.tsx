@@ -1442,13 +1442,12 @@ function WorkoutsScreen({ onStart }: { onStart: () => void }) {
 
   return (
     <>
-      <div className="flux-page-heading flux-page-heading-row"><div><span className="flux-eyebrow">Сегодня</span><h1>Тренировки</h1></div><span className="flux-soft-pill">28 мин</span></div>
       <section className="flux-workout-weather" aria-label="Погода для тренировки на улице">
         <span className="flux-workout-weather-icon"><CloudSun /></span>
         <div>{weather ? <><small>На улице сейчас</small><strong>{weather.temperature > 0 ? '+' : ''}{weather.temperature}° · {weather.label}</strong><p>Ощущается как {weather.apparent > 0 ? '+' : ''}{weather.apparent}° · ветер {weather.wind} м/с</p></> : <><small>Для тренировки на улице</small><strong>{weatherState === 'denied' ? 'Геолокация не разрешена' : weatherState === 'error' ? 'Погода пока недоступна' : 'Узнать погоду рядом'}</strong><p>{weatherState === 'denied' ? 'Разрешите геолокацию в настройках браузера.' : 'Подскажем, что ждёт вас за дверью.'}</p></>}</div>
         {!weather && <button type="button" onClick={loadWeather} disabled={weatherState === 'loading'}>{weatherState === 'loading' ? <LoaderCircle className="is-spinning" /> : 'Показать'}</button>}
       </section>
-      <section className="flux-workout-page-hero"><span>План на сегодня</span><strong>Всё тело</strong><p>Спокойная тренировка без гонки за результатом.</p><div><Play /> {workoutExercises.length} упражнения · 3 круга</div><Button onClick={onStart}><Play /> Начать</Button></section>
+      <section className="flux-workout-page-hero"><span>План на сегодня <i>28 мин</i></span><strong>Всё тело</strong><p>Спокойная тренировка без гонки за результатом.</p><div><Play /> {workoutExercises.length} упражнения · 3 круга</div><Button onClick={onStart}><Play /> Начать</Button></section>
       <section className="flux-exercise-list"><div className="flux-section-heading"><h2>План</h2><span>Начальный</span></div>{workoutExercises.map((exercise, index) => <div key={exercise.name}><span>0{index + 1}</span><p><strong>{exercise.name}</strong><small>{exercise.reps} повторений</small></p><ChevronRight /></div>)}</section>
     </>
   );
@@ -2254,11 +2253,12 @@ export default function App() {
               {pullFeedback === 'refreshing' ? <LoaderCircle className="is-spinning" /> : pullFeedback === 'updated' ? <Check /> : <RefreshCw />}
               <span>{pullFeedback === 'refreshing' ? 'Обновляем рацион…' : pullFeedback === 'updated' ? 'Рацион обновлён' : pullFeedback === 'error' ? 'Не удалось обновить' : pullDistance >= 62 ? 'Отпустите, чтобы обновить' : 'Потяните, чтобы обновить'}</span>
             </div>}
-            <header key={`header-${tab}`} className={`flux-topbar${tab === 'today' ? ' is-home' : ''}`}>
+            <header key={`header-${tab}`} className={`flux-topbar${tab === 'today' || tab === 'workouts' ? ' is-home' : ''}`}>
               <button className="flux-brand" type="button" onClick={() => setTab('today')} aria-label="FLUX — главная"><img className="flux-brand-lockup" src={`${import.meta.env.BASE_URL}brand/flux-lockup.png`} alt="" draggable="false" /></button>
-              {tab === 'today' && <p className="flux-home-kicker">Доброе утро{firstName ? `, ${firstName}` : ''}</p>}
+              {(tab === 'today' || tab === 'workouts') && <p className="flux-home-kicker">{tab === 'today' ? `Доброе утро${firstName ? `, ${firstName}` : ''}` : 'План на сегодня'}</p>}
               <Button className="flux-avatar" variant="secondary" size="icon" onClick={openProfile} aria-label={account ? 'Открыть профиль' : 'Войти или зарегистрироваться'}>{account ? <ProfileAvatar avatar={defaultAvatar} /> : '+'}</Button>
               {tab === 'today' && <h1 className="flux-home-title"><span>Сегодня достаточно</span><span>просто продолжить.</span></h1>}
+              {tab === 'workouts' && <h1 className="flux-home-title"><span>Тренировки</span></h1>}
             </header>
             <div
               key={tab}

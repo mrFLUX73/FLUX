@@ -598,7 +598,8 @@ button:active { transform: scale(.97); }
 .flux-workout-weather > button { min-height: 29px; display: inline-flex; align-items: center; gap: 5px; padding: 0 9px; border: 0; border-radius: 10px; background: var(--flux-soft); color: var(--flux-primary); font-size: 8px; font-weight: 600; }
 .flux-workout-weather > button svg { width: 12px; height: 12px; }
 .flux-workout-page-hero { min-height: 143px; margin-top: 12px; padding: 18px; border-radius: 23px; background: var(--flux-soft); display: flex; flex-direction: column; justify-content: flex-end; }
-.flux-workout-page-hero > span { color: var(--flux-muted); font-size: 10px; }
+.flux-workout-page-hero > span { color: var(--flux-muted); display: flex; align-items: center; justify-content: space-between; font-size: 10px; }
+.flux-workout-page-hero > span i { padding: 5px 8px; border-radius: 999px; background: color-mix(in srgb, var(--flux-primary) 10%, transparent); color: var(--flux-primary); font-size: 8px; font-style: normal; }
 .flux-workout-page-hero > strong { margin-top: 4px; color: var(--flux-ink); font-size: 22px; font-weight: 500; line-height: 1.15; letter-spacing: -.03em; }
 .flux-workout-page-hero > p { margin: 5px 0 0; color: var(--flux-muted); font-size: 9px; }
 .flux-workout-page-hero > div { margin-top: 9px; color: var(--flux-primary); display: flex; align-items: center; gap: 7px; font-size: 9px; }
