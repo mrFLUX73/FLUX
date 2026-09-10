@@ -2600,9 +2600,9 @@ export default function App() {
               {pullFeedback === 'refreshing' ? <LoaderCircle className="is-spinning" /> : pullFeedback === 'updated' ? <Check /> : <RefreshCw />}
               <span>{pullFeedback === 'refreshing' ? 'Обновляем рацион…' : pullFeedback === 'updated' ? 'Рацион обновлён' : pullFeedback === 'error' ? 'Не удалось обновить' : pullDistance >= 62 ? 'Отпустите, чтобы обновить' : 'Потяните, чтобы обновить'}</span>
             </div>}
-            <header key={`header-${tab}`} className={`flux-topbar${tab === 'today' || tab === 'food' || tab === 'workouts' || tab === 'progress' || tab === 'clients' ? ' is-home' : ''}`}>
+            <header key={`header-${tab}`} className={`flux-topbar${tab === 'today' || tab === 'food' || tab === 'workouts' || tab === 'progress' || tab === 'clients' || tab === 'admin' ? ' is-home' : ''}`}>
               <button className="flux-brand" type="button" onClick={() => setTab('today')} aria-label="FLUX — главная"><img className="flux-brand-lockup" src={`${import.meta.env.BASE_URL}brand/flux-lockup.png`} alt="" draggable="false" /></button>
-              {(tab === 'today' || tab === 'food' || tab === 'workouts' || tab === 'progress' || tab === 'clients') && <p className="flux-home-kicker">{tab === 'today' ? `Доброе утро${firstName ? `, ${firstName}` : ''}` : tab === 'food' ? 'Сегодня' : tab === 'workouts' ? 'План на сегодня' : tab === 'clients' ? 'Кабинет тренера' : 'Без давления'}</p>}
+              {(tab === 'today' || tab === 'food' || tab === 'workouts' || tab === 'progress' || tab === 'clients' || tab === 'admin') && <p className="flux-home-kicker">{tab === 'today' ? `Доброе утро${firstName ? `, ${firstName}` : ''}` : tab === 'food' ? 'Сегодня' : tab === 'workouts' ? 'План на сегодня' : tab === 'clients' ? 'Кабинет тренера' : tab === 'admin' ? 'Администрирование' : 'Без давления'}</p>}
               <button className="flux-messages-button" type="button" onClick={() => { void openMessages(); }} aria-label={unreadFeedbackReplies ? `Новые сообщения: ${unreadFeedbackReplies}` : 'Сообщения'}><Bell />{unreadFeedbackReplies > 0 && <b>{unreadFeedbackReplies > 9 ? '9+' : unreadFeedbackReplies}</b>}</button>
               <Button className="flux-avatar" variant="secondary" size="icon" onClick={openProfile} aria-label={account ? 'Открыть мой профиль' : 'Войти или зарегистрироваться'}>{account ? <><ProfileAvatar avatar={defaultAvatar} /><span className="flux-avatar-label">Мой профиль</span></> : '+'}</Button>
               {tab === 'today' && <h1 className="flux-home-title"><span>Сегодня достаточно</span><span>просто продолжить.</span></h1>}
@@ -2610,6 +2610,7 @@ export default function App() {
               {tab === 'workouts' && <h1 className="flux-home-title"><span>Тренировки</span></h1>}
               {tab === 'progress' && <h1 className="flux-home-title"><span>Прогресс</span></h1>}
               {tab === 'clients' && <h1 className="flux-home-title"><span>Клиенты</span></h1>}
+              {tab === 'admin' && <h1 className="flux-home-title"><span>Управление</span></h1>}
             </header>
             <div
               key={tab}

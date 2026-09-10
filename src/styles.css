@@ -859,9 +859,9 @@ button:active { transform: scale(.97); }
 .flux-feedback-reply-body { padding: 0 22px; }
 
 .flux-admin-screen { min-height: 100%; padding-bottom: 12px; }
-.flux-admin-screen .flux-page-heading { padding-bottom: 15px; }
-.flux-admin-screen .flux-page-heading h1 { margin: 0; color: var(--flux-ink); font-size: 25px; font-weight: 500; letter-spacing: -.035em; }
-.flux-admin-screen .flux-page-heading p { margin: 7px 0 0; color: var(--flux-muted); font-size: 10px; }
+.flux-admin-lede { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 2px 0 16px; }
+.flux-admin-lede p { margin: 0; color: var(--flux-muted); font-size: 10px; line-height: 1.45; }
+.flux-admin-lede [data-slot='button'] { width: 38px; height: 38px; flex: 0 0 auto; border-radius: 50%; }
 .flux-admin-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .flux-admin-stats > div { padding: 14px 16px; border-radius: 18px; background: var(--flux-soft); }
 .flux-admin-stats span, .flux-admin-stats strong { display: block; }
