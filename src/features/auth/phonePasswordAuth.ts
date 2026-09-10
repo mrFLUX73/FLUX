@@ -8,6 +8,7 @@ export type FluxAccount = {
   login: string;
   phone: string;
   isAdmin: boolean;
+  role: 'user' | 'trainer' | 'admin';
 };
 
 export type LoginPasswordCredentials = {
@@ -34,6 +35,7 @@ export function loadCachedAccount(): FluxAccount | null {
       login: typeof parsed.login === 'string' ? parsed.login : '',
       phone: typeof parsed.phone === 'string' ? parsed.phone : '',
       isAdmin: parsed.isAdmin === true,
+      role: parsed.role === 'trainer' || parsed.role === 'admin' ? parsed.role : 'user',
     };
   } catch {
     return null;
@@ -103,6 +105,7 @@ function fallbackAccount(user: User): FluxAccount {
     login,
     phone: '',
     isAdmin: false,
+    role: 'user',
   };
 }
 
@@ -139,6 +142,7 @@ async function accountFromVerifiedUser(user: User, fallbackName = ''): Promise<F
     login: String(profile?.login ?? fallbackLogin),
     phone: String(profile?.phone_e164 ?? ''),
     isAdmin: role?.role === 'admin',
+    role: role?.role === 'trainer' || role?.role === 'admin' ? role.role : 'user',
   };
 }
 

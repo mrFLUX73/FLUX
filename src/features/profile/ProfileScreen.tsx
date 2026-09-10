@@ -1,10 +1,11 @@
-import { ArrowLeft, CalendarDays, Check, ChevronDown, LogOut, MessageCircle, Pill } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Check, ChevronDown, KeyRound, LogOut, MessageCircle, Pill, UsersRound } from 'lucide-react';
 import { useState, type CSSProperties } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import type { FluxAccount } from '../auth/phonePasswordAuth';
+import type { TrainerLink } from '../trainer/repository';
 
 export type DefaultAvatar = 'short-hair' | 'bun';
 export type FluxTheme = 'sage' | 'storm' | 'ocean' | 'bloom' | 'sand' | 'night' | 'titan' | 'forge' | 'ranger';
@@ -176,6 +177,11 @@ export function ProfileScreen({
   feedbackReplyCount,
   onSignOut,
   saving,
+  trainerCode,
+  trainerLinks,
+  trainerSaving,
+  onChangeRole,
+  onConnectTrainer,
 }: {
   account: FluxAccount;
   avatar: DefaultAvatar;
@@ -188,8 +194,14 @@ export function ProfileScreen({
   feedbackReplyCount: number;
   onSignOut: () => Promise<void> | void;
   saving: boolean;
+  trainerCode: string | null;
+  trainerLinks: TrainerLink[];
+  trainerSaving: boolean;
+  onChangeRole: (role: 'user' | 'trainer') => void;
+  onConnectTrainer: (code: string) => void;
 }) {
   const [buildInfoOpen, setBuildInfoOpen] = useState(false);
+  const [trainerCodeInput, setTrainerCodeInput] = useState('');
   const set = <Key extends keyof ProfileDraft>(key: Key, value: ProfileDraft[Key]) => {
     onChange({ ...draft, [key]: value });
   };
@@ -207,6 +219,8 @@ export function ProfileScreen({
   const completed = requiredValues.filter(Boolean).length;
   const completeness = Math.round((completed / requiredValues.length) * 100);
   const selectedAvatar = sexOptions.find((option) => option.avatar === avatar) ?? sexOptions[0];
+  const ownTrainerCode = trainerCode ?? trainerLinks.find((link) => link.trainerId === account.id)?.trainerCode ?? null;
+  const ownTrainer = trainerLinks.find((link) => link.clientId === account.id && (link.status === 'pending' || link.status === 'active'));
 
   const selectSex = (sex: Exclude<ProfileDraft['calculationSex'], ''>, nextAvatar: DefaultAvatar) => {
     onChange({ ...draft, calculationSex: sex, theme: defaultThemeForSex(sex) });
@@ -373,6 +387,18 @@ export function ProfileScreen({
         <ProfileAccordion eyebrow="Личное" title="Капсула мотивации" icon={<Pill aria-hidden="true" />}>
           <p className="flux-profile-card-note">Фраза или обещание себе. Она сохранится в вашем профиле и позже сможет появляться на главном экране.</p>
           <label className="flux-profile-capsule-input"><span>Моя капсула</span><textarea value={draft.motivationCapsule} maxLength={180} onChange={(event) => set('motivationCapsule', event.target.value)} placeholder="Например: Я выбираю устойчивый темп, а не идеальный день." /></label>
+        </ProfileAccordion>
+
+        <ProfileAccordion eyebrow="Роль" title={account.role === 'trainer' ? 'Тренер FLUX' : account.role === 'admin' ? 'Администратор FLUX' : 'Занимаюсь для себя'} icon={<UsersRound aria-hidden="true" />}>
+          {account.role === 'admin' ? <p className="flux-profile-card-note">Администратор управляет обратной связью. Режим тренера можно будет подключить отдельно, не меняя этот доступ.</p> : <>
+            <p className="flux-profile-card-note">Один профиль сохраняет личный дневник в любом режиме. Роль добавляет инструменты — она не создаёт второй аккаунт.</p>
+            <div className="flux-role-options">
+              <button type="button" className={account.role === 'user' ? 'is-selected' : ''} onClick={() => onChangeRole('user')} disabled={trainerSaving}><span><strong>Для себя</strong><small>Питание, тренировки и личный прогресс</small></span>{account.role === 'user' && <Check />}</button>
+              <button type="button" className={account.role === 'trainer' ? 'is-selected' : ''} onClick={() => onChangeRole('trainer')} disabled={trainerSaving}><span><strong>Тренер</strong><small>Клиенты, планы и контроль выполнения</small></span>{account.role === 'trainer' && <Check />}</button>
+            </div>
+            {account.role === 'trainer' && <div className="flux-trainer-code"><span><KeyRound aria-hidden="true" /><i><small>Ваш код тренера</small><strong>{ownTrainerCode ?? 'Создаём код…'}</strong></i></span><p>Передайте его клиенту. Заявка появится в разделе «Клиенты» и потребует вашего подтверждения.</p></div>}
+            {account.role === 'user' && <div className="flux-connect-trainer"><span><strong>Мой тренер</strong><small>{ownTrainer?.status === 'active' ? `${ownTrainer.trainerName} · связь активна` : ownTrainer?.status === 'pending' ? `${ownTrainer.trainerName} · ожидаем подтверждения` : 'Введите код тренера, чтобы отправить запрос.'}</small></span>{!ownTrainer && <div><Input value={trainerCodeInput} onChange={(event) => setTrainerCodeInput(event.target.value.toUpperCase())} placeholder="TR-XXXXXXXX" maxLength={11} aria-label="Код тренера" /><Button type="button" variant="secondary" disabled={trainerSaving || trainerCodeInput.trim().length < 11} onClick={() => onConnectTrainer(trainerCodeInput)}>Отправить запрос</Button></div>}</div>}
+          </>}
         </ProfileAccordion>
 
         <ProfileAccordion eyebrow="Обратная связь" title="Помочь улучшить FLUX" icon={<MessageCircle aria-hidden="true" />} className="flux-profile-feedback">

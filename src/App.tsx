@@ -29,6 +29,7 @@ import {
   Sprout,
   Trash2,
   Utensils,
+  UsersRound,
   Wheat,
   WifiOff,
   X,
@@ -101,6 +102,7 @@ import {
 import { loadCachedProfileDraft, loadCachedProfileTheme, loadProfileDraft, saveProfileDraft } from './features/profile/repository';
 import { AdminFeedbackScreen, FeedbackDrawer } from './features/feedback/FeedbackUI';
 import { countUnreadFeedbackReplies } from './features/feedback/repository';
+import { loadMyTrainerCode, loadTrainerHub, requestTrainerConnection, respondToTrainerConnection, setAccountRole, type TrainerLink } from './features/trainer/repository';
 import {
   MEAL_KINDS,
   type MealEntry,
@@ -109,7 +111,7 @@ import {
   type Product,
 } from './features/nutrition/types';
 
-type Tab = 'today' | 'food' | 'workouts' | 'progress' | 'admin';
+type Tab = 'today' | 'food' | 'workouts' | 'progress' | 'clients' | 'admin';
 type ScannerState = 'idle' | 'requesting' | 'scanning' | 'error';
 type ManualProductDraft = {
   name: string;
@@ -1576,6 +1578,26 @@ function WorkoutsScreen({ onStart, sessions }: { onStart: () => void; sessions: 
   );
 }
 
+function TrainerClientsScreen({
+  links,
+  loading,
+  onRespond,
+}: {
+  links: TrainerLink[];
+  loading: boolean;
+  onRespond: (link: TrainerLink, accept: boolean) => void;
+}) {
+  const pending = links.filter((link) => link.status === 'pending');
+  const active = links.filter((link) => link.status === 'active');
+  return (
+    <>
+      <section className="flux-trainer-dashboard-hero"><span className="flux-rhythm-icon"><UsersRound /></span><div><small>Кабинет тренера</small><strong>Мои клиенты</strong><p>{active.length ? `${active.length} ${active.length === 1 ? 'активный клиент' : active.length < 5 ? 'активных клиента' : 'активных клиентов'} сейчас` : 'Когда клиент подтвердит связь, его прогресс появится здесь.'}</p></div></section>
+      {pending.length > 0 && <section className="flux-trainer-client-section"><div className="flux-section-heading"><h2>Ожидают подтверждения</h2><span>{pending.length}</span></div>{pending.map((link) => <article key={link.id} className="flux-client-card is-pending"><span className="flux-avatar-placeholder">{link.clientName.slice(0, 1).toUpperCase()}</span><div><strong>{link.clientName}</strong><small>Хочет подключиться к вам в FLUX</small></div><aside><Button size="sm" onClick={() => onRespond(link, true)}>Принять</Button><button type="button" onClick={() => onRespond(link, false)} aria-label={`Отклонить заявку ${link.clientName}`}>×</button></aside></article>)}</section>}
+      <section className="flux-trainer-client-section"><div className="flux-section-heading"><h2>Активные клиенты</h2><span>{active.length}</span></div>{loading ? <p className="flux-trainer-empty">Загружаем связи…</p> : active.length ? active.map((link) => <article key={link.id} className="flux-client-card"><span className="flux-avatar-placeholder">{link.clientName.slice(0, 1).toUpperCase()}</span><div><strong>{link.clientName}</strong><small>Тренировки и планы появятся здесь следующим этапом.</small></div><Check /></article>) : <p className="flux-trainer-empty">Пока никого. Передайте свой код тренера из профиля — клиент отправит заявку, а вы её подтвердите здесь.</p>}</section>
+    </>
+  );
+}
+
 function ProgressScreen() {
   const week = [42, 68, 55, 82, 71, 20, 12];
   return (
@@ -1665,6 +1687,10 @@ export default function App() {
   const [dailyBalanceOpen, setDailyBalanceOpen] = useState(false);
   const [profileDraft, setProfileDraft] = useState<ProfileDraft | null>(startupProfileRef.current?.draft ?? null);
   const [profileSaving, setProfileSaving] = useState(false);
+  const [trainerLinks, setTrainerLinks] = useState<TrainerLink[]>([]);
+  const [trainerCode, setTrainerCode] = useState<string | null>(null);
+  const [trainerHubLoading, setTrainerHubLoading] = useState(false);
+  const [trainerSaving, setTrainerSaving] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedbackScreen, setFeedbackScreen] = useState('Сегодня');
   const [unreadFeedbackReplies, setUnreadFeedbackReplies] = useState(0);
@@ -1727,6 +1753,28 @@ export default function App() {
     }
     return () => { active = false; };
   }, [account?.id]);
+
+  const refreshTrainerHub = useCallback(async (userId = account?.id, role = account?.role) => {
+    if (!userId) {
+      setTrainerLinks([]);
+      setTrainerCode(null);
+      return;
+    }
+    setTrainerHubLoading(true);
+    try {
+      const [links, ownCode] = await Promise.all([loadTrainerHub(userId), role === 'trainer' ? loadMyTrainerCode(userId) : Promise.resolve(null)]);
+      setTrainerLinks(links);
+      setTrainerCode(ownCode ?? links.find((link) => link.trainerId === userId)?.trainerCode ?? null);
+    } catch {
+      // A local-only session or a deployment before the trainer migration is
+      // still usable; the role section explains the unavailable action.
+      setTrainerLinks([]);
+    } finally {
+      setTrainerHubLoading(false);
+    }
+  }, [account?.id]);
+
+  useEffect(() => { void refreshTrainerHub(); }, [refreshTrainerHub]);
 
   useEffect(() => {
     let active = true;
@@ -1823,6 +1871,7 @@ export default function App() {
             login: user.email?.endsWith('@flux.local') ? user.email.slice(0, -('@flux.local'.length)) : '',
             phone: '',
             isAdmin: false,
+            role: 'user',
           } : null;
 
           window.setTimeout(() => {
@@ -1993,7 +2042,7 @@ export default function App() {
     }
   }
 
-  function openFeedback(screen = tab === 'admin' ? 'Управление' : ({ today: 'Сегодня', food: 'Питание', workouts: 'Тренировки', progress: 'Прогресс' }[tab])) {
+  function openFeedback(screen = tab === 'admin' ? 'Управление' : ({ today: 'Сегодня', food: 'Питание', workouts: 'Тренировки', progress: 'Прогресс', clients: 'Клиенты' }[tab])) {
     if (!account) {
       openAuth('signup');
       return;
@@ -2002,9 +2051,55 @@ export default function App() {
     setFeedbackOpen(true);
   }
 
+  async function changeTrainerRole(role: 'user' | 'trainer') {
+    if (!account || trainerSaving) return;
+    setTrainerSaving(true);
+    try {
+      const next = await setAccountRole(account.id, role);
+      const nextAccount = { ...account, role: next.role, isAdmin: false };
+      setAccount(nextAccount);
+      cacheAccount(nextAccount);
+      setTrainerCode(next.trainerCode);
+      await refreshTrainerHub(account.id, next.role);
+      toast.add({ title: role === 'trainer' ? 'Роль тренера включена' : 'Личный режим включён', description: role === 'trainer' ? 'Ваш код и кабинет клиентов готовы.' : 'Личный дневник и история сохранены.', type: 'success' });
+    } catch {
+      toast.add({ title: 'Не удалось изменить роль', description: 'Проверьте интернет и повторите попытку.', type: 'error' });
+    } finally {
+      setTrainerSaving(false);
+    }
+  }
+
+  async function connectToTrainer(code: string) {
+    if (!account || trainerSaving) return;
+    setTrainerSaving(true);
+    try {
+      await requestTrainerConnection(account.id, code);
+      await refreshTrainerHub(account.id);
+      toast.add({ title: 'Заявка отправлена', description: 'Тренер должен подтвердить связь в своём кабинете.', type: 'success' });
+    } catch {
+      toast.add({ title: 'Код не найден', description: 'Проверьте код тренера и попробуйте ещё раз.', type: 'error' });
+    } finally {
+      setTrainerSaving(false);
+    }
+  }
+
+  async function respondToClient(link: TrainerLink, accept: boolean) {
+    if (!account || trainerSaving) return;
+    setTrainerSaving(true);
+    try {
+      await respondToTrainerConnection(account.id, link.id, accept);
+      await refreshTrainerHub(account.id);
+      toast.add({ title: accept ? 'Клиент подключён' : 'Заявка отклонена', description: accept ? `${link.clientName} теперь появится в вашем кабинете.` : 'Клиент не получит доступ к кабинету тренера.', type: 'success' });
+    } catch {
+      toast.add({ title: 'Не удалось обработать заявку', description: 'Проверьте соединение и повторите попытку.', type: 'error' });
+    } finally {
+      setTrainerSaving(false);
+    }
+  }
+
   useEffect(() => {
-    if (tab === 'admin' && !account?.isAdmin) setTab('today');
-  }, [account?.isAdmin, tab]);
+    if ((tab === 'admin' && !account?.isAdmin) || (tab === 'clients' && account?.role !== 'trainer')) setTab('today');
+  }, [account?.isAdmin, account?.role, tab]);
 
   async function completeProfile() {
     if (!account || !profileDraft || profileSaving) return;
@@ -2404,6 +2499,7 @@ export default function App() {
     { id: 'food', label: 'Питание', icon: Utensils },
     { id: 'workouts', label: 'Тренировки', icon: Dumbbell },
     { id: 'progress', label: 'Прогресс', icon: ChartNoAxesColumnIncreasing },
+    ...(account?.role === 'trainer' ? [{ id: 'clients' as const, label: 'Клиенты', icon: UsersRound }] : []),
     ...(account?.isAdmin ? [{ id: 'admin' as const, label: 'Управление', icon: ShieldCheck }] : []),
   ];
 
@@ -2418,14 +2514,15 @@ export default function App() {
               {pullFeedback === 'refreshing' ? <LoaderCircle className="is-spinning" /> : pullFeedback === 'updated' ? <Check /> : <RefreshCw />}
               <span>{pullFeedback === 'refreshing' ? 'Обновляем рацион…' : pullFeedback === 'updated' ? 'Рацион обновлён' : pullFeedback === 'error' ? 'Не удалось обновить' : pullDistance >= 62 ? 'Отпустите, чтобы обновить' : 'Потяните, чтобы обновить'}</span>
             </div>}
-            <header key={`header-${tab}`} className={`flux-topbar${tab === 'today' || tab === 'food' || tab === 'workouts' || tab === 'progress' ? ' is-home' : ''}`}>
+            <header key={`header-${tab}`} className={`flux-topbar${tab === 'today' || tab === 'food' || tab === 'workouts' || tab === 'progress' || tab === 'clients' ? ' is-home' : ''}`}>
               <button className="flux-brand" type="button" onClick={() => setTab('today')} aria-label="FLUX — главная"><img className="flux-brand-lockup" src={`${import.meta.env.BASE_URL}brand/flux-lockup.png`} alt="" draggable="false" /></button>
-              {(tab === 'today' || tab === 'food' || tab === 'workouts' || tab === 'progress') && <p className="flux-home-kicker">{tab === 'today' ? `Доброе утро${firstName ? `, ${firstName}` : ''}` : tab === 'food' ? 'Сегодня' : tab === 'workouts' ? 'План на сегодня' : 'Без давления'}</p>}
+              {(tab === 'today' || tab === 'food' || tab === 'workouts' || tab === 'progress' || tab === 'clients') && <p className="flux-home-kicker">{tab === 'today' ? `Доброе утро${firstName ? `, ${firstName}` : ''}` : tab === 'food' ? 'Сегодня' : tab === 'workouts' ? 'План на сегодня' : tab === 'clients' ? 'Кабинет тренера' : 'Без давления'}</p>}
               <Button className="flux-avatar" variant="secondary" size="icon" onClick={openProfile} aria-label={account ? 'Открыть мой профиль' : 'Войти или зарегистрироваться'}>{account ? <><ProfileAvatar avatar={defaultAvatar} /><span className="flux-avatar-label">Мой профиль</span></> : '+'}</Button>
               {tab === 'today' && <h1 className="flux-home-title"><span>Сегодня достаточно</span><span>просто продолжить.</span></h1>}
               {tab === 'food' && <h1 className="flux-home-title"><span>Питание</span></h1>}
               {tab === 'workouts' && <h1 className="flux-home-title"><span>Тренировки</span></h1>}
               {tab === 'progress' && <h1 className="flux-home-title"><span>Прогресс</span></h1>}
+              {tab === 'clients' && <h1 className="flux-home-title"><span>Клиенты</span></h1>}
             </header>
             <div
               key={tab}
@@ -2440,9 +2537,10 @@ export default function App() {
               {tab === 'food' && <FoodScreen entries={entries} target={calorieTarget} selectedDay={selectedNutritionDay} onSelectDay={setSelectedNutritionDay} historyLoading={historyLoading} mode={nutritionMode} isConnecting={nutritionConnecting} isAuthenticated={Boolean(account)} onAdd={(meal) => openFood(meal ?? currentMeal())} onEdit={setEditingEntry} onRemove={removeEntry} onRepeat={openPreviousMeal} repeatLoadingMeal={repeatLoadingMeal} />}
               {tab === 'workouts' && <WorkoutsScreen onStart={() => setWorkoutOpen(true)} sessions={workoutSessions} />}
               {tab === 'progress' && <ProgressScreen />}
+              {tab === 'clients' && account?.role === 'trainer' && <TrainerClientsScreen links={trainerLinks.filter((link) => link.trainerId === account.id)} loading={trainerHubLoading} onRespond={(link, accept) => { void respondToClient(link, accept); }} />}
               {tab === 'admin' && account?.isAdmin && <AdminFeedbackScreen userId={account.id} />}
             </div>
-            <nav className={`flux-bottom-nav${account?.isAdmin ? ' has-admin' : ''}`} aria-label="Основная навигация">{navItems.map((item) => { const Icon = item.icon; return <button key={item.id} type="button" className={tab === item.id ? 'is-active' : ''} onClick={() => setTab(item.id)} aria-current={tab === item.id ? 'page' : undefined}><Icon /><span>{item.label}</span></button>; })}</nav>
+            <nav className={`flux-bottom-nav${account?.isAdmin || account?.role === 'trainer' ? ' has-admin' : ''}`} aria-label="Основная навигация">{navItems.map((item) => { const Icon = item.icon; return <button key={item.id} type="button" className={tab === item.id ? 'is-active' : ''} onClick={() => setTab(item.id)} aria-current={tab === item.id ? 'page' : undefined}><Icon /><span>{item.label}</span></button>; })}</nav>
           </div>
           {workoutOpen && <WorkoutFlow onClose={() => setWorkoutOpen(false)} onComplete={saveWorkoutSession} />}
           {profileOpen && account && profileDraft && (
@@ -2461,6 +2559,11 @@ export default function App() {
               feedbackReplyCount={unreadFeedbackReplies}
               onSignOut={signOut}
               saving={profileSaving}
+              trainerCode={trainerCode}
+              trainerLinks={trainerLinks}
+              trainerSaving={trainerSaving}
+              onChangeRole={(role) => { void changeTrainerRole(role); }}
+              onConnectTrainer={(code) => { void connectToTrainer(code); }}
             />
           )}
           </>}

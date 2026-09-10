@@ -456,6 +456,25 @@ button:active { transform: scale(.97); }
 .flux-sex-options svg { width: 15px; height: 15px; position: absolute; top: 8px; right: 8px; padding: 3px; border-radius: 50%; background: var(--flux-accent); color: #fff; }
 .flux-profile-card-note { margin: 11px 1px 0; color: var(--flux-muted); font-size: 8px; line-height: 1.5; }
 .flux-profile-feedback [data-slot='button'] { width: 100%; min-height: 37px; margin-top: 12px; border-radius: 13px; color: var(--flux-primary); }
+.flux-role-options { display: grid; gap: 8px; margin-top: 12px; }
+.flux-role-options button { min-height: 60px; position: relative; padding: 12px; border: 1px solid var(--flux-border-soft); border-radius: 15px; background: var(--flux-surface-soft); color: var(--flux-muted); text-align: left; }
+.flux-role-options button:hover:not(:disabled) { border-color: var(--flux-accent); }
+.flux-role-options button.is-selected { border-color: var(--flux-accent); background: var(--flux-selection); }
+.flux-role-options strong, .flux-role-options small { display: block; }
+.flux-role-options strong { color: var(--flux-ink); font-size: 11px; font-weight: 600; }
+.flux-role-options small { margin-top: 3px; font-size: 8px; }
+.flux-role-options svg { width: 16px; height: 16px; position: absolute; top: 12px; right: 12px; padding: 3px; border-radius: 50%; background: var(--flux-accent); color: var(--flux-on-primary); }
+.flux-trainer-code, .flux-connect-trainer { margin-top: 12px; padding: 12px; border-radius: 15px; background: var(--flux-soft); }
+.flux-trainer-code > span { display: flex; gap: 9px; align-items: center; }
+.flux-trainer-code svg { width: 28px; height: 28px; padding: 7px; border-radius: 10px; background: var(--flux-card); color: var(--flux-primary); }
+.flux-trainer-code i { font-style: normal; }
+.flux-trainer-code small, .flux-trainer-code strong, .flux-connect-trainer strong, .flux-connect-trainer small { display: block; }
+.flux-trainer-code small, .flux-connect-trainer small { color: var(--flux-muted); font-size: 8px; }
+.flux-trainer-code strong { margin-top: 3px; color: var(--flux-primary); font-size: 16px; letter-spacing: .08em; }
+.flux-trainer-code p { margin: 10px 0 0; color: var(--flux-muted); font-size: 8px; line-height: 1.45; }
+.flux-connect-trainer > div { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 10px; }
+.flux-connect-trainer [data-slot='input'] { height: 38px; padding-inline: 10px; border-radius: 11px; font-size: 10px; letter-spacing: .06em; }
+.flux-connect-trainer [data-slot='button'] { min-height: 38px; padding: 0 10px; border-radius: 11px; font-size: 8px; }
 .flux-profile-sex-locked { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .flux-profile-sex-locked span, .flux-profile-sex-locked strong { display: block; }
 .flux-profile-sex-locked span { color: var(--flux-muted); font-size: 8px; }
@@ -671,6 +690,26 @@ button:active { transform: scale(.97); }
 .flux-workout-history small, .flux-workout-history > p { margin-top: 3px; color: var(--flux-muted); font-size: 8px; }
 .flux-workout-history > p { margin: 10px 0 0; }
 .flux-workout-history b { min-width: 25px; display: grid; place-items: center; padding: 5px; border-radius: 9px; background: var(--flux-soft); color: var(--flux-primary); font-size: 10px; font-weight: 600; }
+.flux-trainer-dashboard-hero { min-height: 106px; display: grid; grid-template-columns: 48px 1fr; gap: 13px; align-items: center; padding: 17px; border-radius: 23px; background: var(--flux-soft); }
+.flux-trainer-dashboard-hero .flux-rhythm-icon { width: 48px; height: 48px; border-radius: 16px; background: var(--flux-card); }
+.flux-trainer-dashboard-hero .flux-rhythm-icon svg { width: 23px; height: 23px; }
+.flux-trainer-dashboard-hero small, .flux-trainer-dashboard-hero strong { display: block; }
+.flux-trainer-dashboard-hero small { color: var(--flux-muted); font-size: 9px; }
+.flux-trainer-dashboard-hero strong { margin-top: 4px; color: var(--flux-ink); font-size: 20px; font-weight: 500; letter-spacing: -.03em; }
+.flux-trainer-dashboard-hero p { margin: 4px 0 0; color: var(--flux-muted); font-size: 9px; line-height: 1.4; }
+.flux-trainer-client-section { margin-top: 20px; }
+.flux-trainer-client-section .flux-section-heading > span { color: var(--flux-muted); font-size: 9px; }
+.flux-client-card { min-height: 66px; display: grid; grid-template-columns: 36px 1fr auto; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--flux-border); }
+.flux-avatar-placeholder { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 12px; background: var(--flux-soft); color: var(--flux-primary); font-size: 13px; font-weight: 600; }
+.flux-client-card > div { min-width: 0; }
+.flux-client-card strong, .flux-client-card small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flux-client-card strong { color: var(--flux-ink); font-size: 11px; font-weight: 600; }
+.flux-client-card small, .flux-trainer-empty { margin-top: 3px; color: var(--flux-muted); font-size: 8px; line-height: 1.45; }
+.flux-trainer-empty { margin: 10px 0 0; }
+.flux-client-card > svg { width: 17px; height: 17px; color: var(--flux-accent); }
+.flux-client-card aside { display: flex; align-items: center; gap: 6px; }
+.flux-client-card aside [data-slot='button'] { min-height: 30px; padding: 0 9px; border-radius: 10px; font-size: 8px; }
+.flux-client-card aside > button { width: 27px; height: 27px; padding: 0; border: 0; border-radius: 9px; background: var(--flux-surface-soft); color: var(--flux-muted); font-size: 16px; }
 .flux-streak-card { padding: 20px; border-radius: 24px; background: var(--flux-primary); color: var(--flux-on-primary); display: grid; grid-template-columns: 48px 1fr; gap: 13px; align-items: center; }
 .flux-streak-card > span { width: 48px; height: 48px; border-radius: 17px; background: color-mix(in srgb, var(--flux-on-primary) 13%, transparent); display: grid; place-items: center; }
 .flux-streak-card > span svg { width: 22px; height: 22px; }
