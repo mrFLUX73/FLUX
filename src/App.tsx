@@ -105,7 +105,7 @@ import {
 import { loadCachedProfileDraft, loadCachedProfileTheme, loadProfileDraft, saveProfileDraft } from './features/profile/repository';
 import { AdminFeedbackScreen, FeedbackDrawer } from './features/feedback/FeedbackUI';
 import { countUnreadFeedbackReplies } from './features/feedback/repository';
-import { countUnreadTrainerMessages, loadMyTrainerCode, loadTrainerClientOverview, loadTrainerHub, loadTrainerMessages, loadUnreadTrainerLinkIds, markTrainerMessagesSeen, requestTrainerConnection, respondToTrainerConnection, sendTrainerMessage, setAccountRole, type TrainerClientOverview, type TrainerLink, type TrainerMessage } from './features/trainer/repository';
+import { countUnreadTrainerMessages, loadMyTrainerCode, loadTrainerClientOverview, loadTrainerHub, loadTrainerMessages, markTrainerMessagesSeen, requestTrainerConnection, respondToTrainerConnection, sendTrainerMessage, setAccountRole, type TrainerClientOverview, type TrainerLink, type TrainerMessage } from './features/trainer/repository';
 import {
   MEAL_KINDS,
   type MealEntry,
@@ -1610,6 +1610,17 @@ function trainerMessageTime(value: string) {
   return Number.isNaN(date.getTime()) ? '' : new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(date);
 }
 
+function MessengerDrawer({ open, onOpenChange, userId, links, unreadCount, onOpenChat, onOpenSupport }: { open: boolean; onOpenChange: (open: boolean) => void; userId: string; links: TrainerLink[]; unreadCount: number; onOpenChat: (link: TrainerLink) => void; onOpenSupport: () => void }) {
+  const [view, setView] = useState<'chats' | 'support'>('chats');
+  const activeLinks = links.filter((link) => link.status === 'active');
+  useEffect(() => { if (open) setView('chats'); }, [open]);
+  return <Drawer open={open} onOpenChange={onOpenChange}><DrawerContent className="flux-drawer flux-messenger-drawer">
+    <DrawerHeader className="flux-drawer-header"><DrawerTitle>Сообщения</DrawerTitle><DrawerDescription>Личные чаты и диалоги с командой FLUX.</DrawerDescription></DrawerHeader>
+    <div className="flux-messenger-tabs" role="tablist" aria-label="Разделы сообщений"><button type="button" role="tab" aria-selected={view === 'chats'} className={view === 'chats' ? 'is-active' : ''} onClick={() => setView('chats')}><MessageCircle /> Чаты</button><button type="button" role="tab" aria-selected={view === 'support'} className={view === 'support' ? 'is-active' : ''} onClick={() => setView('support')}><Bell /> Поддержка{unreadCount > 0 && <b>{unreadCount > 9 ? '9+' : unreadCount}</b>}</button></div>
+    <div className="flux-messenger-body">{view === 'chats' ? activeLinks.length ? <div className="flux-messenger-list">{activeLinks.map((link) => { const isTrainer = link.trainerId === userId; const name = isTrainer ? link.clientName : link.trainerName; return <button type="button" key={link.id} className="flux-messenger-chat-card" onClick={() => onOpenChat(link)}><span className="flux-avatar-placeholder">{name.slice(0, 1).toUpperCase()}</span><span><small>{isTrainer ? 'Ваш клиент' : 'Ваш тренер'}</small><strong>{name}</strong><em>Открыть личный чат</em></span><ChevronRight /></button>; })}</div> : <div className="flux-messenger-empty"><MessageCircle /> Личных чатов пока нет. Подключитесь к тренеру в профиле — диалог появится здесь.</div> : <div className="flux-messenger-support"><section><span className="flux-rhythm-icon"><Bell /></span><div><small>Техподдержка</small><strong>Диалоги с командой FLUX</strong><p>Идеи, вопросы, ошибки и ответы на обращения — в одном месте.</p></div></section><button type="button" onClick={onOpenSupport}>Открыть поддержку <ChevronRight /></button></div>}</div>
+  </DrawerContent></Drawer>;
+}
+
 function TrainerChatDrawer({ open, onOpenChange, userId, link, onRead }: { open: boolean; onOpenChange: (open: boolean) => void; userId: string; link: TrainerLink | null; onRead: () => void }) {
   const [messages, setMessages] = useState<TrainerMessage[]>([]);
   const [body, setBody] = useState('');
@@ -1745,6 +1756,7 @@ export default function App() {
   const [trainerSaving, setTrainerSaving] = useState(false);
   const [trainerChatLink, setTrainerChatLink] = useState<TrainerLink | null>(null);
   const [clientOverviewLink, setClientOverviewLink] = useState<TrainerLink | null>(null);
+  const [messengerOpen, setMessengerOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedbackScreen, setFeedbackScreen] = useState('Сегодня');
   const [feedbackInitialView, setFeedbackInitialView] = useState<'compose' | 'inbox'>('compose');
@@ -2120,18 +2132,9 @@ export default function App() {
     setFeedbackOpen(true);
   }
 
-  async function openMessages() {
+  function openMessages() {
     if (!account) { openFeedback(undefined, 'inbox'); return; }
-    try {
-      const unreadLinkIds = await loadUnreadTrainerLinkIds(account.id);
-      const unreadLink = trainerLinks.find((link) => unreadLinkIds.includes(link.id));
-      if (unreadLink) { setTrainerChatLink(unreadLink); return; }
-    } catch {
-      // The rest of the app, including support messages, remains usable offline.
-    }
-    const trainerLink = trainerLinks.find((link) => link.clientId === account.id && link.status === 'active');
-    if (trainerLink) { setTrainerChatLink(trainerLink); return; }
-    openFeedback(undefined, 'inbox');
+    setMessengerOpen(true);
   }
 
   async function changeTrainerRole(role: 'user' | 'trainer') {
@@ -2618,7 +2621,7 @@ export default function App() {
               onTouchCancel={endFoodPull}
             >
               {tab === 'today' && <TodayScreen totals={totals} target={calorieTarget} macroTargets={macroTargets} entries={entries} weekActivity={weekActivity} workoutSessions={workoutSessions} onEditBalance={openDailyBalance} />}
-              {tab === 'today' && account && trainerLinks.find((link) => link.clientId === account.id && link.status === 'active') && (() => { const link = trainerLinks.find((candidate) => candidate.clientId === account.id && candidate.status === 'active')!; return <button type="button" className="flux-my-trainer-card" onClick={() => setTrainerChatLink(link)}><span className="flux-rhythm-icon"><MessageCircle /></span><span><small>Ваш тренер</small><strong>{link.trainerName}</strong><em>Открыть личный чат</em></span><ChevronRight /></button>; })()}
+              {tab === 'today' && account && trainerLinks.find((link) => link.clientId === account.id && link.status === 'active') && (() => { const link = trainerLinks.find((candidate) => candidate.clientId === account.id && candidate.status === 'active')!; return <button type="button" className="flux-my-trainer-card" onClick={() => setMessengerOpen(true)}><span className="flux-rhythm-icon"><MessageCircle /></span><span><small>Ваш тренер</small><strong>{link.trainerName}</strong><em>Открыть сообщения</em></span><ChevronRight /></button>; })()}
               {tab === 'food' && <FoodScreen entries={entries} target={calorieTarget} selectedDay={selectedNutritionDay} onSelectDay={setSelectedNutritionDay} historyLoading={historyLoading} mode={nutritionMode} isConnecting={nutritionConnecting} isAuthenticated={Boolean(account)} onAdd={(meal) => openFood(meal ?? currentMeal())} onEdit={setEditingEntry} onRemove={removeEntry} onRepeat={openPreviousMeal} repeatLoadingMeal={repeatLoadingMeal} />}
               {tab === 'workouts' && <WorkoutsScreen onStart={() => setWorkoutOpen(true)} sessions={workoutSessions} />}
               {tab === 'progress' && <ProgressScreen />}
@@ -2698,6 +2701,7 @@ export default function App() {
         onAuthenticated={authenticate}
       />
       {account && <FeedbackDrawer open={feedbackOpen} onOpenChange={setFeedbackOpen} userId={account.id} screen={feedbackScreen} initialView={feedbackInitialView} onRepliesRead={() => { void refreshUnreadFeedbackReplies(); }} onSubmitted={() => toast.add({ title: 'Спасибо за обратную связь', description: 'Обращение уже в очереди команды FLUX.', type: 'success' })} />}
+      {account && <MessengerDrawer open={messengerOpen} onOpenChange={setMessengerOpen} userId={account.id} links={trainerLinks} unreadCount={unreadFeedbackReplies} onOpenChat={(link) => { setMessengerOpen(false); setTrainerChatLink(link); }} onOpenSupport={() => { setMessengerOpen(false); openFeedback(undefined, 'inbox'); }} />}
       {account && <TrainerChatDrawer open={Boolean(trainerChatLink)} onOpenChange={(open) => { if (!open) setTrainerChatLink(null); }} userId={account.id} link={trainerChatLink} onRead={() => { void refreshUnreadFeedbackReplies(); }} />}
       {account && <ClientOverviewDrawer open={Boolean(clientOverviewLink)} onOpenChange={(open) => { if (!open) setClientOverviewLink(null); }} userId={account.id} link={clientOverviewLink} onOpenChat={() => { setTrainerChatLink(clientOverviewLink); setClientOverviewLink(null); }} />}
     </Toaster>
