@@ -1354,7 +1354,7 @@ function FoodScreen({
           const selected = key === selectedDay;
           return <button key={key} type="button" disabled={future} className={selected ? 'is-selected' : ''} onClick={() => onSelectDay(key)} aria-pressed={selected}><small>{weekday}</small><strong>{date.getDate()}</strong></button>;
         })}</div>
-        {!isToday && <p>История за {dayLabel(selectedDay)}. Редактирование доступно только для текущего дня.</p>}
+        {!isToday && <p>История за {dayLabel(selectedDay)}. Нажмите на карандаш рядом с продуктом, чтобы изменить порцию или приём пищи.</p>}
       </section>
       <p className={`flux-sync-status ${isSynced ? 'is-cloud' : ''}`} role="status">
         {isConnecting
@@ -1383,12 +1383,12 @@ function FoodScreen({
                 </div>}
               </header>
               {mealEntries.map((entry) => (
-                <div className={`flux-meal-row${isToday ? '' : ' is-history'}`} key={entry.entryId}>
+                <div className="flux-meal-row" key={entry.entryId}>
                   <span>{entry.time}</span>
                   <p><strong>{entry.name}</strong><small>{entry.amount} {entry.unit} · {entry.brand}</small></p>
                   <b>{entry.kcal}</b>
-                  {isToday && <><button type="button" className="flux-edit-entry" onClick={() => onEdit(entry)} aria-label={`Изменить ${entry.name}`}><Pencil /></button>
-                  <button type="button" className="flux-remove-entry" onClick={() => onRemove(entry)} aria-label={`Удалить ${entry.name}`}><Trash2 /></button></>}
+                  <button type="button" className="flux-edit-entry" onClick={() => onEdit(entry)} aria-label={`Изменить ${entry.name}`}><Pencil /></button>
+                  <button type="button" className="flux-remove-entry" onClick={() => onRemove(entry)} aria-label={`Удалить ${entry.name}`}><Trash2 /></button>
                 </div>
               ))}
             </article>
@@ -2254,7 +2254,7 @@ export default function App() {
             <header key={`header-${tab}`} className={`flux-topbar${tab === 'today' || tab === 'food' || tab === 'workouts' || tab === 'progress' ? ' is-home' : ''}`}>
               <button className="flux-brand" type="button" onClick={() => setTab('today')} aria-label="FLUX — главная"><img className="flux-brand-lockup" src={`${import.meta.env.BASE_URL}brand/flux-lockup.png`} alt="" draggable="false" /></button>
               {(tab === 'today' || tab === 'food' || tab === 'workouts' || tab === 'progress') && <p className="flux-home-kicker">{tab === 'today' ? `Доброе утро${firstName ? `, ${firstName}` : ''}` : tab === 'food' ? 'Сегодня' : tab === 'workouts' ? 'План на сегодня' : 'Без давления'}</p>}
-              <Button className="flux-avatar" variant="secondary" size="icon" onClick={openProfile} aria-label={account ? 'Открыть профиль' : 'Войти или зарегистрироваться'}>{account ? <ProfileAvatar avatar={defaultAvatar} /> : '+'}</Button>
+              <Button className="flux-avatar" variant="secondary" size="icon" onClick={openProfile} aria-label={account ? 'Открыть мой профиль' : 'Войти или зарегистрироваться'}>{account ? <><ProfileAvatar avatar={defaultAvatar} /><span className="flux-avatar-label">Мой профиль</span></> : '+'}</Button>
               {tab === 'today' && <h1 className="flux-home-title"><span>Сегодня достаточно</span><span>просто продолжить.</span></h1>}
               {tab === 'food' && <h1 className="flux-home-title"><span>Питание</span></h1>}
               {tab === 'workouts' && <h1 className="flux-home-title"><span>Тренировки</span></h1>}
