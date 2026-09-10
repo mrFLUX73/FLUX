@@ -1347,7 +1347,6 @@ function FoodScreen({
   };
   return (
     <>
-      <div className="flux-page-heading flux-page-heading-row"><div><span className="flux-eyebrow">{isToday ? 'Сегодня' : `История · ${dayLabel(selectedDay)}`}</span><h1>Питание</h1></div>{isToday && <Button size="icon-lg" onClick={() => onAdd()} aria-label="Добавить продукт"><Plus /></Button>}</div>
       <section className="flux-food-calendar" aria-label="Календарь питания">
         <header><button type="button" onClick={() => shiftWeek(-1)} aria-label="Показать предыдущую неделю">Раньше</button><strong>{weekStart} — {weekEnd}</strong><button type="button" onClick={() => shiftWeek(1)} disabled={days[6].date >= new Date()} aria-label="Показать следующую неделю">Позже</button></header>
         <div>{days.map(({ key, date, weekday }) => {
@@ -2253,11 +2252,12 @@ export default function App() {
               {pullFeedback === 'refreshing' ? <LoaderCircle className="is-spinning" /> : pullFeedback === 'updated' ? <Check /> : <RefreshCw />}
               <span>{pullFeedback === 'refreshing' ? 'Обновляем рацион…' : pullFeedback === 'updated' ? 'Рацион обновлён' : pullFeedback === 'error' ? 'Не удалось обновить' : pullDistance >= 62 ? 'Отпустите, чтобы обновить' : 'Потяните, чтобы обновить'}</span>
             </div>}
-            <header key={`header-${tab}`} className={`flux-topbar${tab === 'today' || tab === 'workouts' ? ' is-home' : ''}`}>
+            <header key={`header-${tab}`} className={`flux-topbar${tab === 'today' || tab === 'food' || tab === 'workouts' ? ' is-home' : ''}`}>
               <button className="flux-brand" type="button" onClick={() => setTab('today')} aria-label="FLUX — главная"><img className="flux-brand-lockup" src={`${import.meta.env.BASE_URL}brand/flux-lockup.png`} alt="" draggable="false" /></button>
-              {(tab === 'today' || tab === 'workouts') && <p className="flux-home-kicker">{tab === 'today' ? `Доброе утро${firstName ? `, ${firstName}` : ''}` : 'План на сегодня'}</p>}
+              {(tab === 'today' || tab === 'food' || tab === 'workouts') && <p className="flux-home-kicker">{tab === 'today' ? `Доброе утро${firstName ? `, ${firstName}` : ''}` : tab === 'food' ? 'Сегодня' : 'План на сегодня'}</p>}
               <Button className="flux-avatar" variant="secondary" size="icon" onClick={openProfile} aria-label={account ? 'Открыть профиль' : 'Войти или зарегистрироваться'}>{account ? <ProfileAvatar avatar={defaultAvatar} /> : '+'}</Button>
               {tab === 'today' && <h1 className="flux-home-title"><span>Сегодня достаточно</span><span>просто продолжить.</span></h1>}
+              {tab === 'food' && <h1 className="flux-home-title"><span>Питание</span></h1>}
               {tab === 'workouts' && <h1 className="flux-home-title"><span>Тренировки</span></h1>}
             </header>
             <div
