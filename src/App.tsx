@@ -1257,12 +1257,14 @@ function TodayScreen({
   macroTargets,
   entries,
   weekActivity,
+  onEditBalance,
 }: {
   totals: NutritionTotals;
   target: number;
   macroTargets: typeof defaultMacroTargets;
   entries: MealEntry[];
   weekActivity: { key: string; weekday: string; day: number; hasFood: boolean }[];
+  onEditBalance: () => void;
 }) {
   const remaining = Math.max(0, target - totals.kcal);
   const progress = Math.min(100, Math.round((totals.kcal / target) * 100));
@@ -1282,10 +1284,10 @@ function TodayScreen({
 
   return (
     <>
-      <section className="flux-balance-card" aria-label="Баланс питания на сегодня">
-        <div className="flux-balance-heading"><div><span className="flux-eyebrow">Баланс на сегодня</span><strong><MorphNumber value={remaining.toLocaleString('ru-RU')} /> <small>ккал осталось</small></strong></div><div className="flux-ring" style={{ '--flux-progress': `${progress * 3.6}deg` } as CSSProperties}><span>{progress}%</span></div></div>
+      <button className="flux-balance-card flux-balance-card--interactive" type="button" onClick={onEditBalance} aria-label="Изменить дневной баланс">
+        <div className="flux-balance-heading"><div><span className="flux-eyebrow">Баланс на сегодня <small>· изменить цели</small></span><strong><MorphNumber value={remaining.toLocaleString('ru-RU')} /> <small>ккал осталось</small></strong></div><div className="flux-ring" style={{ '--flux-progress': `${progress * 3.6}deg` } as CSSProperties}><span>{progress}%</span></div></div>
         <div className="flux-macro-grid">{macros.map((macro) => <div key={macro.label}><span>{macro.label}</span><strong>{macro.value} / {macro.target} г</strong><Progress value={(macro.value / macro.target) * 100} aria-label={`${macro.label}: ${macro.value} из ${macro.target} грамм`} /></div>)}</div>
-      </section>
+      </button>
       <section className="flux-today-rhythm" aria-label="Ритм дня">
         <div className="flux-section-heading"><h2>Ритм дня</h2><span>Спокойно, по шагам</span></div>
         <div className="flux-rhythm-grid">
@@ -1537,6 +1539,7 @@ export default function App() {
   const [entrySaving, setEntrySaving] = useState(false);
   const [workoutOpen, setWorkoutOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [profileFocus, setProfileFocus] = useState<'daily-balance' | null>(null);
   const [profileDraft, setProfileDraft] = useState<ProfileDraft | null>(startupProfileRef.current?.draft ?? null);
   const [profileSaving, setProfileSaving] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
@@ -1823,6 +1826,16 @@ export default function App() {
       return;
     }
     setProfileDraft((current) => current ?? createProfileDraft(account));
+    setProfileOpen(true);
+  }
+
+  function openDailyBalance() {
+    if (!account) {
+      openAuth('signup');
+      return;
+    }
+    setProfileDraft((current) => current ?? createProfileDraft(account));
+    setProfileFocus('daily-balance');
     setProfileOpen(true);
   }
 
@@ -2269,7 +2282,7 @@ export default function App() {
               onTouchEnd={endFoodPull}
               onTouchCancel={endFoodPull}
             >
-              {tab === 'today' && <TodayScreen totals={totals} target={calorieTarget} macroTargets={macroTargets} entries={entries} weekActivity={weekActivity} />}
+              {tab === 'today' && <TodayScreen totals={totals} target={calorieTarget} macroTargets={macroTargets} entries={entries} weekActivity={weekActivity} onEditBalance={openDailyBalance} />}
               {tab === 'food' && <FoodScreen entries={entries} target={calorieTarget} selectedDay={selectedNutritionDay} onSelectDay={setSelectedNutritionDay} historyLoading={historyLoading} mode={nutritionMode} isConnecting={nutritionConnecting} isAuthenticated={Boolean(account)} onAdd={(meal) => openFood(meal ?? currentMeal())} onEdit={setEditingEntry} onRemove={removeEntry} onRepeat={openPreviousMeal} repeatLoadingMeal={repeatLoadingMeal} />}
               {tab === 'workouts' && <WorkoutsScreen onStart={() => setWorkoutOpen(true)} />}
               {tab === 'progress' && <ProgressScreen />}
@@ -2288,12 +2301,13 @@ export default function App() {
                 profileEditRevision.current += 1;
                 setProfileDraft(nextDraft);
               }}
-              onClose={() => setProfileOpen(false)}
+              onClose={() => { setProfileOpen(false); setProfileFocus(null); }}
               onDone={completeProfile}
-              onFeedback={() => { setProfileOpen(false); openFeedback('Профиль'); }}
+              onFeedback={() => { setProfileOpen(false); setProfileFocus(null); openFeedback('Профиль'); }}
               feedbackReplyCount={unreadFeedbackReplies}
               onSignOut={signOut}
               saving={profileSaving}
+              openDailyBalance={profileFocus === 'daily-balance'}
             />
           )}
           </>}

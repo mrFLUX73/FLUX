@@ -302,8 +302,13 @@ button:active { transform: scale(.97); }
 .flux-home-title { grid-column: 1 / 3; grid-row: 2; align-self: center; margin: 0; color: var(--flux-primary); font-size: 25px; font-style: italic; font-weight: 600; line-height: 1.08; letter-spacing: -.035em; }
 .flux-home-title span { display: block; white-space: nowrap; }
 .flux-balance-card { padding: 20px; border-radius: 25px; background: var(--flux-soft); }
+.flux-balance-card--interactive { display: block; width: 100%; border: 0; color: inherit; text-align: left; cursor: pointer; transition: transform .22s ease, box-shadow .22s ease, filter .22s ease; }
+.flux-balance-card--interactive:active { transform: scale(.985); }
+.flux-balance-card--interactive:focus-visible { outline: 3px solid color-mix(in srgb, var(--flux-accent) 72%, white); outline-offset: 3px; }
+.flux-balance-card--interactive:hover { box-shadow: 0 12px 26px color-mix(in srgb, var(--flux-primary) 13%, transparent); filter: brightness(1.01); }
 .flux-balance-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .flux-eyebrow { display: block; margin-bottom: 6px; color: var(--flux-muted); font-size: 11px; }
+.flux-eyebrow small { color: var(--flux-primary); font-size: 10px; font-weight: 600; }
 .flux-balance-heading strong { display: block; color: var(--flux-ink); font-size: 27px; font-weight: 500; letter-spacing: -.04em; }
 .flux-balance-heading strong small { color: var(--flux-muted); font-size: 12px; font-weight: 400; letter-spacing: 0; }
 .flux-ring { width: 68px; height: 68px; flex: 0 0 68px; position: relative; display: grid; place-items: center; border-radius: 50%; background: conic-gradient(var(--flux-primary) 0 var(--flux-progress), color-mix(in srgb, var(--flux-primary) 12%, transparent) var(--flux-progress) 360deg); transition: --flux-progress .7s cubic-bezier(.22,.75,.25,1), transform .3s ease; }
