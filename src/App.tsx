@@ -1108,13 +1108,51 @@ const workoutExercises = [
   { name: 'Ягодичный мост', reps: 15, hint: 'Поднимайте таз плавно, без сильного прогиба в пояснице.' },
 ];
 
+type WorkoutSession = {
+  id: string;
+  completedAt: string;
+  durationMinutes: number;
+  completedSets: number;
+  feeling: 'Легко' | 'В самый раз' | 'Тяжело';
+};
+
+function workoutStorageKey(accountId?: string) {
+  return `flux.workouts.v1.${accountId ?? 'guest'}`;
+}
+
+function loadWorkoutSessions(accountId?: string): WorkoutSession[] {
+  try {
+    const raw = window.localStorage.getItem(workoutStorageKey(accountId));
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((item): item is WorkoutSession => (
+      item && typeof item.id === 'string' && typeof item.completedAt === 'string' &&
+      typeof item.durationMinutes === 'number' && typeof item.completedSets === 'number'
+    )) : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistWorkoutSessions(accountId: string | undefined, sessions: WorkoutSession[]) {
+  try {
+    window.localStorage.setItem(workoutStorageKey(accountId), JSON.stringify(sessions.slice(0, 60)));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function workoutDateLabel(value: string) {
+  return new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long' }).format(new Date(value));
+}
+
 function formatTime(seconds: number) {
   const minutes = Math.floor(seconds / 60).toString().padStart(2, '0');
   const rest = (seconds % 60).toString().padStart(2, '0');
   return `${minutes}:${rest}`;
 }
 
-function WorkoutFlow({ onClose }: { onClose: () => void }) {
+function WorkoutFlow({ onClose, onComplete }: { onClose: () => void; onComplete: (session: WorkoutSession) => void }) {
   const dialogRef = useRef<HTMLElement>(null);
   const [phase, setPhase] = useState<WorkoutPhase>('overview');
   const [exerciseIndex, setExerciseIndex] = useState(0);
@@ -1122,6 +1160,9 @@ function WorkoutFlow({ onClose }: { onClose: () => void }) {
   const [elapsed, setElapsed] = useState(0);
   const [rest, setRest] = useState(30);
   const [completedSets, setCompletedSets] = useState(0);
+  const [activeSeconds, setActiveSeconds] = useState(0);
+  const [feeling, setFeeling] = useState<WorkoutSession['feeling']>('В самый раз');
+  const completionSent = useRef(false);
   const exercise = workoutExercises[exerciseIndex];
 
   function startReady() {
@@ -1129,6 +1170,9 @@ function WorkoutFlow({ onClose }: { onClose: () => void }) {
     setSetNumber(1);
     setCompletedSets(0);
     setElapsed(0);
+    setActiveSeconds(0);
+    setFeeling('В самый раз');
+    completionSent.current = false;
     setRest(30);
     setPhase('ready');
   }
@@ -1170,7 +1214,10 @@ function WorkoutFlow({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     if (phase !== 'running') return;
-    const timer = window.setInterval(() => setElapsed((value) => value + 1), 1000);
+    const timer = window.setInterval(() => {
+      setElapsed((value) => value + 1);
+      setActiveSeconds((value) => value + 1);
+    }, 1000);
     return () => window.clearInterval(timer);
   }, [phase]);
 
@@ -1196,6 +1243,18 @@ function WorkoutFlow({ onClose }: { onClose: () => void }) {
     setCompletedSets((value) => value + 1);
     setRest(30);
     setPhase('rest');
+  }
+
+  function finishWorkout() {
+    if (completionSent.current) return;
+    completionSent.current = true;
+    onComplete({
+      id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      completedAt: new Date().toISOString(),
+      durationMinutes: Math.max(1, Math.round(activeSeconds / 60)),
+      completedSets,
+      feeling,
+    });
   }
 
   return (
@@ -1245,9 +1304,9 @@ function WorkoutFlow({ onClose }: { onClose: () => void }) {
       {phase === 'complete' && (
         <div className="flux-flow-content flux-complete-screen">
           <span className="flux-complete-icon"><Sprout /></span><span className="flux-eyebrow">Тренировка завершена</span><h1>На сегодня достаточно</h1><p>Вы нашли время подвигаться — именно из таких дней и складывается прогресс.</p>
-          <div className="flux-workout-summary"><div><span>Время</span><strong>{Math.max(1, Math.round(completedSets * 2.5))}</strong><small>мин</small></div><div><span>Упражнения</span><strong>{exerciseIndex + 1}</strong><small>из {workoutExercises.length}</small></div><div><span>Подходы</span><strong>{completedSets}</strong><small>всего</small></div></div>
-          <div className="flux-feeling"><span>Как вам нагрузка?</span><div><button type="button">Легко</button><button type="button" className="is-active">В самый раз</button><button type="button">Тяжело</button></div></div>
-          <Button className="flux-main-button" size="lg" onClick={onClose}><Check /> Готово</Button>
+          <div className="flux-workout-summary"><div><span>Время</span><strong>{Math.max(1, Math.round(activeSeconds / 60))}</strong><small>мин</small></div><div><span>Упражнения</span><strong>{exerciseIndex + 1}</strong><small>из {workoutExercises.length}</small></div><div><span>Подходы</span><strong>{completedSets}</strong><small>всего</small></div></div>
+          <div className="flux-feeling"><span>Как вам нагрузка?</span><div>{(['Легко', 'В самый раз', 'Тяжело'] as const).map((value) => <button key={value} type="button" className={feeling === value ? 'is-active' : ''} onClick={() => setFeeling(value)}>{value}</button>)}</div></div>
+          <Button className="flux-main-button" size="lg" onClick={finishWorkout}><Check /> Сохранить тренировку</Button>
         </div>
       )}
     </section>
@@ -1260,6 +1319,7 @@ function TodayScreen({
   macroTargets,
   entries,
   weekActivity,
+  workoutSessions,
   onEditBalance,
 }: {
   totals: NutritionTotals;
@@ -1267,11 +1327,13 @@ function TodayScreen({
   macroTargets: typeof defaultMacroTargets;
   entries: MealEntry[];
   weekActivity: { key: string; weekday: string; day: number; hasFood: boolean }[];
+  workoutSessions: WorkoutSession[];
   onEditBalance: () => void;
 }) {
   const remaining = Math.max(0, target - totals.kcal);
   const progress = Math.min(100, Math.round((totals.kcal / target) * 100));
   const mealsLogged = new Set(entries.map((entry) => entry.meal)).size;
+  const workoutsToday = workoutSessions.filter((session) => localDayKey(new Date(session.completedAt)) === localDayKey()).length;
   const overFat = totals.fat - macroTargets.fat;
   const remainingProtein = Math.max(0, macroTargets.protein - totals.protein);
   const focus = overFat > 0
@@ -1295,7 +1357,7 @@ function TodayScreen({
         <div className="flux-section-heading"><h2>Ритм дня</h2><span>Спокойно, по шагам</span></div>
         <div className="flux-rhythm-grid">
           <article><span className="flux-rhythm-icon"><Utensils /></span><small>Питание</small><strong>{mealsLogged} из 4 приёмов</strong><p>{entries.length ? `${entries.length} ${productCountLabel(entries.length)} в дневнике` : 'Дневник пока пуст'}</p></article>
-          <article><span className="flux-rhythm-icon"><Dumbbell /></span><small>Тренировка</small><strong>Запланирована</strong><p>Всё тело · 28 мин</p></article>
+          <article><span className="flux-rhythm-icon"><Dumbbell /></span><small>Тренировка</small><strong>{workoutsToday ? 'Выполнена' : 'Запланирована'}</strong><p>{workoutsToday ? `${workoutsToday} ${workoutsToday === 1 ? 'тренировка' : 'тренировки'} сегодня` : 'Всё тело · 28 мин'}</p></article>
         </div>
       </section>
       <section className="flux-daily-focus"><span className="flux-focus-mark"><Sprout /></span><div><small>{focus.eyebrow}</small><strong>{focus.title}</strong><p>{focus.body}</p></div></section>
@@ -1459,7 +1521,7 @@ function FoodScreen({
   );
 }
 
-function WorkoutsScreen({ onStart }: { onStart: () => void }) {
+function WorkoutsScreen({ onStart, sessions }: { onStart: () => void; sessions: WorkoutSession[] }) {
   const [weather, setWeather] = useState<{ temperature: number; apparent: number; wind: number; label: string } | null>(null);
   const [weatherState, setWeatherState] = useState<'idle' | 'loading' | 'denied' | 'error'>('idle');
 
@@ -1497,6 +1559,8 @@ function WorkoutsScreen({ onStart }: { onStart: () => void }) {
       }
     }, () => setWeatherState('denied'), { enableHighAccuracy: false, timeout: 8000, maximumAge: 30 * 60 * 1000 });
   };
+  const todaySessions = sessions.filter((session) => localDayKey(new Date(session.completedAt)) === localDayKey());
+  const recentSessions = sessions.slice(0, 3);
 
   return (
     <>
@@ -1505,8 +1569,9 @@ function WorkoutsScreen({ onStart }: { onStart: () => void }) {
         <div>{weather ? <><small>На улице сейчас</small><strong>{weather.temperature > 0 ? '+' : ''}{weather.temperature}° · {weather.label}</strong><p>Ощущается как {weather.apparent > 0 ? '+' : ''}{weather.apparent}° · ветер {weather.wind} м/с</p></> : <><small>Для тренировки на улице</small><strong>{weatherState === 'denied' ? 'Геолокация не разрешена' : weatherState === 'error' ? 'Погода пока недоступна' : 'Узнать погоду рядом'}</strong><p>{weatherState === 'denied' ? 'Разрешите геолокацию в настройках браузера.' : 'Подскажем, что ждёт вас за дверью.'}</p></>}</div>
         {!weather && <button type="button" onClick={loadWeather} disabled={weatherState === 'loading'}>{weatherState === 'loading' ? <LoaderCircle className="is-spinning" /> : 'Показать'}</button>}
       </section>
-      <section className="flux-workout-page-hero"><span>План на сегодня <i>28 мин</i></span><strong>Всё тело</strong><p>Спокойная тренировка без гонки за результатом.</p><div><Play /> {workoutExercises.length} упражнения · 3 круга</div><Button onClick={onStart}><Play /> Начать</Button></section>
+      <section className="flux-workout-page-hero"><span>{todaySessions.length ? 'Сегодня уже есть тренировка' : 'План на сегодня'} <i>28 мин</i></span><strong>Всё тело</strong><p>{todaySessions.length ? `Выполнено ${todaySessions.length} ${todaySessions.length === 1 ? 'занятие' : 'занятия'} — можно повторить в комфортном темпе.` : 'Спокойная тренировка без гонки за результатом.'}</p><div><Play /> {workoutExercises.length} упражнения · 3 круга</div><Button onClick={onStart}><Play /> {todaySessions.length ? 'Повторить' : 'Начать'}</Button></section>
       <section className="flux-exercise-list"><div className="flux-section-heading"><h2>План</h2><span>Начальный</span></div>{workoutExercises.map((exercise, index) => <div key={exercise.name}><span>0{index + 1}</span><p><strong>{exercise.name}</strong><small>{exercise.reps} повторений</small></p><ChevronRight /></div>)}</section>
+      <section className="flux-workout-history" aria-label="История тренировок"><div className="flux-section-heading"><h2>Последние тренировки</h2><span>{sessions.length ? `${sessions.length} всего` : 'Пока пусто'}</span></div>{recentSessions.length ? recentSessions.map((session) => <div key={session.id}><span className="flux-rhythm-icon"><Check /></span><p><strong>Всё тело</strong><small>{workoutDateLabel(session.completedAt)} · {session.durationMinutes} мин · {session.feeling}</small></p><b>{session.completedSets}</b></div>) : <p>Первая завершённая тренировка появится здесь.</p>}</section>
     </>
   );
 }
@@ -1595,6 +1660,7 @@ export default function App() {
   const [editingEntry, setEditingEntry] = useState<MealEntry | null>(null);
   const [entrySaving, setEntrySaving] = useState(false);
   const [workoutOpen, setWorkoutOpen] = useState(false);
+  const [workoutSessions, setWorkoutSessions] = useState<WorkoutSession[]>(() => loadWorkoutSessions(startupAccountRef.current?.id));
   const [profileOpen, setProfileOpen] = useState(false);
   const [dailyBalanceOpen, setDailyBalanceOpen] = useState(false);
   const [profileDraft, setProfileDraft] = useState<ProfileDraft | null>(startupProfileRef.current?.draft ?? null);
@@ -1610,6 +1676,23 @@ export default function App() {
     fat: positiveTarget(profileDraft?.dailyFatG, defaultMacroTargets.fat),
     carbs: positiveTarget(profileDraft?.dailyCarbsG, defaultMacroTargets.carbs),
   };
+
+  useEffect(() => {
+    setWorkoutSessions(loadWorkoutSessions(account?.id));
+  }, [account?.id]);
+
+  function saveWorkoutSession(session: WorkoutSession) {
+    setWorkoutSessions((current) => {
+      const next = [session, ...current];
+      if (!persistWorkoutSessions(account?.id, next)) {
+        toast.add({ title: 'Тренировка завершена', description: 'Не удалось сохранить историю на устройстве.', type: 'info' });
+      } else {
+        toast.add({ title: 'Тренировка сохранена', description: `${session.durationMinutes} мин · ${session.completedSets} подходов · ${session.feeling}.`, type: 'success' });
+      }
+      return next;
+    });
+    setWorkoutOpen(false);
+  }
 
   useEffect(() => {
     let active = true;
@@ -2353,15 +2436,15 @@ export default function App() {
               onTouchEnd={endFoodPull}
               onTouchCancel={endFoodPull}
             >
-              {tab === 'today' && <TodayScreen totals={totals} target={calorieTarget} macroTargets={macroTargets} entries={entries} weekActivity={weekActivity} onEditBalance={openDailyBalance} />}
+              {tab === 'today' && <TodayScreen totals={totals} target={calorieTarget} macroTargets={macroTargets} entries={entries} weekActivity={weekActivity} workoutSessions={workoutSessions} onEditBalance={openDailyBalance} />}
               {tab === 'food' && <FoodScreen entries={entries} target={calorieTarget} selectedDay={selectedNutritionDay} onSelectDay={setSelectedNutritionDay} historyLoading={historyLoading} mode={nutritionMode} isConnecting={nutritionConnecting} isAuthenticated={Boolean(account)} onAdd={(meal) => openFood(meal ?? currentMeal())} onEdit={setEditingEntry} onRemove={removeEntry} onRepeat={openPreviousMeal} repeatLoadingMeal={repeatLoadingMeal} />}
-              {tab === 'workouts' && <WorkoutsScreen onStart={() => setWorkoutOpen(true)} />}
+              {tab === 'workouts' && <WorkoutsScreen onStart={() => setWorkoutOpen(true)} sessions={workoutSessions} />}
               {tab === 'progress' && <ProgressScreen />}
               {tab === 'admin' && account?.isAdmin && <AdminFeedbackScreen userId={account.id} />}
             </div>
             <nav className={`flux-bottom-nav${account?.isAdmin ? ' has-admin' : ''}`} aria-label="Основная навигация">{navItems.map((item) => { const Icon = item.icon; return <button key={item.id} type="button" className={tab === item.id ? 'is-active' : ''} onClick={() => setTab(item.id)} aria-current={tab === item.id ? 'page' : undefined}><Icon /><span>{item.label}</span></button>; })}</nav>
           </div>
-          {workoutOpen && <WorkoutFlow onClose={() => setWorkoutOpen(false)} />}
+          {workoutOpen && <WorkoutFlow onClose={() => setWorkoutOpen(false)} onComplete={saveWorkoutSession} />}
           {profileOpen && account && profileDraft && (
             <ProfileScreen
               account={account}
