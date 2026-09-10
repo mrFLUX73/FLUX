@@ -122,6 +122,13 @@ export async function countUnreadTrainerMessages(userId: string) {
   return typeof data === 'number' ? data : 0;
 }
 
+export async function loadUnreadTrainerLinkIds(userId: string) {
+  const client = await getSupabaseClientForUser(userId);
+  const { data, error } = await client.rpc('get_my_unread_trainer_link_ids');
+  if (error) throw error;
+  return ((data ?? []) as { link_id: string }[]).map((row) => row.link_id);
+}
+
 export async function loadTrainerClientOverview(userId: string, clientId: string): Promise<TrainerClientOverview | null> {
   const client = await getSupabaseClientForUser(userId);
   const { data, error } = await client.rpc('get_trainer_client_overview', { p_client_id: clientId });

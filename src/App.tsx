@@ -105,7 +105,7 @@ import {
 import { loadCachedProfileDraft, loadCachedProfileTheme, loadProfileDraft, saveProfileDraft } from './features/profile/repository';
 import { AdminFeedbackScreen, FeedbackDrawer } from './features/feedback/FeedbackUI';
 import { countUnreadFeedbackReplies } from './features/feedback/repository';
-import { countUnreadTrainerMessages, loadMyTrainerCode, loadTrainerClientOverview, loadTrainerHub, loadTrainerMessages, markTrainerMessagesSeen, requestTrainerConnection, respondToTrainerConnection, sendTrainerMessage, setAccountRole, type TrainerClientOverview, type TrainerLink, type TrainerMessage } from './features/trainer/repository';
+import { countUnreadTrainerMessages, loadMyTrainerCode, loadTrainerClientOverview, loadTrainerHub, loadTrainerMessages, loadUnreadTrainerLinkIds, markTrainerMessagesSeen, requestTrainerConnection, respondToTrainerConnection, sendTrainerMessage, setAccountRole, type TrainerClientOverview, type TrainerLink, type TrainerMessage } from './features/trainer/repository';
 import {
   MEAL_KINDS,
   type MealEntry,
@@ -2120,8 +2120,16 @@ export default function App() {
     setFeedbackOpen(true);
   }
 
-  function openMessages() {
-    const trainerLink = account && trainerLinks.find((link) => link.clientId === account.id && link.status === 'active');
+  async function openMessages() {
+    if (!account) { openFeedback(undefined, 'inbox'); return; }
+    try {
+      const unreadLinkIds = await loadUnreadTrainerLinkIds(account.id);
+      const unreadLink = trainerLinks.find((link) => unreadLinkIds.includes(link.id));
+      if (unreadLink) { setTrainerChatLink(unreadLink); return; }
+    } catch {
+      // The rest of the app, including support messages, remains usable offline.
+    }
+    const trainerLink = trainerLinks.find((link) => link.clientId === account.id && link.status === 'active');
     if (trainerLink) { setTrainerChatLink(trainerLink); return; }
     openFeedback(undefined, 'inbox');
   }
@@ -2592,7 +2600,7 @@ export default function App() {
             <header key={`header-${tab}`} className={`flux-topbar${tab === 'today' || tab === 'food' || tab === 'workouts' || tab === 'progress' || tab === 'clients' ? ' is-home' : ''}`}>
               <button className="flux-brand" type="button" onClick={() => setTab('today')} aria-label="FLUX — главная"><img className="flux-brand-lockup" src={`${import.meta.env.BASE_URL}brand/flux-lockup.png`} alt="" draggable="false" /></button>
               {(tab === 'today' || tab === 'food' || tab === 'workouts' || tab === 'progress' || tab === 'clients') && <p className="flux-home-kicker">{tab === 'today' ? `Доброе утро${firstName ? `, ${firstName}` : ''}` : tab === 'food' ? 'Сегодня' : tab === 'workouts' ? 'План на сегодня' : tab === 'clients' ? 'Кабинет тренера' : 'Без давления'}</p>}
-              <button className="flux-messages-button" type="button" onClick={openMessages} aria-label={unreadFeedbackReplies ? `Новые сообщения: ${unreadFeedbackReplies}` : 'Сообщения'}><Bell />{unreadFeedbackReplies > 0 && <b>{unreadFeedbackReplies > 9 ? '9+' : unreadFeedbackReplies}</b>}</button>
+              <button className="flux-messages-button" type="button" onClick={() => { void openMessages(); }} aria-label={unreadFeedbackReplies ? `Новые сообщения: ${unreadFeedbackReplies}` : 'Сообщения'}><Bell />{unreadFeedbackReplies > 0 && <b>{unreadFeedbackReplies > 9 ? '9+' : unreadFeedbackReplies}</b>}</button>
               <Button className="flux-avatar" variant="secondary" size="icon" onClick={openProfile} aria-label={account ? 'Открыть мой профиль' : 'Войти или зарегистрироваться'}>{account ? <><ProfileAvatar avatar={defaultAvatar} /><span className="flux-avatar-label">Мой профиль</span></> : '+'}</Button>
               {tab === 'today' && <h1 className="flux-home-title"><span>Сегодня достаточно</span><span>просто продолжить.</span></h1>}
               {tab === 'food' && <h1 className="flux-home-title"><span>Питание</span></h1>}
