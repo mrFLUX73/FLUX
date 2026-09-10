@@ -19,6 +19,7 @@ import {
   House,
   LoaderCircle,
   Minus,
+  MessageCircle,
   Pencil,
   Pause,
   Play,
@@ -26,6 +27,7 @@ import {
   RefreshCw,
   ScanBarcode,
   Search,
+  Send,
   ShieldCheck,
   Sprout,
   Trash2,
@@ -103,7 +105,7 @@ import {
 import { loadCachedProfileDraft, loadCachedProfileTheme, loadProfileDraft, saveProfileDraft } from './features/profile/repository';
 import { AdminFeedbackScreen, FeedbackDrawer } from './features/feedback/FeedbackUI';
 import { countUnreadFeedbackReplies } from './features/feedback/repository';
-import { loadMyTrainerCode, loadTrainerHub, requestTrainerConnection, respondToTrainerConnection, setAccountRole, type TrainerLink } from './features/trainer/repository';
+import { countUnreadTrainerMessages, loadMyTrainerCode, loadTrainerClientOverview, loadTrainerHub, loadTrainerMessages, markTrainerMessagesSeen, requestTrainerConnection, respondToTrainerConnection, sendTrainerMessage, setAccountRole, type TrainerClientOverview, type TrainerLink, type TrainerMessage } from './features/trainer/repository';
 import {
   MEAL_KINDS,
   type MealEntry,
@@ -1583,10 +1585,14 @@ function TrainerClientsScreen({
   links,
   loading,
   onRespond,
+  onOpenClient,
+  onOpenChat,
 }: {
   links: TrainerLink[];
   loading: boolean;
   onRespond: (link: TrainerLink, accept: boolean) => void;
+  onOpenClient: (link: TrainerLink) => void;
+  onOpenChat: (link: TrainerLink) => void;
 }) {
   const pending = links.filter((link) => link.status === 'pending');
   const active = links.filter((link) => link.status === 'active');
@@ -1594,9 +1600,54 @@ function TrainerClientsScreen({
     <>
       <section className="flux-trainer-dashboard-hero"><span className="flux-rhythm-icon"><UsersRound /></span><div><small>Кабинет тренера</small><strong>Мои клиенты</strong><p>{active.length ? `${active.length} ${active.length === 1 ? 'активный клиент' : active.length < 5 ? 'активных клиента' : 'активных клиентов'} сейчас` : 'Когда клиент подтвердит связь, его прогресс появится здесь.'}</p></div></section>
       {pending.length > 0 && <section className="flux-trainer-client-section"><div className="flux-section-heading"><h2>Ожидают подтверждения</h2><span>{pending.length}</span></div>{pending.map((link) => <article key={link.id} className="flux-client-card is-pending"><span className="flux-avatar-placeholder">{link.clientName.slice(0, 1).toUpperCase()}</span><div><strong>{link.clientName}</strong><small>Хочет подключиться к вам в FLUX</small></div><aside><Button size="sm" onClick={() => onRespond(link, true)}>Принять</Button><button type="button" onClick={() => onRespond(link, false)} aria-label={`Отклонить заявку ${link.clientName}`}>×</button></aside></article>)}</section>}
-      <section className="flux-trainer-client-section"><div className="flux-section-heading"><h2>Активные клиенты</h2><span>{active.length}</span></div>{loading ? <p className="flux-trainer-empty">Загружаем связи…</p> : active.length ? active.map((link) => <article key={link.id} className="flux-client-card"><span className="flux-avatar-placeholder">{link.clientName.slice(0, 1).toUpperCase()}</span><div><strong>{link.clientName}</strong><small>Тренировки и планы появятся здесь следующим этапом.</small></div><Check /></article>) : <p className="flux-trainer-empty">Пока никого. Передайте свой код тренера из профиля — клиент отправит заявку, а вы её подтвердите здесь.</p>}</section>
+      <section className="flux-trainer-client-section"><div className="flux-section-heading"><h2>Активные клиенты</h2><span>{active.length}</span></div>{loading ? <p className="flux-trainer-empty">Загружаем связи…</p> : active.length ? active.map((link) => <article key={link.id} className="flux-client-card is-active" onClick={() => onOpenClient(link)}><span className="flux-avatar-placeholder">{link.clientName.slice(0, 1).toUpperCase()}</span><div><strong>{link.clientName}</strong><small>Открыть рацион, ритм и историю тренировок.</small></div><button type="button" onClick={(event) => { event.stopPropagation(); onOpenChat(link); }} aria-label={`Написать ${link.clientName}`}><MessageCircle /></button><ChevronRight /></article>) : <p className="flux-trainer-empty">Пока никого. Передайте свой код тренера из профиля — клиент отправит заявку, а вы её подтвердите здесь.</p>}</section>
     </>
   );
+}
+
+function trainerMessageTime(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(date);
+}
+
+function TrainerChatDrawer({ open, onOpenChange, userId, link, onRead }: { open: boolean; onOpenChange: (open: boolean) => void; userId: string; link: TrainerLink | null; onRead: () => void }) {
+  const [messages, setMessages] = useState<TrainerMessage[]>([]);
+  const [body, setBody] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const peerName = link ? (link.trainerId === userId ? link.clientName : link.trainerName) : '';
+  const refresh = useCallback(async () => {
+    if (!link) return;
+    setLoading(true); setError('');
+    try {
+      const next = await loadTrainerMessages(userId, link.id);
+      setMessages(next);
+      const unread = next.filter((message) => message.authorId !== userId && !message.seenAt).map((message) => message.id);
+      if (unread.length) { void markTrainerMessagesSeen(userId, unread); onRead(); }
+    } catch { setError('Не удалось загрузить переписку. Проверьте интернет.'); }
+    finally { setLoading(false); }
+  }, [link, onRead, userId]);
+  useEffect(() => { if (open) void refresh(); }, [open, refresh]);
+  useEffect(() => { if (open) scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }); }, [messages, open]);
+  const send = async () => {
+    if (!link || !body.trim() || sending) return;
+    const text = body.trim(); setSending(true); setError('');
+    try {
+      const id = await sendTrainerMessage(userId, link.id, text);
+      setMessages((current) => [...current, { id, body: text, authorId: userId, createdAt: new Date().toISOString(), seenAt: new Date().toISOString() }]); setBody('');
+    } catch { setError('Не удалось отправить сообщение. Попробуйте ещё раз.'); }
+    finally { setSending(false); }
+  };
+  return <Drawer open={open} onOpenChange={onOpenChange}><DrawerContent className="flux-drawer flux-trainer-chat-drawer"><DrawerHeader className="flux-drawer-header"><DrawerTitle>{peerName || 'Чат с тренером'}</DrawerTitle><DrawerDescription>Личный текстовый чат в FLUX</DrawerDescription></DrawerHeader><div className="flux-trainer-chat" ref={scrollRef}>{loading ? <p>Загружаем сообщения…</p> : messages.length ? messages.map((message) => <div key={message.id} className={`flux-trainer-message${message.authorId === userId ? ' is-own' : ''}`}><small>{message.authorId === userId ? 'Вы' : peerName} · {trainerMessageTime(message.createdAt)}</small><p>{message.body}</p></div>) : <p className="flux-trainer-chat-empty">Начните диалог — он виден только вам двоим.</p>}</div>{error && <p className="flux-feedback-error">{error}</p>}<div className="flux-trainer-chat-compose"><textarea value={body} maxLength={2000} placeholder="Написать сообщение…" onChange={(event) => setBody(event.target.value)} /><button type="button" disabled={sending || !body.trim()} onClick={() => { void send(); }} aria-label="Отправить сообщение">{sending ? <LoaderCircle className="is-spinning" /> : <Send />}</button></div></DrawerContent></Drawer>;
+}
+
+function ClientOverviewDrawer({ open, onOpenChange, userId, link, onOpenChat }: { open: boolean; onOpenChange: (open: boolean) => void; userId: string; link: TrainerLink | null; onOpenChat: () => void }) {
+  const [overview, setOverview] = useState<TrainerClientOverview | null>(null); const [loading, setLoading] = useState(false); const [error, setError] = useState('');
+  useEffect(() => { if (!open || !link) return; setLoading(true); setError(''); void loadTrainerClientOverview(userId, link.clientId).then(setOverview).catch(() => setError('Не удалось загрузить данные клиента.')).finally(() => setLoading(false)); }, [link, open, userId]);
+  const goal = overview?.calorieGoal ?? 0;
+  return <Drawer open={open} onOpenChange={onOpenChange}><DrawerContent className="flux-drawer flux-client-overview-drawer"><DrawerHeader className="flux-drawer-header"><DrawerTitle>{link?.clientName ?? 'Клиент'}</DrawerTitle><DrawerDescription>Сводка доступна только активному тренеру</DrawerDescription></DrawerHeader>{loading ? <p className="flux-trainer-empty">Загружаем карточку клиента…</p> : overview ? <div className="flux-client-overview"><section><small>Рацион сегодня</small><strong>{Math.round(overview.todayKcal)} <span>/ {goal || '—'} ккал</span></strong><p>{overview.mealsToday} приёмов пищи · Б {Math.round(overview.todayProtein)} · Ж {Math.round(overview.todayFat)} · У {Math.round(overview.todayCarbs)}</p></section><div className="flux-client-overview-grid"><span><small>Питание</small><b>{overview.nutritionDays7}/7</b><em>дней с записями</em></span><span><small>Тренировки</small><b>{overview.workouts7}</b><em>за 7 дней</em></span>{overview.currentWeightKg != null && <span><small>Вес</small><b>{overview.currentWeightKg}</b><em>кг сейчас</em></span>}</div><button type="button" className="flux-client-chat-button" onClick={onOpenChat}><MessageCircle /> Написать {link?.clientName}</button></div> : <p className="flux-trainer-empty">{error || 'Данных пока нет.'}</p>}</DrawerContent></Drawer>;
 }
 
 function ProgressScreen() {
@@ -1692,6 +1743,8 @@ export default function App() {
   const [trainerCode, setTrainerCode] = useState<string | null>(null);
   const [trainerHubLoading, setTrainerHubLoading] = useState(false);
   const [trainerSaving, setTrainerSaving] = useState(false);
+  const [trainerChatLink, setTrainerChatLink] = useState<TrainerLink | null>(null);
+  const [clientOverviewLink, setClientOverviewLink] = useState<TrainerLink | null>(null);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedbackScreen, setFeedbackScreen] = useState('Сегодня');
   const [feedbackInitialView, setFeedbackInitialView] = useState<'compose' | 'inbox'>('compose');
@@ -1783,8 +1836,10 @@ export default function App() {
       setUnreadFeedbackReplies(0);
       return;
     }
-    try { setUnreadFeedbackReplies(await countUnreadFeedbackReplies(account.id)); }
-    catch { setUnreadFeedbackReplies(0); }
+    try {
+      const [supportUnread, trainerUnread] = await Promise.all([countUnreadFeedbackReplies(account.id), countUnreadTrainerMessages(account.id)]);
+      setUnreadFeedbackReplies(supportUnread + trainerUnread);
+    } catch { setUnreadFeedbackReplies(0); }
   }, [account?.id]);
 
   useEffect(() => {
@@ -2063,6 +2118,12 @@ export default function App() {
     setFeedbackScreen(screen);
     setFeedbackInitialView(initialView);
     setFeedbackOpen(true);
+  }
+
+  function openMessages() {
+    const trainerLink = account && trainerLinks.find((link) => link.clientId === account.id && link.status === 'active');
+    if (trainerLink) { setTrainerChatLink(trainerLink); return; }
+    openFeedback(undefined, 'inbox');
   }
 
   async function changeTrainerRole(role: 'user' | 'trainer') {
@@ -2531,7 +2592,7 @@ export default function App() {
             <header key={`header-${tab}`} className={`flux-topbar${tab === 'today' || tab === 'food' || tab === 'workouts' || tab === 'progress' || tab === 'clients' ? ' is-home' : ''}`}>
               <button className="flux-brand" type="button" onClick={() => setTab('today')} aria-label="FLUX — главная"><img className="flux-brand-lockup" src={`${import.meta.env.BASE_URL}brand/flux-lockup.png`} alt="" draggable="false" /></button>
               {(tab === 'today' || tab === 'food' || tab === 'workouts' || tab === 'progress' || tab === 'clients') && <p className="flux-home-kicker">{tab === 'today' ? `Доброе утро${firstName ? `, ${firstName}` : ''}` : tab === 'food' ? 'Сегодня' : tab === 'workouts' ? 'План на сегодня' : tab === 'clients' ? 'Кабинет тренера' : 'Без давления'}</p>}
-              <button className="flux-messages-button" type="button" onClick={() => openFeedback(undefined, 'inbox')} aria-label={unreadFeedbackReplies ? `Сообщения FLUX: ${unreadFeedbackReplies} непрочитанных` : 'Сообщения FLUX'}><Bell />{unreadFeedbackReplies > 0 && <b>{unreadFeedbackReplies > 9 ? '9+' : unreadFeedbackReplies}</b>}</button>
+              <button className="flux-messages-button" type="button" onClick={openMessages} aria-label={unreadFeedbackReplies ? `Новые сообщения: ${unreadFeedbackReplies}` : 'Сообщения'}><Bell />{unreadFeedbackReplies > 0 && <b>{unreadFeedbackReplies > 9 ? '9+' : unreadFeedbackReplies}</b>}</button>
               <Button className="flux-avatar" variant="secondary" size="icon" onClick={openProfile} aria-label={account ? 'Открыть мой профиль' : 'Войти или зарегистрироваться'}>{account ? <><ProfileAvatar avatar={defaultAvatar} /><span className="flux-avatar-label">Мой профиль</span></> : '+'}</Button>
               {tab === 'today' && <h1 className="flux-home-title"><span>Сегодня достаточно</span><span>просто продолжить.</span></h1>}
               {tab === 'food' && <h1 className="flux-home-title"><span>Питание</span></h1>}
@@ -2549,10 +2610,11 @@ export default function App() {
               onTouchCancel={endFoodPull}
             >
               {tab === 'today' && <TodayScreen totals={totals} target={calorieTarget} macroTargets={macroTargets} entries={entries} weekActivity={weekActivity} workoutSessions={workoutSessions} onEditBalance={openDailyBalance} />}
+              {tab === 'today' && account && trainerLinks.find((link) => link.clientId === account.id && link.status === 'active') && (() => { const link = trainerLinks.find((candidate) => candidate.clientId === account.id && candidate.status === 'active')!; return <button type="button" className="flux-my-trainer-card" onClick={() => setTrainerChatLink(link)}><span className="flux-rhythm-icon"><MessageCircle /></span><span><small>Ваш тренер</small><strong>{link.trainerName}</strong><em>Открыть личный чат</em></span><ChevronRight /></button>; })()}
               {tab === 'food' && <FoodScreen entries={entries} target={calorieTarget} selectedDay={selectedNutritionDay} onSelectDay={setSelectedNutritionDay} historyLoading={historyLoading} mode={nutritionMode} isConnecting={nutritionConnecting} isAuthenticated={Boolean(account)} onAdd={(meal) => openFood(meal ?? currentMeal())} onEdit={setEditingEntry} onRemove={removeEntry} onRepeat={openPreviousMeal} repeatLoadingMeal={repeatLoadingMeal} />}
               {tab === 'workouts' && <WorkoutsScreen onStart={() => setWorkoutOpen(true)} sessions={workoutSessions} />}
               {tab === 'progress' && <ProgressScreen />}
-              {tab === 'clients' && account?.role === 'trainer' && <TrainerClientsScreen links={trainerLinks.filter((link) => link.trainerId === account.id)} loading={trainerHubLoading} onRespond={(link, accept) => { void respondToClient(link, accept); }} />}
+              {tab === 'clients' && account?.role === 'trainer' && <TrainerClientsScreen links={trainerLinks.filter((link) => link.trainerId === account.id)} loading={trainerHubLoading} onRespond={(link, accept) => { void respondToClient(link, accept); }} onOpenClient={setClientOverviewLink} onOpenChat={setTrainerChatLink} />}
               {tab === 'admin' && account?.isAdmin && <AdminFeedbackScreen userId={account.id} />}
             </div>
             <nav className={`flux-bottom-nav${account?.isAdmin || account?.role === 'trainer' ? ' has-admin' : ''}`} aria-label="Основная навигация">{navItems.map((item) => { const Icon = item.icon; return <button key={item.id} type="button" className={tab === item.id ? 'is-active' : ''} onClick={() => setTab(item.id)} aria-current={tab === item.id ? 'page' : undefined}><Icon /><span>{item.label}</span></button>; })}</nav>
@@ -2627,7 +2689,9 @@ export default function App() {
         onOpenChange={setAuthGateOpen}
         onAuthenticated={authenticate}
       />
-      {account && <FeedbackDrawer open={feedbackOpen} onOpenChange={setFeedbackOpen} userId={account.id} screen={feedbackScreen} initialView={feedbackInitialView} onRepliesRead={() => setUnreadFeedbackReplies(0)} onSubmitted={() => toast.add({ title: 'Спасибо за обратную связь', description: 'Обращение уже в очереди команды FLUX.', type: 'success' })} />}
+      {account && <FeedbackDrawer open={feedbackOpen} onOpenChange={setFeedbackOpen} userId={account.id} screen={feedbackScreen} initialView={feedbackInitialView} onRepliesRead={() => { void refreshUnreadFeedbackReplies(); }} onSubmitted={() => toast.add({ title: 'Спасибо за обратную связь', description: 'Обращение уже в очереди команды FLUX.', type: 'success' })} />}
+      {account && <TrainerChatDrawer open={Boolean(trainerChatLink)} onOpenChange={(open) => { if (!open) setTrainerChatLink(null); }} userId={account.id} link={trainerChatLink} onRead={() => { void refreshUnreadFeedbackReplies(); }} />}
+      {account && <ClientOverviewDrawer open={Boolean(clientOverviewLink)} onOpenChange={(open) => { if (!open) setClientOverviewLink(null); }} userId={account.id} link={clientOverviewLink} onOpenChat={() => { setTrainerChatLink(clientOverviewLink); setClientOverviewLink(null); }} />}
     </Toaster>
   );
 }
