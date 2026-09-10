@@ -306,6 +306,19 @@ button:active { transform: scale(.97); }
 .flux-balance-card--interactive:active { transform: scale(.985); }
 .flux-balance-card--interactive:focus-visible { outline: 3px solid color-mix(in srgb, var(--flux-accent) 72%, white); outline-offset: 3px; }
 .flux-balance-card--interactive:hover { box-shadow: 0 12px 26px color-mix(in srgb, var(--flux-primary) 13%, transparent); filter: brightness(1.01); }
+.flux-balance-drawer { padding-bottom: max(22px, env(safe-area-inset-bottom)); }
+.flux-balance-editor { display: grid; gap: 15px; padding: 4px 20px 0; }
+.flux-balance-editor > p { margin: 0; color: var(--flux-muted); font-size: 11px; line-height: 1.45; }
+.flux-balance-editor label { display: grid; gap: 7px; color: var(--flux-muted); font-size: 10px; }
+.flux-balance-editor label > i { display: flex; align-items: center; gap: 7px; height: 54px; padding: 0 13px; border: 1px solid var(--flux-border); border-radius: 17px; background: var(--flux-bg); font-style: normal; }
+.flux-balance-editor input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--flux-ink); font: inherit; font-size: 20px; letter-spacing: -.03em; }
+.flux-balance-editor b { color: var(--flux-muted); font-size: 11px; font-weight: 500; }
+.flux-balance-editor-main > span { color: var(--flux-primary); font-weight: 600; }
+.flux-balance-editor-main > i { height: 65px !important; border-color: color-mix(in srgb, var(--flux-primary) 36%, var(--flux-border)) !important; }
+.flux-balance-editor-main input { font-size: 27px; }
+.flux-balance-editor-macros { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+.flux-balance-editor-macros label > i { gap: 3px; padding-inline: 10px; }
+.flux-balance-editor-macros input { width: 0; font-size: 16px; }
 .flux-balance-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .flux-eyebrow { display: block; margin-bottom: 6px; color: var(--flux-muted); font-size: 11px; }
 .flux-eyebrow small { color: var(--flux-primary); font-size: 10px; font-weight: 600; }

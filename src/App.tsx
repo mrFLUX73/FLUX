@@ -1305,6 +1305,60 @@ function TodayScreen({
   );
 }
 
+function DailyBalanceDrawer({
+  open,
+  draft,
+  saving,
+  onOpenChange,
+  onSave,
+}: {
+  open: boolean;
+  draft: ProfileDraft | null;
+  saving: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSave: (nextDraft: ProfileDraft) => void;
+}) {
+  const [values, setValues] = useState({ calories: '', protein: '', fat: '', carbs: '' });
+
+  useEffect(() => {
+    if (!open || !draft) return;
+    setValues({
+      calories: draft.dailyCalories,
+      protein: draft.dailyProteinG,
+      fat: draft.dailyFatG,
+      carbs: draft.dailyCarbsG,
+    });
+  }, [draft, open]);
+
+  if (!draft) return null;
+  const set = (key: keyof typeof values, value: string) => setValues((current) => ({ ...current, [key]: value }));
+
+  return (
+    <Drawer open={open} onOpenChange={onOpenChange} showSwipeHandle>
+      <DrawerContent className="flux-drawer flux-balance-drawer">
+        <DrawerHeader className="flux-drawer-header">
+          <div>
+            <DrawerTitle>Баланс на каждый день</DrawerTitle>
+            <DrawerDescription>Ваш личный ориентир по калориям и БЖУ.</DrawerDescription>
+          </div>
+        </DrawerHeader>
+        <div className="flux-balance-editor">
+          <p>Изменения применятся к сегодняшнему балансу. Записанные продукты останутся без изменений.</p>
+          <label className="flux-balance-editor-main"><span>Калории</span><i><input inputMode="numeric" min="500" max="10000" type="number" value={values.calories} onChange={(event) => set('calories', event.target.value)} /> <b>ккал</b></i></label>
+          <div className="flux-balance-editor-macros">
+            <label><span>Белки</span><i><input inputMode="decimal" min="0" max="1000" step="0.1" type="number" value={values.protein} onChange={(event) => set('protein', event.target.value)} /> <b>г</b></i></label>
+            <label><span>Жиры</span><i><input inputMode="decimal" min="0" max="500" step="0.1" type="number" value={values.fat} onChange={(event) => set('fat', event.target.value)} /> <b>г</b></i></label>
+            <label><span>Углеводы</span><i><input inputMode="decimal" min="0" max="1500" step="0.1" type="number" value={values.carbs} onChange={(event) => set('carbs', event.target.value)} /> <b>г</b></i></label>
+          </div>
+          <Button className="flux-main-button" size="lg" disabled={saving} onClick={() => onSave({ ...draft, dailyCalories: values.calories, dailyProteinG: values.protein, dailyFatG: values.fat, dailyCarbsG: values.carbs })}>
+            {saving ? <LoaderCircle className="is-spinning" /> : <Check />} {saving ? 'Сохраняю…' : 'Сохранить баланс'}
+          </Button>
+        </div>
+      </DrawerContent>
+    </Drawer>
+  );
+}
+
 function FoodScreen({
   entries,
   target,
@@ -1539,7 +1593,7 @@ export default function App() {
   const [entrySaving, setEntrySaving] = useState(false);
   const [workoutOpen, setWorkoutOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [profileFocus, setProfileFocus] = useState<'daily-balance' | null>(null);
+  const [dailyBalanceOpen, setDailyBalanceOpen] = useState(false);
   const [profileDraft, setProfileDraft] = useState<ProfileDraft | null>(startupProfileRef.current?.draft ?? null);
   const [profileSaving, setProfileSaving] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
@@ -1835,8 +1889,22 @@ export default function App() {
       return;
     }
     setProfileDraft((current) => current ?? createProfileDraft(account));
-    setProfileFocus('daily-balance');
-    setProfileOpen(true);
+    setDailyBalanceOpen(true);
+  }
+
+  async function saveDailyBalance(nextDraft: ProfileDraft) {
+    if (!account || profileSaving) return;
+    setProfileSaving(true);
+    try {
+      await saveProfileDraft(account.id, nextDraft);
+      setProfileDraft(nextDraft);
+      setDailyBalanceOpen(false);
+      toast.add({ title: 'Баланс сохранён', description: 'Новый ориентир уже применяется на сегодня.', type: 'success' });
+    } catch {
+      toast.add({ title: 'Не удалось сохранить баланс', description: 'Проверьте интернет и попробуйте ещё раз.', type: 'error' });
+    } finally {
+      setProfileSaving(false);
+    }
   }
 
   function openFeedback(screen = tab === 'admin' ? 'Управление' : ({ today: 'Сегодня', food: 'Питание', workouts: 'Тренировки', progress: 'Прогресс' }[tab])) {
@@ -2301,13 +2369,12 @@ export default function App() {
                 profileEditRevision.current += 1;
                 setProfileDraft(nextDraft);
               }}
-              onClose={() => { setProfileOpen(false); setProfileFocus(null); }}
+              onClose={() => setProfileOpen(false)}
               onDone={completeProfile}
-              onFeedback={() => { setProfileOpen(false); setProfileFocus(null); openFeedback('Профиль'); }}
+              onFeedback={() => { setProfileOpen(false); openFeedback('Профиль'); }}
               feedbackReplyCount={unreadFeedbackReplies}
               onSignOut={signOut}
               saving={profileSaving}
-              openDailyBalance={profileFocus === 'daily-balance'}
             />
           )}
           </>}
@@ -2341,6 +2408,13 @@ export default function App() {
         saving={entrySaving}
         onOpenChange={(open) => { if (!open && !entrySaving) setEditingEntry(null); }}
         onSave={(entry, amount, meal) => { void updateEntry(entry, amount, meal); }}
+      />
+      <DailyBalanceDrawer
+        open={dailyBalanceOpen}
+        draft={profileDraft}
+        saving={profileSaving}
+        onOpenChange={setDailyBalanceOpen}
+        onSave={(nextDraft) => { void saveDailyBalance(nextDraft); }}
       />
       <PhonePasswordAuthGate
         guestDiaryEntryCount={guestDiaryEntryCount}

@@ -173,7 +173,6 @@ export function ProfileScreen({
   feedbackReplyCount,
   onSignOut,
   saving,
-  openDailyBalance,
 }: {
   account: FluxAccount;
   avatar: DefaultAvatar;
@@ -186,7 +185,6 @@ export function ProfileScreen({
   feedbackReplyCount: number;
   onSignOut: () => Promise<void> | void;
   saving: boolean;
-  openDailyBalance: boolean;
 }) {
   const [buildInfoOpen, setBuildInfoOpen] = useState(false);
   const set = <Key extends keyof ProfileDraft>(key: Key, value: ProfileDraft[Key]) => {
@@ -341,7 +339,7 @@ export function ProfileScreen({
           </div>
         </ProfileAccordion>
 
-        <ProfileAccordion eyebrow="Дневная цель" title="Баланс на каждый день" defaultOpen={openDailyBalance}>
+        <ProfileAccordion eyebrow="Дневная цель" title="Баланс на каждый день">
           <p className="flux-profile-card-note">Эти значения показываются в дневнике как ориентир. Изменения не затронут уже добавленные продукты.</p>
           <div className="flux-profile-grid">
             <ProfileField label="Калории" wide>
