@@ -178,6 +178,13 @@ export async function sendFeedbackMessage(userId: string, feedbackId: string, bo
   return data as string;
 }
 
+export async function startSupportConversation(userId: string, recipient: string, body: string) {
+  const client = await getSupabaseClientForUser(userId);
+  const { data, error } = await client.rpc('start_support_conversation', { p_recipient: recipient.trim(), p_body: body.trim() });
+  if (error || !data) throw error ?? new Error('Не удалось начать диалог');
+  return data as string;
+}
+
 export async function archiveFeedback(userId: string, feedbackId: string) {
   const client = await getSupabaseClientForUser(userId);
   const { data, error } = await client.rpc('archive_feedback', { p_feedback_id: feedbackId });

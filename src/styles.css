@@ -760,6 +760,8 @@ button:active { transform: scale(.97); }
 .flux-feedback-categories small { margin-top: 2px; color: var(--flux-muted); font-size: 7px; line-height: 1.25; }
 .flux-feedback-message { display: grid; gap: 7px; margin-top: 18px; color: var(--flux-muted); font-size: 9px; }
 .flux-feedback-message textarea { width: 100%; min-width: 0; min-height: 126px; resize: none; padding: 13px; border: 1px solid var(--flux-border); border-radius: 16px; outline: 0; background: var(--flux-bg); color: var(--flux-ink); font: inherit; font-size: 16px; line-height: 1.45; }
+.flux-feedback-message input { width: 100%; min-width: 0; min-height: 47px; padding: 11px 13px; border: 1px solid var(--flux-border); border-radius: 14px; outline: 0; background: var(--flux-bg); color: var(--flux-ink); font: inherit; font-size: 16px; }
+.flux-feedback-message input:focus { border-color: var(--flux-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--flux-accent) 13%, transparent); }
 .flux-feedback-message textarea:focus { border-color: var(--flux-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--flux-accent) 13%, transparent); }
 .flux-feedback-file-input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
 .flux-feedback-attachments { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 11px; color: var(--flux-muted); font-size: 9px; }
