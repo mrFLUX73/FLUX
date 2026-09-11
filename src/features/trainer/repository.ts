@@ -11,6 +11,15 @@ export type TrainerLink = {
   clientName: string;
 };
 
+export type TrainerInboxLink = TrainerLink & {
+  respondedAt: string | null;
+  lastMessageId: string | null;
+  lastMessageBody: string | null;
+  lastMessageAt: string | null;
+  lastMessageAuthorId: string | null;
+  unreadCount: number;
+};
+
 export type TrainerMessage = {
   id: string;
   body: string;
@@ -61,6 +70,34 @@ export async function loadTrainerHub(userId: string) {
     trainerCode: row.trainer_code,
     clientId: row.client_id,
     clientName: row.client_name,
+  }));
+}
+
+export async function loadTrainerInbox(userId: string): Promise<TrainerInboxLink[]> {
+  const client = await getSupabaseClientForUser(userId);
+  const { data, error } = await client.rpc('get_my_trainer_inbox');
+  if (error) throw error;
+  return ((data ?? []) as Array<{
+    link_id: string; status: TrainerLink['status']; created_at: string; responded_at: string | null;
+    trainer_id: string; trainer_name: string | null; trainer_code: string | null;
+    client_id: string; client_name: string | null; last_message_id: string | null;
+    last_message_body: string | null; last_message_at: string | null;
+    last_message_author_id: string | null; unread_count: number | string | null;
+  }>).map((row) => ({
+    id: row.link_id,
+    status: row.status,
+    createdAt: row.created_at,
+    respondedAt: row.responded_at,
+    trainerId: row.trainer_id,
+    trainerName: row.trainer_name ?? 'Тренер',
+    trainerCode: row.trainer_code,
+    clientId: row.client_id,
+    clientName: row.client_name ?? 'Клиент',
+    lastMessageId: row.last_message_id,
+    lastMessageBody: row.last_message_body,
+    lastMessageAt: row.last_message_at,
+    lastMessageAuthorId: row.last_message_author_id,
+    unreadCount: Number(row.unread_count ?? 0),
   }));
 }
 

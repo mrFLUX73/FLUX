@@ -104,8 +104,8 @@ import {
 } from './features/profile/ProfileScreen';
 import { loadCachedProfileDraft, loadCachedProfileTheme, loadProfileDraft, saveProfileDraft } from './features/profile/repository';
 import { AdminFeedbackScreen, AdminWorkspace, FeedbackDrawer } from './features/feedback/FeedbackUI';
-import { countUnreadFeedbackReplies } from './features/feedback/repository';
-import { countUnreadTrainerMessages, loadMyTrainerCode, loadTrainerClientOverview, loadTrainerHub, loadTrainerMessages, markTrainerMessagesSeen, requestTrainerConnection, respondToTrainerConnection, sendTrainerMessage, setAccountRole, type TrainerClientOverview, type TrainerLink, type TrainerMessage } from './features/trainer/repository';
+import { countUnreadFeedbackReplies, loadMyFeedback, type FeedbackItem } from './features/feedback/repository';
+import { countUnreadTrainerMessages, loadMyTrainerCode, loadTrainerClientOverview, loadTrainerHub, loadTrainerInbox, loadTrainerMessages, markTrainerMessagesSeen, requestTrainerConnection, respondToTrainerConnection, sendTrainerMessage, setAccountRole, type TrainerClientOverview, type TrainerInboxLink, type TrainerLink, type TrainerMessage } from './features/trainer/repository';
 import {
   MEAL_KINDS,
   type MealEntry,
@@ -1610,48 +1610,125 @@ function trainerMessageTime(value: string) {
   return Number.isNaN(date.getTime()) ? '' : new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(date);
 }
 
-function MessengerDrawer({ open, onOpenChange, userId, links, unreadCount, onOpenChat, onOpenSupport }: { open: boolean; onOpenChange: (open: boolean) => void; userId: string; links: TrainerLink[]; unreadCount: number; onOpenChat: (link: TrainerLink) => void; onOpenSupport: () => void }) {
-  const [view, setView] = useState<'chats' | 'support'>('chats');
-  const activeLinks = links.filter((link) => link.status === 'active');
-  useEffect(() => { if (open) setView('chats'); }, [open]);
+function inboxTime(value: string | null) {
+  if (!value) return '';
+  const date = new Date(value); const now = new Date();
+  if (Number.isNaN(date.getTime())) return '';
+  if (date.toDateString() === now.toDateString()) return new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit' }).format(date);
+  const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) return 'Вчера';
+  return new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short' }).format(date);
+}
+
+function supportInboxSummary(items: FeedbackItem[]) {
+  const last = items.flatMap((item) => [{ body: item.message, createdAt: item.createdAt }, ...item.messages.map((message) => ({ body: message.body, createdAt: message.createdAt }))])
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
+  return { body: last?.body ?? 'Напишите команде FLUX — мы поможем.', createdAt: last?.createdAt ?? null };
+}
+
+function MessengerDrawer({ open, onOpenChange, userId, links, loading, error, supportUnread, supportRevision, online, onRetry, onOpenChat, onOpenSupport }: { open: boolean; onOpenChange: (open: boolean) => void; userId: string; links: TrainerInboxLink[]; loading: boolean; error: string; supportUnread: number; supportRevision: number; online: boolean; onRetry: () => void; onOpenChat: (link: TrainerInboxLink) => void; onOpenSupport: () => void }) {
+  const [supportItems, setSupportItems] = useState<FeedbackItem[]>([]);
+  const [supportLoading, setSupportLoading] = useState(false);
+  const [supportError, setSupportError] = useState('');
+  const refreshSupport = useCallback(async () => {
+    setSupportLoading(true); setSupportError('');
+    try { setSupportItems(await loadMyFeedback(userId)); }
+    catch { setSupportError('Не удалось загрузить поддержку. Проверьте соединение и повторите.'); }
+    finally { setSupportLoading(false); }
+  }, [userId]);
+  useEffect(() => { if (open) void refreshSupport(); }, [open, refreshSupport, supportRevision]);
+  const support = supportInboxSummary(supportItems);
   return <Drawer open={open} onOpenChange={onOpenChange}><DrawerContent className="flux-drawer flux-messenger-drawer">
     <DrawerHeader className="flux-drawer-header"><DrawerTitle>Сообщения</DrawerTitle><DrawerDescription>Личные чаты и диалоги с командой FLUX.</DrawerDescription></DrawerHeader>
-    <div className="flux-messenger-tabs" role="tablist" aria-label="Разделы сообщений"><button type="button" role="tab" aria-selected={view === 'chats'} className={view === 'chats' ? 'is-active' : ''} onClick={() => setView('chats')}><MessageCircle /> Чаты</button><button type="button" role="tab" aria-selected={view === 'support'} className={view === 'support' ? 'is-active' : ''} onClick={() => setView('support')}><Bell /> Поддержка{unreadCount > 0 && <b>{unreadCount > 9 ? '9+' : unreadCount}</b>}</button></div>
-    <div className="flux-messenger-body">{view === 'chats' ? activeLinks.length ? <div className="flux-messenger-list">{activeLinks.map((link) => { const isTrainer = link.trainerId === userId; const name = isTrainer ? link.clientName : link.trainerName; return <button type="button" key={link.id} className="flux-messenger-chat-card" onClick={() => onOpenChat(link)}><span className="flux-avatar-placeholder">{name.slice(0, 1).toUpperCase()}</span><span><small>{isTrainer ? 'Ваш клиент' : 'Ваш тренер'}</small><strong>{name}</strong><em>Открыть личный чат</em></span><ChevronRight /></button>; })}</div> : <div className="flux-messenger-empty"><MessageCircle /> Личных чатов пока нет. Подключитесь к тренеру в профиле — диалог появится здесь.</div> : <div className="flux-messenger-support"><section><span className="flux-rhythm-icon"><Bell /></span><div><small>Техподдержка</small><strong>Диалоги с командой FLUX</strong><p>Идеи, вопросы, ошибки и ответы на обращения — в одном месте.</p></div></section><button type="button" onClick={onOpenSupport}>Открыть поддержку <ChevronRight /></button></div>}</div>
+    <div className="flux-messenger-body">
+      {!online && <p className="flux-messenger-offline"><WifiOff /> Нет соединения — показываем последние загруженные данные.</p>}
+      {loading ? <div className="flux-messenger-state"><LoaderCircle className="is-spinning" /> Загружаем диалоги…</div> : error ? <div className="flux-messenger-state is-error"><p>{error}</p><button type="button" onClick={onRetry}>Повторить</button></div> : <div className="flux-messenger-list">
+        {links.map((link) => { const isTrainer = link.trainerId === userId; const name = isTrainer ? link.clientName : link.trainerName; const own = link.lastMessageAuthorId === userId; return <button type="button" key={link.id} className={`flux-messenger-chat-card${link.unreadCount ? ' has-unread' : ''}`} onClick={() => onOpenChat(link)}><span className="flux-avatar-placeholder">{name.slice(0, 1).toUpperCase()}</span><span><small>{isTrainer ? 'Ваш клиент' : 'Ваш тренер'}</small><strong>{name}</strong><em>{link.lastMessageBody ? `${own ? 'Вы: ' : ''}${link.lastMessageBody}` : 'Начните переписку'}</em></span><aside>{link.lastMessageAt && <time>{inboxTime(link.lastMessageAt)}</time>}{link.unreadCount > 0 && <b>{link.unreadCount > 99 ? '99+' : link.unreadCount}</b>}</aside></button>; })}
+        {supportLoading ? <div className="flux-messenger-state"><LoaderCircle className="is-spinning" /> Обновляем поддержку…</div> : supportError ? <div className="flux-messenger-state is-error"><p>{supportError}</p><button type="button" onClick={() => { void refreshSupport(); }}>Повторить</button></div> : <button type="button" className={`flux-messenger-chat-card flux-messenger-support-card${supportUnread ? ' has-unread' : ''}`} onClick={onOpenSupport}><span className="flux-avatar-placeholder"><Bell /></span><span><small>Команда FLUX</small><strong>Поддержка FLUX</strong><em>{support.body}</em></span><aside>{support.createdAt && <time>{inboxTime(support.createdAt)}</time>}{supportUnread > 0 && <b>{supportUnread > 99 ? '99+' : supportUnread}</b>}</aside></button>}
+        {!links.length && !supportItems.length && <div className="flux-messenger-empty"><MessageCircle /> Пока нет переписок. Когда появится тренер или сообщение от FLUX, оно будет здесь.</div>}
+      </div>}
+    </div>
   </DrawerContent></Drawer>;
 }
 
-function TrainerChatDrawer({ open, onOpenChange, userId, link, onRead }: { open: boolean; onOpenChange: (open: boolean) => void; userId: string; link: TrainerLink | null; onRead: () => void }) {
+function TrainerChatDrawer({ open, onOpenChange, userId, link, online, onInboxChanged }: { open: boolean; onOpenChange: (open: boolean) => void; userId: string; link: TrainerLink | null; online: boolean; onInboxChanged: () => void }) {
   const [messages, setMessages] = useState<TrainerMessage[]>([]);
   const [body, setBody] = useState('');
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
+  const [hasNewBelow, setHasNewBelow] = useState(false);
+  const [viewportHeight, setViewportHeight] = useState<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const atBottomRef = useRef(true);
+  const loadedRef = useRef(false);
+  const scrollIntent = useRef<'instant' | 'smooth' | null>(null);
   const peerName = link ? (link.trainerId === userId ? link.clientName : link.trainerName) : '';
-  const refresh = useCallback(async () => {
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    const node = scrollRef.current; if (!node) return;
+    node.scrollTo({ top: node.scrollHeight, behavior }); atBottomRef.current = true; setHasNewBelow(false);
+  }, []);
+  const mergeMessages = useCallback((next: TrainerMessage[], source: 'initial' | 'sync') => {
+    setMessages((current) => {
+      const byId = new Map(current.map((message) => [message.id, message]));
+      const added = next.filter((message) => !byId.has(message.id));
+      next.forEach((message) => byId.set(message.id, message));
+      const merged = [...byId.values()].sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+      if (source === 'initial' || !loadedRef.current) scrollIntent.current = 'instant';
+      else if (added.length) {
+        if (atBottomRef.current) scrollIntent.current = 'smooth';
+        else if (added.some((message) => message.authorId !== userId)) setHasNewBelow(true);
+      }
+      return merged;
+    });
+  }, [userId]);
+  const refresh = useCallback(async (source: 'initial' | 'sync' = 'initial') => {
     if (!link) return;
     setLoading(true); setError('');
     try {
       const next = await loadTrainerMessages(userId, link.id);
-      setMessages(next);
+      mergeMessages(next, source); loadedRef.current = true;
       const unread = next.filter((message) => message.authorId !== userId && !message.seenAt).map((message) => message.id);
-      if (unread.length) { void markTrainerMessagesSeen(userId, unread); onRead(); }
+      if (unread.length) { void markTrainerMessagesSeen(userId, unread); onInboxChanged(); }
     } catch { setError('Не удалось загрузить переписку. Проверьте интернет.'); }
     finally { setLoading(false); }
-  }, [link, onRead, userId]);
-  useEffect(() => { if (open) void refresh(); }, [open, refresh]);
-  useEffect(() => { if (open) scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }); }, [messages, open]);
+  }, [link, mergeMessages, onInboxChanged, userId]);
+  useEffect(() => { if (open) { loadedRef.current = false; setHasNewBelow(false); setMessages([]); void refresh('initial'); } }, [open, refresh]);
+  useEffect(() => { if (!open || !scrollIntent.current) return; const intent = scrollIntent.current; scrollIntent.current = null; requestAnimationFrame(() => scrollToBottom(intent === 'instant' ? 'auto' : 'smooth')); }, [messages, open, scrollToBottom]);
+  useEffect(() => {
+    if (!open || !link || !isSupabaseConfigured) return;
+    let disposed = false; let channel: { unsubscribe: () => Promise<unknown> } | null = null;
+    void getSupabaseClient().then(async (client) => {
+      if (!client || disposed) return;
+      const { data } = await client.auth.getSession();
+      if (disposed || data.session?.user.id !== userId) return;
+      await client.realtime.setAuth(data.session.access_token);
+      channel = client.channel(`trainer-chat:${link.id}`, { config: { private: true } })
+        .on('broadcast', { event: 'INSERT' }, () => { void refresh('sync'); onInboxChanged(); })
+        .subscribe();
+    });
+    const resync = () => { if (navigator.onLine) void refresh('sync'); };
+    window.addEventListener('online', resync);
+    return () => { disposed = true; window.removeEventListener('online', resync); if (channel) void channel.unsubscribe(); };
+  }, [link, onInboxChanged, open, refresh]);
+  useEffect(() => {
+    if (!open || !window.visualViewport) return;
+    const update = () => setViewportHeight(Math.round(window.visualViewport?.height ?? window.innerHeight));
+    update(); window.visualViewport.addEventListener('resize', update); window.visualViewport.addEventListener('scroll', update);
+    return () => { window.visualViewport?.removeEventListener('resize', update); window.visualViewport?.removeEventListener('scroll', update); };
+  }, [open]);
   const send = async () => {
     if (!link || !body.trim() || sending) return;
     const text = body.trim(); setSending(true); setError('');
     try {
       const id = await sendTrainerMessage(userId, link.id, text);
-      setMessages((current) => [...current, { id, body: text, authorId: userId, createdAt: new Date().toISOString(), seenAt: new Date().toISOString() }]); setBody('');
+      mergeMessages([{ id, body: text, authorId: userId, createdAt: new Date().toISOString(), seenAt: new Date().toISOString() }], 'sync'); scrollIntent.current = 'smooth'; setBody(''); onInboxChanged();
     } catch { setError('Не удалось отправить сообщение. Попробуйте ещё раз.'); }
     finally { setSending(false); }
   };
-  return <Drawer open={open} onOpenChange={onOpenChange}><DrawerContent className="flux-drawer flux-trainer-chat-drawer"><DrawerHeader className="flux-drawer-header"><DrawerTitle>{peerName || 'Чат с тренером'}</DrawerTitle><DrawerDescription>Личный текстовый чат в FLUX</DrawerDescription></DrawerHeader><div className="flux-trainer-chat" ref={scrollRef}>{loading ? <p>Загружаем сообщения…</p> : messages.length ? messages.map((message) => <div key={message.id} className={`flux-trainer-message${message.authorId === userId ? ' is-own' : ''}`}><small>{message.authorId === userId ? 'Вы' : peerName} · {trainerMessageTime(message.createdAt)}</small><p>{message.body}</p></div>) : <p className="flux-trainer-chat-empty">Начните диалог — он виден только вам двоим.</p>}</div>{error && <p className="flux-feedback-error">{error}</p>}<div className="flux-trainer-chat-compose"><textarea value={body} maxLength={2000} placeholder="Написать сообщение…" onChange={(event) => setBody(event.target.value)} /><button type="button" disabled={sending || !body.trim()} onClick={() => { void send(); }} aria-label="Отправить сообщение">{sending ? <LoaderCircle className="is-spinning" /> : <Send />}</button></div></DrawerContent></Drawer>;
+  const onScroll = () => { const node = scrollRef.current; if (!node) return; atBottomRef.current = node.scrollHeight - node.scrollTop - node.clientHeight < 72; if (atBottomRef.current) setHasNewBelow(false); };
+  const drawerStyle = viewportHeight ? { '--flux-chat-vh': `${viewportHeight}px` } as CSSProperties : undefined;
+  return <Drawer open={open} onOpenChange={onOpenChange}><DrawerContent className="flux-drawer flux-trainer-chat-drawer" style={drawerStyle}><DrawerHeader className="flux-drawer-header"><DrawerTitle>{peerName || 'Чат с тренером'}</DrawerTitle><DrawerDescription>Личный текстовый чат в FLUX</DrawerDescription></DrawerHeader><div className="flux-trainer-chat" ref={scrollRef} onScroll={onScroll}>{loading ? <p>Загружаем сообщения…</p> : messages.length ? messages.map((message) => <div key={message.id} className={`flux-trainer-message${message.authorId === userId ? ' is-own' : ''}`}><small>{message.authorId === userId ? 'Вы' : peerName} · {trainerMessageTime(message.createdAt)}</small><p>{message.body}</p></div>) : <p className="flux-trainer-chat-empty">Начните диалог — он виден только вам двоим.</p>}</div>{hasNewBelow && <button type="button" className="flux-trainer-new-messages" onClick={() => scrollToBottom()}>Новые сообщения ↓</button>}{error && <div className="flux-trainer-chat-error"><p>{error}</p><button type="button" onClick={() => { void refresh('sync'); }}>Повторить</button></div>}<div className="flux-trainer-chat-compose">{!online && <span>Нет соединения</span>}<textarea value={body} maxLength={2000} placeholder="Написать сообщение…" onChange={(event) => setBody(event.target.value)} /><button type="button" disabled={sending || !body.trim() || !online} onClick={() => { void send(); }} aria-label="Отправить сообщение">{sending ? <LoaderCircle className="is-spinning" /> : <Send />}</button></div></DrawerContent></Drawer>;
 }
 
 function ClientOverviewDrawer({ open, onOpenChange, userId, link, onOpenChat }: { open: boolean; onOpenChange: (open: boolean) => void; userId: string; link: TrainerLink | null; onOpenChat: () => void }) {
@@ -1761,7 +1838,13 @@ export default function App() {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedbackScreen, setFeedbackScreen] = useState('Сегодня');
   const [feedbackInitialView, setFeedbackInitialView] = useState<'compose' | 'inbox'>('compose');
-  const [unreadFeedbackReplies, setUnreadFeedbackReplies] = useState(0);
+  const [trainerInboxLinks, setTrainerInboxLinks] = useState<TrainerInboxLink[]>([]);
+  const [trainerInboxLoading, setTrainerInboxLoading] = useState(false);
+  const [trainerInboxError, setTrainerInboxError] = useState('');
+  const [supportUnread, setSupportUnread] = useState(0);
+  const [trainerUnread, setTrainerUnread] = useState(0);
+  const [supportInboxRevision, setSupportInboxRevision] = useState(0);
+  const totalUnread = supportUnread + trainerUnread;
   const [defaultAvatar, setDefaultAvatar] = useState<DefaultAvatar>(startupProfileRef.current?.avatar ?? 'short-hair');
   const profileEditRevision = useRef(0);
   const calorieTarget = positiveTarget(profileDraft?.dailyCalories, 2000);
@@ -1844,15 +1927,28 @@ export default function App() {
 
   useEffect(() => { void refreshTrainerHub(); }, [refreshTrainerHub]);
 
+  const refreshTrainerInbox = useCallback(async (userId = account?.id) => {
+    if (!userId) {
+      setTrainerInboxLinks([]); setTrainerInboxError(''); setTrainerInboxLoading(false);
+      return;
+    }
+    setTrainerInboxLoading(true); setTrainerInboxError('');
+    try { setTrainerInboxLinks(await loadTrainerInbox(userId)); }
+    catch { setTrainerInboxError('Не удалось загрузить диалоги. Проверьте соединение и повторите.'); }
+    finally { setTrainerInboxLoading(false); }
+  }, [account?.id]);
+
+  useEffect(() => { void refreshTrainerInbox(); }, [refreshTrainerInbox]);
+
   const refreshUnreadFeedbackReplies = useCallback(async () => {
     if (!account) {
-      setUnreadFeedbackReplies(0);
+      setSupportUnread(0); setTrainerUnread(0);
       return;
     }
     try {
       const [supportUnread, trainerUnread] = await Promise.all([countUnreadFeedbackReplies(account.id), countUnreadTrainerMessages(account.id)]);
-      setUnreadFeedbackReplies(supportUnread + trainerUnread);
-    } catch { setUnreadFeedbackReplies(0); }
+      setSupportUnread(supportUnread); setTrainerUnread(trainerUnread);
+    } catch { setSupportUnread(0); setTrainerUnread(0); }
   }, [account?.id]);
 
   useEffect(() => {
@@ -1868,6 +1964,40 @@ export default function App() {
       document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
   }, [account?.id, refreshUnreadFeedbackReplies]);
+
+  useEffect(() => {
+    if (!account || !isSupabaseConfigured) return;
+    let disposed = false;
+    let trainerChannel: { unsubscribe: () => Promise<unknown> } | null = null;
+    let supportChannel: { unsubscribe: () => Promise<unknown> } | null = null;
+    const refreshMessenger = () => {
+      void refreshTrainerInbox();
+      void refreshUnreadFeedbackReplies();
+      setSupportInboxRevision((value) => value + 1);
+    };
+    void getSupabaseClient().then(async (client) => {
+      if (!client || disposed) return;
+      const { data } = await client.auth.getSession();
+      if (disposed || data.session?.user.id !== account.id) return;
+      await client.realtime.setAuth(data.session.access_token);
+      trainerChannel = client.channel(`trainer-user:${account.id}`, { config: { private: true } })
+        .on('broadcast', { event: 'INSERT' }, refreshMessenger)
+        .on('broadcast', { event: 'UPDATE' }, refreshMessenger)
+        .subscribe();
+      supportChannel = client.channel(`feedback-user:${account.id}`, { config: { private: true } })
+        .on('broadcast', { event: 'INSERT' }, refreshMessenger)
+        .on('broadcast', { event: 'UPDATE' }, refreshMessenger)
+        .subscribe();
+    });
+    const onOnline = () => refreshMessenger();
+    window.addEventListener('online', onOnline);
+    return () => {
+      disposed = true;
+      window.removeEventListener('online', onOnline);
+      if (trainerChannel) void trainerChannel.unsubscribe();
+      if (supportChannel) void supportChannel.unsubscribe();
+    };
+  }, [account?.id, refreshTrainerInbox, refreshUnreadFeedbackReplies]);
 
   function setEntries(update: MealEntry[] | ((current: MealEntry[]) => MealEntry[])) {
     setDiary((current) => {
@@ -2608,7 +2738,7 @@ export default function App() {
             <header key={`header-${tab}`} className={`flux-topbar${tab === 'today' || tab === 'food' || tab === 'workouts' || tab === 'progress' || tab === 'clients' || tab === 'admin' ? ' is-home' : ''}`}>
               <button className="flux-brand" type="button" onClick={() => setTab('today')} aria-label="FLUX — главная"><img className="flux-brand-lockup" src={`${import.meta.env.BASE_URL}brand/flux-lockup.png`} alt="" draggable="false" /></button>
               {(tab === 'today' || tab === 'food' || tab === 'workouts' || tab === 'progress' || tab === 'clients' || tab === 'admin') && <p className="flux-home-kicker">{tab === 'today' ? `Доброе утро${firstName ? `, ${firstName}` : ''}` : tab === 'food' ? 'Сегодня' : tab === 'workouts' ? 'План на сегодня' : tab === 'clients' ? 'Кабинет тренера' : tab === 'admin' ? 'Администрирование' : 'Без давления'}</p>}
-              <button className="flux-messages-button" type="button" onClick={() => { void openMessages(); }} aria-label={unreadFeedbackReplies ? `Новые сообщения: ${unreadFeedbackReplies}` : 'Сообщения'}><Bell />{unreadFeedbackReplies > 0 && <b>{unreadFeedbackReplies > 9 ? '9+' : unreadFeedbackReplies}</b>}</button>
+              <button className="flux-messages-button" type="button" onClick={() => { void openMessages(); void refreshTrainerInbox(); }} aria-label={totalUnread ? `Новые сообщения: ${totalUnread}` : 'Сообщения'}><Bell />{totalUnread > 0 && <b>{totalUnread > 9 ? '9+' : totalUnread}</b>}</button>
               <Button className="flux-avatar" variant="secondary" size="icon" onClick={openProfile} aria-label={account ? 'Открыть мой профиль' : 'Войти или зарегистрироваться'}>{account ? <><ProfileAvatar avatar={defaultAvatar} /><span className="flux-avatar-label">Мой профиль</span></> : '+'}</Button>
               {tab === 'today' && <h1 className="flux-home-title"><span>Сегодня достаточно</span><span>просто продолжить.</span></h1>}
               {tab === 'food' && <h1 className="flux-home-title"><span>Питание</span></h1>}
@@ -2650,7 +2780,7 @@ export default function App() {
               onClose={() => setProfileOpen(false)}
               onDone={completeProfile}
               onFeedback={() => { setProfileOpen(false); openFeedback('Профиль'); }}
-              feedbackReplyCount={unreadFeedbackReplies}
+              feedbackReplyCount={supportUnread}
               onSignOut={signOut}
               saving={profileSaving}
               trainerCode={trainerCode}
@@ -2707,8 +2837,8 @@ export default function App() {
         onAuthenticated={authenticate}
       />
       {account && <FeedbackDrawer open={feedbackOpen} onOpenChange={setFeedbackOpen} userId={account.id} screen={feedbackScreen} initialView={feedbackInitialView} onRepliesRead={() => { void refreshUnreadFeedbackReplies(); }} onSubmitted={() => toast.add({ title: 'Спасибо за обратную связь', description: 'Обращение уже в очереди команды FLUX.', type: 'success' })} />}
-      {account && <MessengerDrawer open={messengerOpen} onOpenChange={setMessengerOpen} userId={account.id} links={trainerLinks} unreadCount={unreadFeedbackReplies} onOpenChat={(link) => { setMessengerOpen(false); setTrainerChatLink(link); }} onOpenSupport={() => { setMessengerOpen(false); openFeedback(undefined, 'inbox'); }} />}
-      {account && <TrainerChatDrawer open={Boolean(trainerChatLink)} onOpenChange={(open) => { if (!open) setTrainerChatLink(null); }} userId={account.id} link={trainerChatLink} onRead={() => { void refreshUnreadFeedbackReplies(); }} />}
+      {account && <MessengerDrawer open={messengerOpen} onOpenChange={setMessengerOpen} userId={account.id} links={trainerInboxLinks} loading={trainerInboxLoading} error={trainerInboxError} supportUnread={supportUnread} supportRevision={supportInboxRevision} online={isOnline} onRetry={() => { void refreshTrainerInbox(); }} onOpenChat={(link) => { setMessengerOpen(false); setTrainerChatLink(link); }} onOpenSupport={() => { setMessengerOpen(false); openFeedback(undefined, 'inbox'); }} />}
+      {account && <TrainerChatDrawer open={Boolean(trainerChatLink)} onOpenChange={(open) => { if (!open) setTrainerChatLink(null); }} userId={account.id} link={trainerChatLink} online={isOnline} onInboxChanged={() => { void refreshUnreadFeedbackReplies(); void refreshTrainerInbox(); }} />}
       {account && <ClientOverviewDrawer open={Boolean(clientOverviewLink)} onOpenChange={(open) => { if (!open) setClientOverviewLink(null); }} userId={account.id} link={clientOverviewLink} onOpenChat={() => { setTrainerChatLink(clientOverviewLink); setClientOverviewLink(null); }} />}
     </Toaster>
   );
