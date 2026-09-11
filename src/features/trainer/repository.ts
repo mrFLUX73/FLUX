@@ -129,9 +129,9 @@ export async function loadUnreadTrainerLinkIds(userId: string) {
   return ((data ?? []) as { link_id: string }[]).map((row) => row.link_id);
 }
 
-export async function loadTrainerClientOverview(userId: string, clientId: string): Promise<TrainerClientOverview | null> {
+export async function loadTrainerClientOverview(userId: string, linkId: string): Promise<TrainerClientOverview | null> {
   const client = await getSupabaseClientForUser(userId);
-  const { data, error } = await client.rpc('get_trainer_client_overview', { p_client_id: clientId });
+  const { data, error } = await client.rpc('get_trainer_client_overview', { p_client_id: linkId });
   if (error) throw error;
   const row = (data as Record<string, unknown>[] | null)?.[0];
   if (!row) return null;
