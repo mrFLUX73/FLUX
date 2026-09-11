@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Archive, ArchiveRestore, Bell, Bug, CheckCircle2, ClipboardList, ExternalLink, Heart, ImagePlus, Lightbulb, LoaderCircle, MessageCircle, Paperclip, RefreshCw, Search, Send, X } from 'lucide-react';
+import { Archive, ArchiveRestore, Bell, Bug, CheckCircle2, ClipboardList, ExternalLink, Heart, ImagePlus, Lightbulb, LoaderCircle, Mail, MessageCircle, Paperclip, RefreshCw, Search, Send, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
@@ -205,7 +205,7 @@ export function AdminFeedbackScreen({ userId }: { userId: string }) {
   };
 
   return <><section className="flux-admin-screen">
-    <div className="flux-admin-lede"><p>{filter === 'archive' ? 'Архив обращений. Записи и вложения сохранены.' : 'Рабочая очередь и диалоги с пользователями FLUX.'}</p><div><Button type="button" variant="secondary" size="sm" onClick={() => window.open(`${window.location.pathname}?workspace=admin`, '_blank', 'noopener,noreferrer')}><ExternalLink /> Рабочее место</Button><Button type="button" variant="secondary" size="sm" onClick={() => { setOutboundOpen(true); setOutboundError(''); }}>Написать</Button><Button type="button" variant="secondary" size="icon" aria-label="Обновить обращения" onClick={() => { void refresh(true); }} disabled={refreshing}>{refreshing ? <LoaderCircle className="animate-spin" /> : <RefreshCw />}</Button></div></div>
+    <div className="flux-admin-lede"><p>{filter === 'archive' ? 'Архив обращений. Записи и вложения сохранены.' : 'Рабочая очередь и диалоги с пользователями FLUX.'}</p><div><Button type="button" variant="secondary" size="icon" aria-label="Открыть рабочее место" title="Открыть рабочее место" onClick={() => window.open(`${window.location.pathname}?workspace=admin`, '_blank', 'noopener,noreferrer')}><ExternalLink /></Button><Button type="button" variant="secondary" size="icon" aria-label="Написать пользователю" title="Написать пользователю" onClick={() => { setOutboundOpen(true); setOutboundError(''); }}><Mail /></Button><Button type="button" variant="secondary" size="icon" aria-label="Обновить обращения" title="Обновить обращения" onClick={() => { void refresh(true); }} disabled={refreshing}>{refreshing ? <LoaderCircle className="animate-spin" /> : <RefreshCw />}</Button></div></div>
     <section className="flux-admin-stats"><div><span>Новые</span><strong>{newCount}</strong></div><div><span>В работе</span><strong>{inProgressCount}</strong></div></section>
     <ProductSuggestionQueue userId={userId} />
     <div className="flux-admin-filters" aria-label="Фильтр обращений">{([['active', 'Очередь'], ['new', 'Новые'], ['in_progress', 'В работе'], ['resolved', 'Готово'], ['archive', 'Архив']] as const).map(([id, label]) => <button key={id} type="button" className={filter === id ? 'is-active' : ''} onClick={() => selectFilter(id)}>{label}</button>)}</div>
