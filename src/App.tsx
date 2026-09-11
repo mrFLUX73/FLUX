@@ -103,7 +103,7 @@ import {
   type ProfileDraft,
 } from './features/profile/ProfileScreen';
 import { loadCachedProfileDraft, loadCachedProfileTheme, loadProfileDraft, saveProfileDraft } from './features/profile/repository';
-import { AdminFeedbackScreen, FeedbackDrawer } from './features/feedback/FeedbackUI';
+import { AdminFeedbackScreen, AdminWorkspace, FeedbackDrawer } from './features/feedback/FeedbackUI';
 import { countUnreadFeedbackReplies } from './features/feedback/repository';
 import { countUnreadTrainerMessages, loadMyTrainerCode, loadTrainerClientOverview, loadTrainerHub, loadTrainerMessages, markTrainerMessagesSeen, requestTrainerConnection, respondToTrainerConnection, sendTrainerMessage, setAccountRole, type TrainerClientOverview, type TrainerLink, type TrainerMessage } from './features/trainer/repository';
 import {
@@ -1687,6 +1687,7 @@ function InitializationScreen() {
 }
 
 export default function App() {
+  const isAdminWorkspace = new URLSearchParams(window.location.search).get('workspace') === 'admin';
   const startupAccountRef = useRef<FluxAccount | null>(loadCachedAccount());
   const startupProfileRef = useRef(startupAccountRef.current
     ? loadCachedProfileDraft(startupAccountRef.current.id, startupAccountRef.current)
@@ -2588,6 +2589,10 @@ export default function App() {
     ...(account?.role === 'trainer' ? [{ id: 'clients' as const, label: 'Клиенты', icon: UsersRound }] : []),
     ...(account?.isAdmin ? [{ id: 'admin' as const, label: 'Управление', icon: ShieldCheck }] : []),
   ];
+
+  if (isAdminWorkspace) {
+    return <Toaster><main className="flux-admin-workspace-stage" data-theme={fluxTheme}>{startupVisible ? <InitializationScreen /> : account?.isAdmin ? <AdminWorkspace userId={account.id} /> : <section className="flux-admin-workspace-denied"><ShieldCheck /><h1>Рабочее место недоступно</h1><p>Войдите в FLUX под учётной записью администратора.</p><a href={window.location.pathname}>Вернуться в FLUX</a></section>}</main></Toaster>;
+  }
 
   return (
     <Toaster>

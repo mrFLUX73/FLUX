@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Archive, ArchiveRestore, Bell, Bug, CheckCircle2, ClipboardList, Heart, ImagePlus, Lightbulb, LoaderCircle, MessageCircle, Paperclip, RefreshCw, Send, X } from 'lucide-react';
+import { Archive, ArchiveRestore, Bell, Bug, CheckCircle2, ClipboardList, ExternalLink, Heart, ImagePlus, Lightbulb, LoaderCircle, MessageCircle, Paperclip, RefreshCw, Search, Send, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
@@ -205,7 +205,7 @@ export function AdminFeedbackScreen({ userId }: { userId: string }) {
   };
 
   return <><section className="flux-admin-screen">
-    <div className="flux-admin-lede"><p>{filter === 'archive' ? 'Архив обращений. Записи и вложения сохранены.' : 'Рабочая очередь и диалоги с пользователями FLUX.'}</p><div><Button type="button" variant="secondary" size="sm" onClick={() => { setOutboundOpen(true); setOutboundError(''); }}>Написать</Button><Button type="button" variant="secondary" size="icon" aria-label="Обновить обращения" onClick={() => { void refresh(true); }} disabled={refreshing}>{refreshing ? <LoaderCircle className="animate-spin" /> : <RefreshCw />}</Button></div></div>
+    <div className="flux-admin-lede"><p>{filter === 'archive' ? 'Архив обращений. Записи и вложения сохранены.' : 'Рабочая очередь и диалоги с пользователями FLUX.'}</p><div><Button type="button" variant="secondary" size="sm" onClick={() => window.open(`${window.location.pathname}?workspace=admin`, '_blank', 'noopener,noreferrer')}><ExternalLink /> Рабочее место</Button><Button type="button" variant="secondary" size="sm" onClick={() => { setOutboundOpen(true); setOutboundError(''); }}>Написать</Button><Button type="button" variant="secondary" size="icon" aria-label="Обновить обращения" onClick={() => { void refresh(true); }} disabled={refreshing}>{refreshing ? <LoaderCircle className="animate-spin" /> : <RefreshCw />}</Button></div></div>
     <section className="flux-admin-stats"><div><span>Новые</span><strong>{newCount}</strong></div><div><span>В работе</span><strong>{inProgressCount}</strong></div></section>
     <ProductSuggestionQueue userId={userId} />
     <div className="flux-admin-filters" aria-label="Фильтр обращений">{([['active', 'Очередь'], ['new', 'Новые'], ['in_progress', 'В работе'], ['resolved', 'Готово'], ['archive', 'Архив']] as const).map(([id, label]) => <button key={id} type="button" className={filter === id ? 'is-active' : ''} onClick={() => selectFilter(id)}>{label}</button>)}</div>
@@ -216,4 +216,77 @@ export function AdminFeedbackScreen({ userId }: { userId: string }) {
   <Drawer open={Boolean(closingItem)} onOpenChange={(next) => { if (!next) setClosingItem(null); }}><DrawerContent className="flux-drawer flux-feedback-reply-drawer"><DrawerHeader className="flux-drawer-header"><DrawerTitle>Закрыть с ответом</DrawerTitle><DrawerDescription>Автор увидит сообщение и сможет продолжить диалог.</DrawerDescription></DrawerHeader><div className="flux-feedback-reply-body"><label className="flux-feedback-message"><span>Что сделано или что проверить?</span><textarea autoFocus value={closingReply} maxLength={1200} placeholder="Например: поправили поиск по яйцам. Попробуйте обновить приложение и проверить ещё раз." onChange={(event) => setClosingReply(event.target.value)} /></label>{closingError && <p className="flux-feedback-error" role="alert">{closingError}</p>}<Button type="button" className="flux-feedback-submit" size="lg" disabled={Boolean(closingItem && updatingId === closingItem.id)} onClick={() => { void closeFeedback(); }}>{closingItem && updatingId === closingItem.id ? <><LoaderCircle className="animate-spin" /> Отправляю…</> : <><Send /> Отправить и закрыть</>}</Button></div></DrawerContent></Drawer>
   {activeAttachmentUrl && <div className="flux-attachment-viewer" role="dialog" aria-modal="true" aria-label="Просмотр вложения" onMouseDown={() => setActiveAttachmentUrl(null)}><div className="flux-attachment-viewer-card" onMouseDown={(event) => event.stopPropagation()}><button type="button" aria-label="Закрыть просмотр вложения" onClick={() => setActiveAttachmentUrl(null)}><X /></button><img src={activeAttachmentUrl} alt="Вложение к обратной связи" /></div></div>}
   </>;
+}
+
+export function AdminWorkspace({ userId }: { userId: string }) {
+  const [items, setItems] = useState<FeedbackItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState('');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [reply, setReply] = useState('');
+  const [sending, setSending] = useState(false);
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [recipient, setRecipient] = useState('');
+  const [body, setBody] = useState('');
+  const [error, setError] = useState('');
+
+  const refresh = async () => {
+    setLoading(true); setError('');
+    try {
+      const next = await loadAdminFeedback(userId);
+      setItems(next);
+      setSelectedId((current) => current && next.some((item) => item.id === current) ? current : next[0]?.id ?? null);
+    } catch { setError('Не удалось загрузить рабочую очередь.'); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { void refresh(); }, [userId]);
+
+  const filtered = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    return normalized ? items.filter((item) => `${item.reporterName} ${item.reporterLogin} ${item.message}`.toLowerCase().includes(normalized)) : items;
+  }, [items, query]);
+  const selected = items.find((item) => item.id === selectedId) ?? null;
+
+  const sendReply = async () => {
+    if (!selected || reply.trim().length < 1 || sending) return;
+    setSending(true); setError('');
+    try {
+      const message = reply.trim(); const id = await sendFeedbackMessage(userId, selected.id, message); const now = new Date().toISOString();
+      setItems((current) => current.map((item) => item.id === selected.id ? { ...item, status: 'in_progress', messages: [...item.messages, inlineMessage(now, id, message, true)] } : item));
+      setReply('');
+    } catch { setError('Не удалось отправить сообщение.'); }
+    finally { setSending(false); }
+  };
+  const startConversation = async () => {
+    if (recipient.trim().length < 2 || body.trim().length < 3 || sending) { setError('Укажите получателя и сообщение от трёх символов.'); return; }
+    setSending(true); setError('');
+    try {
+      await startSupportConversation(userId, recipient, body);
+      setComposeOpen(false); setRecipient(''); setBody('');
+      await refresh();
+    } catch { setError('Не удалось начать диалог. Проверьте имя или используйте @логин.'); }
+    finally { setSending(false); }
+  };
+
+  return <main className="flux-admin-workspace">
+    <aside className="flux-admin-workspace-sidebar">
+      <a className="flux-admin-workspace-logo" href={window.location.pathname}>FLUX <small>Управление</small></a>
+      <Button type="button" className="flux-admin-workspace-compose" onClick={() => { setComposeOpen(true); setError(''); }}><Send /> Новое сообщение</Button>
+      <label className="flux-admin-workspace-search"><Search /><input value={query} placeholder="Поиск диалога" onChange={(event) => setQuery(event.target.value)} /></label>
+      <div className="flux-admin-workspace-queue-head"><span>Диалоги</span><b>{filtered.length}</b></div>
+      <div className="flux-admin-workspace-list">{loading ? <p>Загружаем…</p> : filtered.length ? filtered.map((item) => <button type="button" key={item.id} className={item.id === selectedId ? 'is-active' : ''} onClick={() => setSelectedId(item.id)}><span>{item.reporterName.slice(0, 1).toUpperCase()}</span><div><strong>{item.reporterName}</strong><small>{item.messages.at(-1)?.body ?? item.message}</small></div><em>{item.status === 'new' ? 'Новое' : item.status === 'resolved' ? 'Готово' : 'В работе'}</em></button>) : <p>Диалогов не найдено.</p>}</div>
+      <a className="flux-admin-workspace-back" href={window.location.pathname}>← В мобильное управление</a>
+    </aside>
+    <section className="flux-admin-workspace-thread">
+      {selected ? <>
+        <header><div><span>{selected.status === 'new' ? 'Новое обращение' : selected.status === 'resolved' ? 'Готово' : 'Диалог в работе'}</span><h1>{selected.reporterName}</h1><p>{selected.reporterLogin ? `@${selected.reporterLogin}` : 'Пользователь FLUX'}</p></div><Button type="button" variant="secondary" size="icon" aria-label="Обновить диалоги" onClick={() => { void refresh(); }}><RefreshCw /></Button></header>
+        <div className="flux-admin-workspace-conversation"><article className="flux-admin-workspace-incoming"><small>Обращение · {formatCreatedAt(selected.createdAt)}</small><p>{selected.message}</p></article>{selected.messages.map((message) => <article key={message.id} className={message.isSupport ? 'is-support' : 'flux-admin-workspace-incoming'}><small>{message.isSupport ? 'Поддержка FLUX' : selected.reporterName} · {formatCreatedAt(message.createdAt)}</small><p>{message.body}</p></article>)}</div>
+        <footer><textarea value={reply} maxLength={1200} placeholder={`Написать ${selected.reporterName}…`} onChange={(event) => setReply(event.target.value)} /><Button type="button" disabled={sending || !reply.trim()} onClick={() => { void sendReply(); }}>{sending ? <LoaderCircle className="animate-spin" /> : <Send />} Отправить</Button></footer>
+      </> : <div className="flux-admin-workspace-empty"><MessageCircle /><h1>Выберите диалог</h1><p>Здесь появится переписка и контекст пользователя.</p></div>}
+    </section>
+    <aside className="flux-admin-workspace-details">
+      {selected ? <><span className="flux-eyebrow">Карточка пользователя</span><h2>{selected.reporterName}</h2><p>{selected.reporterLogin ? `@${selected.reporterLogin}` : 'Логин не указан'}</p><dl><div><dt>Статус</dt><dd>{selected.status === 'new' ? 'Новое' : selected.status === 'resolved' ? 'Готово' : 'В работе'}</dd></div><div><dt>Экран</dt><dd>{selected.screen}</dd></div><div><dt>Версия</dt><dd>{selected.appVersion}</dd></div><div><dt>Создано</dt><dd>{formatCreatedAt(selected.createdAt)}</dd></div></dl><section><strong>Дальше</strong><p>Тренировочный профиль, рацион и история клиента появятся здесь после объединения кабинета тренера с рабочим местом.</p></section></> : null}
+    </aside>
+    {composeOpen && <div className="flux-admin-workspace-modal" role="dialog" aria-modal="true" aria-label="Новое сообщение"><section><button type="button" aria-label="Закрыть" onClick={() => setComposeOpen(false)}><X /></button><span className="flux-eyebrow">Поддержка FLUX</span><h2>Новое сообщение</h2><label>Кому<input autoFocus value={recipient} placeholder="Имя или @логин" onChange={(event) => setRecipient(event.target.value)} /></label><label>Сообщение<textarea value={body} maxLength={1200} placeholder="Что важно сообщить пользователю?" onChange={(event) => setBody(event.target.value)} /></label>{error && <p className="flux-feedback-error">{error}</p>}<Button type="button" disabled={sending} onClick={() => { void startConversation(); }}><Send /> Отправить</Button></section></div>}
+  </main>;
 }

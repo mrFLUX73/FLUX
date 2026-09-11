@@ -762,6 +762,73 @@ button:active { transform: scale(.97); }
 .flux-feedback-message textarea { width: 100%; min-width: 0; min-height: 126px; resize: none; padding: 13px; border: 1px solid var(--flux-border); border-radius: 16px; outline: 0; background: var(--flux-bg); color: var(--flux-ink); font: inherit; font-size: 16px; line-height: 1.45; }
 .flux-feedback-message input { width: 100%; min-width: 0; min-height: 47px; padding: 11px 13px; border: 1px solid var(--flux-border); border-radius: 14px; outline: 0; background: var(--flux-bg); color: var(--flux-ink); font: inherit; font-size: 16px; }
 .flux-feedback-message input:focus { border-color: var(--flux-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--flux-accent) 13%, transparent); }
+
+/* Desktop workspace for the administrator. It is deliberately a separate
+   surface from the compact in-app queue, not a stretched mobile page. */
+.flux-admin-workspace-stage { min-height: 100dvh; background: var(--flux-bg); color: var(--flux-ink); }
+.flux-admin-workspace { width: min(1440px, 100%); min-height: 100dvh; margin: 0 auto; display: grid; grid-template-columns: 286px minmax(420px, 1fr) 278px; background: var(--flux-card); box-shadow: 0 0 0 1px var(--flux-border), 0 24px 80px color-mix(in srgb, var(--flux-ink) 12%, transparent); }
+.flux-admin-workspace-sidebar { min-height: 100dvh; display: flex; flex-direction: column; gap: 16px; padding: 25px 16px 16px; border-right: 1px solid var(--flux-border); background: var(--flux-soft); }
+.flux-admin-workspace-logo { display: inline-flex; align-items: baseline; gap: 8px; color: var(--flux-primary); font-size: 23px; font-weight: 800; letter-spacing: -.05em; text-decoration: none; }
+.flux-admin-workspace-logo small { color: var(--flux-muted); font-size: 11px; font-weight: 600; letter-spacing: 0; }
+.flux-admin-workspace-compose { width: 100%; min-height: 42px; border-radius: 13px; }
+.flux-admin-workspace-compose svg { width: 15px; height: 15px; }
+.flux-admin-workspace-search { display: flex; align-items: center; gap: 8px; height: 39px; padding: 0 11px; border: 1px solid var(--flux-border); border-radius: 12px; background: var(--flux-card); color: var(--flux-muted); }
+.flux-admin-workspace-search svg { width: 15px; height: 15px; }
+.flux-admin-workspace-search input { min-width: 0; width: 100%; border: 0; outline: 0; background: transparent; color: var(--flux-ink); font: inherit; font-size: 12px; }
+.flux-admin-workspace-queue-head { display: flex; justify-content: space-between; color: var(--flux-muted); font-size: 11px; font-weight: 600; }
+.flux-admin-workspace-queue-head b { display: grid; min-width: 20px; height: 20px; place-items: center; border-radius: 8px; background: var(--flux-selection); color: var(--flux-primary); font-size: 10px; }
+.flux-admin-workspace-list { display: grid; gap: 4px; overflow: auto; margin: 0 -7px; padding: 0 7px; }
+.flux-admin-workspace-list > p { margin: 20px 0; color: var(--flux-muted); font-size: 12px; text-align: center; }
+.flux-admin-workspace-list > button { width: 100%; display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 9px; position: relative; align-items: center; padding: 10px; border: 1px solid transparent; border-radius: 14px; background: transparent; color: var(--flux-ink); text-align: left; }
+.flux-admin-workspace-list > button:hover, .flux-admin-workspace-list > button.is-active { border-color: color-mix(in srgb, var(--flux-primary) 25%, var(--flux-border)); background: var(--flux-card); }
+.flux-admin-workspace-list > button > span { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 11px; background: var(--flux-selection); color: var(--flux-primary); font-size: 13px; font-weight: 700; }
+.flux-admin-workspace-list strong, .flux-admin-workspace-list small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flux-admin-workspace-list strong { font-size: 12px; }
+.flux-admin-workspace-list small { margin-top: 3px; color: var(--flux-muted); font-size: 10px; }
+.flux-admin-workspace-list em { position: absolute; top: 9px; right: 9px; color: var(--flux-muted); font-size: 8px; font-style: normal; }
+.flux-admin-workspace-back { margin-top: auto; color: var(--flux-muted); font-size: 11px; text-decoration: none; }
+.flux-admin-workspace-thread { min-width: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-height: 100dvh; }
+.flux-admin-workspace-thread > header { display: flex; align-items: center; justify-content: space-between; min-height: 91px; padding: 18px 25px; border-bottom: 1px solid var(--flux-border); }
+.flux-admin-workspace-thread > header span { color: var(--flux-muted); font-size: 10px; }
+.flux-admin-workspace-thread h1 { margin: 3px 0; font-size: 20px; letter-spacing: -.04em; }
+.flux-admin-workspace-thread header p { margin: 0; color: var(--flux-muted); font-size: 11px; }
+.flux-admin-workspace-conversation { display: flex; min-height: 0; flex-direction: column; gap: 12px; overflow: auto; padding: 25px; background: color-mix(in srgb, var(--flux-bg) 52%, var(--flux-card)); }
+.flux-admin-workspace-conversation article { max-width: min(580px, 84%); padding: 12px 14px; border-radius: 15px 15px 15px 5px; background: var(--flux-soft-2); }
+.flux-admin-workspace-conversation article.is-support { align-self: flex-end; border-radius: 15px 15px 5px 15px; background: var(--flux-primary); color: var(--flux-on-primary); }
+.flux-admin-workspace-conversation small { display: block; color: var(--flux-muted); font-size: 9px; }
+.flux-admin-workspace-conversation .is-support small { color: color-mix(in srgb, var(--flux-on-primary) 70%, transparent); }
+.flux-admin-workspace-conversation p { margin: 6px 0 0; font-size: 13px; line-height: 1.5; white-space: pre-wrap; }
+.flux-admin-workspace-thread > footer { display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 16px 25px 21px; border-top: 1px solid var(--flux-border); background: var(--flux-card); }
+.flux-admin-workspace-thread > footer textarea { min-height: 44px; max-height: 110px; padding: 12px; border: 1px solid var(--flux-border); border-radius: 13px; outline: none; resize: vertical; background: var(--flux-bg); color: var(--flux-ink); font: inherit; font-size: 13px; }
+.flux-admin-workspace-thread > footer button { align-self: end; min-height: 44px; border-radius: 13px; }
+.flux-admin-workspace-details { padding: 28px 20px; border-left: 1px solid var(--flux-border); background: var(--flux-soft); }
+.flux-admin-workspace-details h2 { margin: 7px 0 2px; font-size: 18px; letter-spacing: -.04em; }
+.flux-admin-workspace-details > p { margin: 0; color: var(--flux-muted); font-size: 12px; }
+.flux-admin-workspace-details dl { display: grid; gap: 11px; margin: 27px 0; }
+.flux-admin-workspace-details dl div { padding-bottom: 10px; border-bottom: 1px solid var(--flux-border); }
+.flux-admin-workspace-details dt { color: var(--flux-muted); font-size: 10px; }
+.flux-admin-workspace-details dd { margin: 4px 0 0; font-size: 12px; font-weight: 600; }
+.flux-admin-workspace-details section { padding: 13px; border-radius: 14px; background: var(--flux-selection); }
+.flux-admin-workspace-details section strong { color: var(--flux-primary); font-size: 11px; }
+.flux-admin-workspace-details section p { margin: 5px 0 0; color: var(--flux-muted); font-size: 10px; line-height: 1.45; }
+.flux-admin-workspace-empty { display: grid; place-content: center; text-align: center; color: var(--flux-muted); }
+.flux-admin-workspace-empty svg { justify-self: center; width: 30px; height: 30px; color: var(--flux-primary); }
+.flux-admin-workspace-empty h1 { color: var(--flux-ink); }
+.flux-admin-workspace-modal { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; padding: 24px; background: color-mix(in srgb, var(--flux-ink) 35%, transparent); backdrop-filter: blur(7px); }
+.flux-admin-workspace-modal > section { width: min(480px, 100%); position: relative; padding: 27px; border: 1px solid var(--flux-border); border-radius: 23px; background: var(--flux-card); box-shadow: 0 22px 70px color-mix(in srgb, var(--flux-ink) 28%, transparent); }
+.flux-admin-workspace-modal > section > button[aria-label='Закрыть'] { position: absolute; top: 15px; right: 15px; width: 31px; height: 31px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 10px; background: var(--flux-soft); color: var(--flux-muted); }
+.flux-admin-workspace-modal h2 { margin: 5px 0 20px; font-size: 22px; }
+.flux-admin-workspace-modal label { display: grid; gap: 6px; margin-top: 12px; color: var(--flux-muted); font-size: 11px; }
+.flux-admin-workspace-modal input, .flux-admin-workspace-modal textarea { width: 100%; min-height: 42px; padding: 11px; border: 1px solid var(--flux-border); border-radius: 12px; outline: 0; background: var(--flux-bg); color: var(--flux-ink); font: inherit; }
+.flux-admin-workspace-modal textarea { min-height: 120px; resize: vertical; }
+.flux-admin-workspace-modal > section > button:last-child { width: 100%; min-height: 43px; margin-top: 17px; border-radius: 13px; }
+.flux-admin-workspace-denied { min-height: 100dvh; display: grid; place-content: center; gap: 10px; padding: 25px; text-align: center; }
+.flux-admin-workspace-denied svg { justify-self: center; color: var(--flux-primary); }
+.flux-admin-workspace-denied h1, .flux-admin-workspace-denied p { margin: 0; }
+.flux-admin-workspace-denied p { color: var(--flux-muted); }
+.flux-admin-workspace-denied a { color: var(--flux-primary); }
+@media (max-width: 880px) { .flux-admin-workspace { grid-template-columns: 230px minmax(360px, 1fr); } .flux-admin-workspace-details { display: none; } }
+@media (max-width: 650px) { .flux-admin-workspace { display: block; } .flux-admin-workspace-sidebar { min-height: auto; border-right: 0; } .flux-admin-workspace-thread { min-height: 72dvh; } .flux-admin-workspace-list { max-height: 260px; } }
 .flux-feedback-message textarea:focus { border-color: var(--flux-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--flux-accent) 13%, transparent); }
 .flux-feedback-file-input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
 .flux-feedback-attachments { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 11px; color: var(--flux-muted); font-size: 9px; }
