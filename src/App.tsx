@@ -1658,7 +1658,7 @@ function TrainerChatDrawer({ open, onOpenChange, onBackToInbox, userId, link, on
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const [hasNewBelow, setHasNewBelow] = useState(false);
-  const [viewportHeight, setViewportHeight] = useState<number | null>(null);
+  const [viewport, setViewport] = useState<{ height: number; top: number } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const atBottomRef = useRef(true);
   const loadedRef = useRef(false);
@@ -1713,10 +1713,14 @@ function TrainerChatDrawer({ open, onOpenChange, onBackToInbox, userId, link, on
   }, [link, onInboxChanged, open, refresh]);
   useEffect(() => {
     if (!open || !window.visualViewport) return;
-    const update = () => setViewportHeight(Math.round(window.visualViewport?.height ?? window.innerHeight));
+    const update = () => {
+      const current = window.visualViewport;
+      setViewport({ height: Math.round(current?.height ?? window.innerHeight), top: Math.round(current?.offsetTop ?? 0) });
+    };
     update(); window.visualViewport.addEventListener('resize', update); window.visualViewport.addEventListener('scroll', update);
     return () => { window.visualViewport?.removeEventListener('resize', update); window.visualViewport?.removeEventListener('scroll', update); };
   }, [open]);
+  useEffect(() => { if (open && viewport && atBottomRef.current) requestAnimationFrame(() => scrollToBottom('auto')); }, [open, scrollToBottom, viewport]);
   const send = async () => {
     if (!link || !body.trim() || sending) return;
     const text = body.trim(); setSending(true); setError('');
@@ -1727,8 +1731,8 @@ function TrainerChatDrawer({ open, onOpenChange, onBackToInbox, userId, link, on
     finally { setSending(false); }
   };
   const onScroll = () => { const node = scrollRef.current; if (!node) return; atBottomRef.current = node.scrollHeight - node.scrollTop - node.clientHeight < 72; if (atBottomRef.current) setHasNewBelow(false); };
-  const drawerStyle = viewportHeight ? { '--flux-chat-vh': `${viewportHeight}px` } as CSSProperties : undefined;
-  return <Drawer open={open} onOpenChange={onOpenChange}><DrawerContent className="flux-drawer flux-trainer-chat-drawer" style={drawerStyle}><DrawerHeader className="flux-drawer-header flux-trainer-chat-header"><button type="button" className="flux-drawer-back" onClick={onBackToInbox} aria-label="Назад к сообщениям"><ArrowLeft /></button><div><DrawerTitle>{peerName || 'Чат с тренером'}</DrawerTitle><DrawerDescription>Личный текстовый чат в FLUX</DrawerDescription></div></DrawerHeader><div className="flux-trainer-chat" ref={scrollRef} onScroll={onScroll}>{loading ? <p>Загружаем сообщения…</p> : messages.length ? messages.map((message) => <div key={message.id} className={`flux-trainer-message${message.authorId === userId ? ' is-own' : ''}`}><small>{message.authorId === userId ? 'Вы' : peerName} · {trainerMessageTime(message.createdAt)}</small><p>{message.body}</p></div>) : <p className="flux-trainer-chat-empty">Начните диалог — он виден только вам двоим.</p>}</div>{hasNewBelow && <button type="button" className="flux-trainer-new-messages" onClick={() => scrollToBottom()}>Новые сообщения ↓</button>}{error && <div className="flux-trainer-chat-error"><p>{error}</p><button type="button" onClick={() => { void refresh('sync'); }}>Повторить</button></div>}<div className="flux-trainer-chat-compose">{!online && <span>Нет соединения</span>}<textarea value={body} maxLength={2000} placeholder="Написать сообщение…" onChange={(event) => setBody(event.target.value)} /><button type="button" disabled={sending || !body.trim() || !online} onClick={() => { void send(); }} aria-label="Отправить сообщение">{sending ? <LoaderCircle className="is-spinning" /> : <Send />}</button></div></DrawerContent></Drawer>;
+  const drawerStyle = viewport ? { '--flux-chat-vh': `${viewport.height}px`, '--flux-chat-top': `${viewport.top}px` } as CSSProperties : undefined;
+  return <Drawer open={open} onOpenChange={onOpenChange}><DrawerContent className="flux-drawer flux-trainer-chat-drawer" style={drawerStyle}><DrawerHeader className="flux-drawer-header flux-trainer-chat-header"><button type="button" className="flux-drawer-back" onClick={onBackToInbox} aria-label="Назад к сообщениям"><ArrowLeft /></button><div><DrawerTitle>{peerName || 'Чат с тренером'}</DrawerTitle></div></DrawerHeader><div className="flux-trainer-chat" ref={scrollRef} onScroll={onScroll}>{loading ? <p>Загружаем сообщения…</p> : messages.length ? messages.map((message) => <div key={message.id} className={`flux-trainer-message${message.authorId === userId ? ' is-own' : ''}`}><small>{message.authorId === userId ? 'Вы' : peerName} · {trainerMessageTime(message.createdAt)}</small><p>{message.body}</p></div>) : <p className="flux-trainer-chat-empty">Начните диалог — он виден только вам двоим.</p>}</div>{hasNewBelow && <button type="button" className="flux-trainer-new-messages" onClick={() => scrollToBottom()}>Новые сообщения ↓</button>}{error && <div className="flux-trainer-chat-error"><p>{error}</p><button type="button" onClick={() => { void refresh('sync'); }}>Повторить</button></div>}<div className="flux-trainer-chat-compose">{!online && <span>Нет соединения</span>}<textarea value={body} maxLength={2000} placeholder="Написать сообщение…" onChange={(event) => setBody(event.target.value)} /><button type="button" disabled={sending || !body.trim() || !online} onClick={() => { void send(); }} aria-label="Отправить сообщение">{sending ? <LoaderCircle className="is-spinning" /> : <Send />}</button></div></DrawerContent></Drawer>;
 }
 
 function ClientOverviewDrawer({ open, onOpenChange, userId, link, onOpenChat }: { open: boolean; onOpenChange: (open: boolean) => void; userId: string; link: TrainerLink | null; onOpenChat: () => void }) {
