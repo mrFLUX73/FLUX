@@ -244,9 +244,15 @@ export function ProfileScreen({
           </button>
           {buildInfoOpen && (
             <div className="flux-build-popover" role="status">
-              <strong>FLUX v{appVersion}</strong>
-              <span>{buildRun ? `Установлена сборка #${buildRun}` : 'Локальная сборка'}</span>
-              {formatBuildTime(buildAt) && <small>Собрана {formatBuildTime(buildAt)} · Самара</small>}
+              <div className="flux-build-details">
+                <strong>FLUX v{appVersion}</strong>
+                {formatBuildTime(buildAt) && <small>Собрана {formatBuildTime(buildAt)} · Самара</small>}
+                {!buildRun && <span>Локальная сборка</span>}
+              </div>
+              <div className="flux-build-number">
+                <span>Сборка</span>
+                <b>{buildRun ? `#${buildRun}` : '—'}</b>
+              </div>
             </div>
           )}
         </aside>
