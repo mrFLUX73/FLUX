@@ -1651,7 +1651,7 @@ function MessengerDrawer({ open, onOpenChange, userId, links, loading, error, su
   </DrawerContent></Drawer>;
 }
 
-function TrainerChatDrawer({ open, onOpenChange, onBackToInbox, userId, link, online, onInboxChanged }: { open: boolean; onOpenChange: (open: boolean) => void; onBackToInbox: () => void; userId: string; link: TrainerLink | null; online: boolean; onInboxChanged: () => void }) {
+function TrainerChatDrawer({ open, onOpenChange, onBack, backLabel, userId, link, online, onInboxChanged }: { open: boolean; onOpenChange: (open: boolean) => void; onBack: () => void; backLabel: string; userId: string; link: TrainerLink | null; online: boolean; onInboxChanged: () => void }) {
   const [messages, setMessages] = useState<TrainerMessage[]>([]);
   const [body, setBody] = useState('');
   const [loading, setLoading] = useState(false);
@@ -1732,7 +1732,7 @@ function TrainerChatDrawer({ open, onOpenChange, onBackToInbox, userId, link, on
   };
   const onScroll = () => { const node = scrollRef.current; if (!node) return; atBottomRef.current = node.scrollHeight - node.scrollTop - node.clientHeight < 72; if (atBottomRef.current) setHasNewBelow(false); };
   const drawerStyle = viewport ? { '--flux-chat-vh': `${viewport.height}px`, '--flux-chat-top': `${viewport.top}px` } as CSSProperties : undefined;
-  return <Drawer open={open} onOpenChange={onOpenChange}><DrawerContent className="flux-drawer flux-trainer-chat-drawer" style={drawerStyle}><DrawerHeader className="flux-drawer-header flux-trainer-chat-header"><button type="button" className="flux-drawer-back" onClick={onBackToInbox} aria-label="Назад к сообщениям"><ArrowLeft /></button><div><DrawerTitle>{peerName || 'Чат с тренером'}</DrawerTitle></div></DrawerHeader><div className="flux-trainer-chat" ref={scrollRef} onScroll={onScroll}>{loading ? <p>Загружаем сообщения…</p> : messages.length ? messages.map((message) => <div key={message.id} className={`flux-trainer-message${message.authorId === userId ? ' is-own' : ''}`}><small>{message.authorId === userId ? 'Вы' : peerName} · {trainerMessageTime(message.createdAt)}</small><p>{message.body}</p></div>) : <p className="flux-trainer-chat-empty">Начните диалог — он виден только вам двоим.</p>}</div>{hasNewBelow && <button type="button" className="flux-trainer-new-messages" onClick={() => scrollToBottom()}>Новые сообщения ↓</button>}{error && <div className="flux-trainer-chat-error"><p>{error}</p><button type="button" onClick={() => { void refresh('sync'); }}>Повторить</button></div>}<div className="flux-trainer-chat-compose">{!online && <span>Нет соединения</span>}<textarea value={body} maxLength={2000} placeholder="Написать сообщение…" onChange={(event) => setBody(event.target.value)} /><button type="button" disabled={sending || !body.trim() || !online} onClick={() => { void send(); }} aria-label="Отправить сообщение">{sending ? <LoaderCircle className="is-spinning" /> : <Send />}</button></div></DrawerContent></Drawer>;
+  return <Drawer open={open} onOpenChange={onOpenChange}><DrawerContent className="flux-drawer flux-trainer-chat-drawer" style={drawerStyle}><DrawerHeader className="flux-drawer-header flux-trainer-chat-header"><button type="button" className="flux-drawer-back" onClick={onBack} aria-label={backLabel}><ArrowLeft /></button><div><DrawerTitle>{peerName || 'Чат с тренером'}</DrawerTitle></div></DrawerHeader><div className="flux-trainer-chat" ref={scrollRef} onScroll={onScroll}>{loading ? <p>Загружаем сообщения…</p> : messages.length ? messages.map((message) => <div key={message.id} className={`flux-trainer-message${message.authorId === userId ? ' is-own' : ''}`}><small>{message.authorId === userId ? 'Вы' : peerName} · {trainerMessageTime(message.createdAt)}</small><p>{message.body}</p></div>) : <p className="flux-trainer-chat-empty">Начните диалог — он виден только вам двоим.</p>}</div>{hasNewBelow && <button type="button" className="flux-trainer-new-messages" onClick={() => scrollToBottom()}>Новые сообщения ↓</button>}{error && <div className="flux-trainer-chat-error"><p>{error}</p><button type="button" onClick={() => { void refresh('sync'); }}>Повторить</button></div>}<div className="flux-trainer-chat-compose">{!online && <span>Нет соединения</span>}<textarea value={body} maxLength={2000} placeholder="Написать сообщение…" onChange={(event) => setBody(event.target.value)} /><button type="button" disabled={sending || !body.trim() || !online} onClick={() => { void send(); }} aria-label="Отправить сообщение">{sending ? <LoaderCircle className="is-spinning" /> : <Send />}</button></div></DrawerContent></Drawer>;
 }
 
 function ClientOverviewDrawer({ open, onOpenChange, userId, link, onOpenChat }: { open: boolean; onOpenChange: (open: boolean) => void; userId: string; link: TrainerLink | null; onOpenChat: () => void }) {
@@ -1837,6 +1837,7 @@ export default function App() {
   const [trainerHubLoading, setTrainerHubLoading] = useState(false);
   const [trainerSaving, setTrainerSaving] = useState(false);
   const [trainerChatLink, setTrainerChatLink] = useState<TrainerLink | null>(null);
+  const [trainerChatOrigin, setTrainerChatOrigin] = useState<'inbox' | 'today' | 'clients' | 'client-overview'>('inbox');
   const [clientOverviewLink, setClientOverviewLink] = useState<TrainerLink | null>(null);
   const [messengerOpen, setMessengerOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
@@ -2270,6 +2271,20 @@ export default function App() {
   function openMessages() {
     if (!account) { openFeedback(undefined, 'inbox'); return; }
     setMessengerOpen(true);
+  }
+
+  function openTrainerChat(link: TrainerLink, origin: 'inbox' | 'today' | 'clients' | 'client-overview') {
+    setTrainerChatOrigin(origin);
+    if (origin === 'inbox') setMessengerOpen(false);
+    if (origin === 'client-overview') setClientOverviewLink(null);
+    setTrainerChatLink(link);
+  }
+
+  function returnFromTrainerChat() {
+    const link = trainerChatLink;
+    setTrainerChatLink(null);
+    if (trainerChatOrigin === 'inbox') { setMessengerOpen(true); return; }
+    if (trainerChatOrigin === 'client-overview' && link) setClientOverviewLink(link);
   }
 
   async function changeTrainerRole(role: 'user' | 'trainer') {
@@ -2761,11 +2776,11 @@ export default function App() {
               onTouchCancel={endFoodPull}
             >
               {tab === 'today' && <TodayScreen totals={totals} target={calorieTarget} macroTargets={macroTargets} entries={entries} weekActivity={weekActivity} workoutSessions={workoutSessions} onEditBalance={openDailyBalance} />}
-              {tab === 'today' && account && trainerLinks.find((link) => link.clientId === account.id && link.status === 'active') && (() => { const link = trainerLinks.find((candidate) => candidate.clientId === account.id && candidate.status === 'active')!; return <button type="button" className="flux-my-trainer-card" onClick={() => setMessengerOpen(true)}><span className="flux-rhythm-icon"><MessageCircle /></span><span><small>Ваш тренер</small><strong>{link.trainerName}</strong><em>Открыть сообщения</em></span><ChevronRight /></button>; })()}
+              {tab === 'today' && account && trainerLinks.find((link) => link.clientId === account.id && link.status === 'active') && (() => { const link = trainerLinks.find((candidate) => candidate.clientId === account.id && candidate.status === 'active')!; return <button type="button" className="flux-my-trainer-card" onClick={() => openTrainerChat(link, 'today')}><span className="flux-rhythm-icon"><MessageCircle /></span><span><small>Ваш тренер</small><strong>{link.trainerName}</strong><em>Открыть сообщения</em></span><ChevronRight /></button>; })()}
               {tab === 'food' && <FoodScreen entries={entries} target={calorieTarget} selectedDay={selectedNutritionDay} onSelectDay={setSelectedNutritionDay} historyLoading={historyLoading} mode={nutritionMode} isConnecting={nutritionConnecting} isAuthenticated={Boolean(account)} onAdd={(meal) => openFood(meal ?? currentMeal())} onEdit={setEditingEntry} onRemove={removeEntry} onRepeat={openPreviousMeal} repeatLoadingMeal={repeatLoadingMeal} />}
               {tab === 'workouts' && <WorkoutsScreen onStart={() => setWorkoutOpen(true)} sessions={workoutSessions} />}
               {tab === 'progress' && <ProgressScreen />}
-              {tab === 'clients' && account?.role === 'trainer' && <TrainerClientsScreen links={trainerLinks.filter((link) => link.trainerId === account.id)} loading={trainerHubLoading} onRespond={(link, accept) => { void respondToClient(link, accept); }} onOpenClient={setClientOverviewLink} onOpenChat={setTrainerChatLink} />}
+              {tab === 'clients' && account?.role === 'trainer' && <TrainerClientsScreen links={trainerLinks.filter((link) => link.trainerId === account.id)} loading={trainerHubLoading} onRespond={(link, accept) => { void respondToClient(link, accept); }} onOpenClient={setClientOverviewLink} onOpenChat={(link) => openTrainerChat(link, 'clients')} />}
               {tab === 'admin' && account?.isAdmin && <AdminFeedbackScreen userId={account.id} />}
             </div>
             <nav className={`flux-bottom-nav${account?.isAdmin || account?.role === 'trainer' ? ' has-admin' : ''}`} aria-label="Основная навигация">{navItems.map((item) => { const Icon = item.icon; return <button key={item.id} type="button" className={tab === item.id ? 'is-active' : ''} onClick={() => setTab(item.id)} aria-current={tab === item.id ? 'page' : undefined}><Icon /><span>{item.label}</span></button>; })}</nav>
@@ -2841,9 +2856,9 @@ export default function App() {
         onAuthenticated={authenticate}
       />
       {account && <FeedbackDrawer open={feedbackOpen} onOpenChange={setFeedbackOpen} onBackToMessenger={() => { setFeedbackOpen(false); setMessengerOpen(true); }} userId={account.id} screen={feedbackScreen} initialView={feedbackInitialView} onRepliesRead={() => { void refreshUnreadFeedbackReplies(); }} onSubmitted={() => toast.add({ title: 'Спасибо за обратную связь', description: 'Обращение уже в очереди команды FLUX.', type: 'success' })} />}
-      {account && <MessengerDrawer open={messengerOpen} onOpenChange={setMessengerOpen} userId={account.id} links={trainerInboxLinks} loading={trainerInboxLoading} error={trainerInboxError} supportUnread={supportUnread} supportRevision={supportInboxRevision} online={isOnline} onRetry={() => { void refreshTrainerInbox(); }} onOpenChat={(link) => { setMessengerOpen(false); setTrainerChatLink(link); }} onOpenSupport={() => { setMessengerOpen(false); openFeedback(undefined, 'inbox'); }} />}
-      {account && <TrainerChatDrawer open={Boolean(trainerChatLink)} onOpenChange={(open) => { if (!open) setTrainerChatLink(null); }} onBackToInbox={() => { setTrainerChatLink(null); setMessengerOpen(true); }} userId={account.id} link={trainerChatLink} online={isOnline} onInboxChanged={() => { void refreshUnreadFeedbackReplies(); void refreshTrainerInbox(); }} />}
-      {account && <ClientOverviewDrawer open={Boolean(clientOverviewLink)} onOpenChange={(open) => { if (!open) setClientOverviewLink(null); }} userId={account.id} link={clientOverviewLink} onOpenChat={() => { setTrainerChatLink(clientOverviewLink); setClientOverviewLink(null); }} />}
+      {account && <MessengerDrawer open={messengerOpen} onOpenChange={setMessengerOpen} userId={account.id} links={trainerInboxLinks} loading={trainerInboxLoading} error={trainerInboxError} supportUnread={supportUnread} supportRevision={supportInboxRevision} online={isOnline} onRetry={() => { void refreshTrainerInbox(); }} onOpenChat={(link) => openTrainerChat(link, 'inbox')} onOpenSupport={() => { setMessengerOpen(false); openFeedback(undefined, 'inbox'); }} />}
+      {account && <TrainerChatDrawer open={Boolean(trainerChatLink)} onOpenChange={(open) => { if (!open) setTrainerChatLink(null); }} onBack={returnFromTrainerChat} backLabel={trainerChatOrigin === 'inbox' ? 'Назад к сообщениям' : trainerChatOrigin === 'client-overview' ? 'Назад к карточке клиента' : trainerChatOrigin === 'clients' ? 'Назад к клиентам' : 'Назад на главную'} userId={account.id} link={trainerChatLink} online={isOnline} onInboxChanged={() => { void refreshUnreadFeedbackReplies(); void refreshTrainerInbox(); }} />}
+      {account && <ClientOverviewDrawer open={Boolean(clientOverviewLink)} onOpenChange={(open) => { if (!open) setClientOverviewLink(null); }} userId={account.id} link={clientOverviewLink} onOpenChat={() => { if (clientOverviewLink) openTrainerChat(clientOverviewLink, 'client-overview'); }} />}
     </Toaster>
   );
 }
