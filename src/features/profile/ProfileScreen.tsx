@@ -4,6 +4,7 @@ import { useState, type CSSProperties } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
+import { getBuildHighlights } from '../../lib/buildHighlights';
 import type { FluxAccount } from '../auth/phonePasswordAuth';
 import type { TrainerLink } from '../trainer/repository';
 
@@ -110,21 +111,7 @@ function formatBirthDate(value: string) {
 
 const appVersion = import.meta.env.VITE_APP_VERSION ?? '0.1.0';
 const buildRun = import.meta.env.VITE_BUILD_RUN;
-const buildSha = import.meta.env.VITE_BUILD_SHA;
-const buildAt = import.meta.env.VITE_BUILD_AT;
-
-function formatBuildTime(value: string | undefined) {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  return new Intl.DateTimeFormat('ru-RU', {
-    day: 'numeric',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'Europe/Samara',
-  }).format(date);
-}
+const buildHighlights = getBuildHighlights(buildRun);
 
 function ProfileField({
   children,
@@ -245,9 +232,9 @@ export function ProfileScreen({
           {buildInfoOpen && (
             <div className="flux-build-popover" role="status">
               <div className="flux-build-details">
-                <strong>FLUX v{appVersion}</strong>
-                {formatBuildTime(buildAt) && <small>Собрана {formatBuildTime(buildAt)} · Самара</small>}
-                {!buildRun && <span>Локальная сборка</span>}
+                <span>Что изменилось</span>
+                <strong>{buildHighlights[0]}</strong>
+                {buildHighlights[1] && <small>{buildHighlights[1]}</small>}
               </div>
               <div className="flux-build-number">
                 <span>Сборка</span>
