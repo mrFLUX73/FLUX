@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Archive, ArchiveRestore, Bell, Bug, CheckCircle2, ClipboardList, ExternalLink, Heart, ImagePlus, Lightbulb, LoaderCircle, Mail, MessageCircle, Paperclip, RefreshCw, Search, Send, X } from 'lucide-react';
+import { Archive, ArchiveRestore, ArrowLeft, Bell, Bug, CheckCircle2, ClipboardList, ExternalLink, Heart, ImagePlus, Lightbulb, LoaderCircle, Mail, MessageCircle, Paperclip, RefreshCw, Search, Send, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
@@ -36,9 +36,10 @@ function inlineMessage(now: string, id: string, body: string, isSupport: boolean
   return { id, body: body.trim(), isSupport, createdAt: now, seenAt: isSupport ? null : now };
 }
 
-export function FeedbackDrawer({ open, onOpenChange, userId, screen, initialView, onSubmitted, onRepliesRead }: {
+export function FeedbackDrawer({ open, onOpenChange, onBackToMessenger, userId, screen, initialView, onSubmitted, onRepliesRead }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onBackToMessenger?: () => void;
   userId: string;
   screen: string;
   initialView?: 'compose' | 'inbox';
@@ -50,26 +51,29 @@ export function FeedbackDrawer({ open, onOpenChange, userId, screen, initialView
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [attachments, setAttachments] = useState<File[]>([]);
-  const [view, setView] = useState<'compose' | 'inbox'>('compose');
+  const [view, setView] = useState<'compose' | 'inbox' | 'detail'>('compose');
   const [myItems, setMyItems] = useState<FeedbackItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState('');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [replyingId, setReplyingId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
   const [sendingReply, setSendingReply] = useState(false);
   const attachmentInput = useRef<HTMLInputElement>(null);
 
   const loadHistory = async () => {
-    setHistoryLoading(true);
+    setHistoryLoading(true); setHistoryError('');
     try {
       const items = await loadMyFeedback(userId);
       setMyItems(items);
       if (items.some((item) => item.messages.some((message) => message.isSupport && !message.seenAt))) setView('inbox');
-    } finally { setHistoryLoading(false); }
+    } catch { setHistoryError('Не удалось загрузить обращения. Проверьте интернет и повторите.'); }
+    finally { setHistoryLoading(false); }
   };
 
   useEffect(() => {
     if (!open) return;
-    setCategory('idea'); setMessage(''); setError(''); setAttachments([]); setView(initialView ?? 'compose'); setReplyingId(null); setReplyText('');
+    setCategory('idea'); setMessage(''); setError(''); setAttachments([]); setView(initialView ?? 'compose'); setSelectedId(null); setReplyingId(null); setReplyText('');
     void loadHistory();
   }, [initialView, open, userId]);
 
@@ -86,7 +90,7 @@ export function FeedbackDrawer({ open, onOpenChange, userId, screen, initialView
   const submit = async () => {
     if (!canSubmit) return;
     setSubmitting(true); setError('');
-    try { await submitFeedback(userId, { category, message, screen, appVersion: 'FLUX web', attachments }); onOpenChange(false); onSubmitted?.(); }
+    try { await submitFeedback(userId, { category, message, screen, appVersion: 'FLUX web', attachments }); setMessage(''); setAttachments([]); setView('inbox'); void loadHistory(); onSubmitted?.(); }
     catch { setError('Не удалось отправить обращение. Проверьте интернет и повторите попытку.'); }
     finally { setSubmitting(false); }
   };
@@ -107,10 +111,16 @@ export function FeedbackDrawer({ open, onOpenChange, userId, screen, initialView
     finally { setSendingReply(false); }
   };
   const unreadCount = myItems.flatMap((item) => item.messages).filter((message) => message.isSupport && !message.seenAt).length;
+  const selectedItem = myItems.find((item) => item.id === selectedId) ?? null;
+  const goToInbox = () => { setView('inbox'); setSelectedId(null); setReplyingId(null); setReplyText(''); };
+  const goBack = () => {
+    if (view === 'detail' || view === 'compose') { goToInbox(); return; }
+    if (onBackToMessenger) { onBackToMessenger(); return; }
+    onOpenChange(false);
+  };
 
   return <Drawer open={open} onOpenChange={onOpenChange}><DrawerContent className="flux-drawer flux-feedback-drawer">
-    <DrawerHeader className="flux-drawer-header"><DrawerTitle>Сообщения FLUX</DrawerTitle><DrawerDescription>{view === 'compose' ? 'Напишите команде — контекст текущего экрана добавим автоматически.' : 'Диалоги по вашим обращениям и ответы команды FLUX.'}</DrawerDescription></DrawerHeader>
-    <div className="flux-feedback-tabs" aria-label="Сообщения FLUX"><button type="button" className={view === 'inbox' ? 'is-active' : ''} onClick={() => setView('inbox')}><Bell /> Сообщения{unreadCount > 0 && <b>{unreadCount}</b>}</button><button type="button" className={view === 'compose' ? 'is-active' : ''} onClick={() => setView('compose')}><MessageCircle /> Новое сообщение</button></div>
+    <DrawerHeader className="flux-drawer-header flux-feedback-header"><button type="button" className="flux-drawer-back" onClick={goBack} aria-label={view === 'inbox' ? 'Назад к сообщениям' : 'Назад к обращениям'}><ArrowLeft /></button><div><DrawerTitle>Поддержка FLUX</DrawerTitle></div></DrawerHeader>
     <div className="flux-feedback-body">
       {view === 'compose' ? <>
         <div className="flux-feedback-categories" aria-label="Тип обращения">{categories.map((item) => { const Icon = item.icon; return <button type="button" key={item.id} className={category === item.id ? 'is-active' : ''} onClick={() => setCategory(item.id)}><Icon /><span><strong>{item.label}</strong><small>{item.hint}</small></span></button>; })}</div>
@@ -120,10 +130,13 @@ export function FeedbackDrawer({ open, onOpenChange, userId, screen, initialView
         {attachments.length > 0 && <div className="flux-feedback-attachment-list">{attachments.map((file, index) => <span key={`${file.name}-${file.lastModified}`}><Paperclip /> <b>{file.name}</b><button type="button" aria-label={`Удалить ${file.name}`} onClick={() => setAttachments((current) => current.filter((_, candidateIndex) => candidateIndex !== index))}><X /></button></span>)}</div>}
         <div className="flux-feedback-meta"><span>Экран: {screen}</span><span>{message.length}/4000</span></div>{error && <p className="flux-feedback-error" role="alert">{error}</p>}
         <Button type="button" className="flux-feedback-submit" size="lg" disabled={!canSubmit} onClick={() => { void submit(); }}>{submitting ? <><LoaderCircle className="animate-spin" /> Отправляю…</> : <><MessageCircle /> Отправить</>}</Button>
-      </> : historyLoading ? <div className="flux-feedback-history-state"><LoaderCircle className="animate-spin" /> Загружаем обращения…</div> : myItems.length ? <div className="flux-feedback-history-list">{myItems.map((item) => {
+      </> : view === 'detail' && selectedItem ? <div className="flux-feedback-detail"><article className="flux-feedback-detail-origin"><header><span>{categories.find((candidate) => candidate.id === selectedItem.category)?.label ?? 'Идея'}</span><time>{formatCreatedAt(selectedItem.createdAt)}</time></header><p>{selectedItem.message}</p><small className={`is-${selectedItem.status}`}>{statusLabels[selectedItem.status]}</small></article><Conversation messages={selectedItem.messages} viewer="author" />{replyingId === selectedItem.id ? <div className="flux-feedback-inline-composer"><textarea autoFocus value={replyText} maxLength={1200} placeholder="Уточните у поддержки…" onChange={(event) => setReplyText(event.target.value)} /><div><button type="button" onClick={() => { setReplyingId(null); setReplyText(''); }}>Отмена</button><button type="button" disabled={sendingReply || !replyText.trim()} onClick={() => { void sendReply(selectedItem); }}>{sendingReply ? 'Отправляю…' : 'Отправить'}</button></div></div> : <button type="button" className="flux-feedback-reply-trigger" onClick={() => { setReplyingId(selectedItem.id); setReplyText(''); }}>Уточнить у FLUX</button>}</div> : <>{<div className="flux-feedback-list-heading"><span>Обращения{unreadCount > 0 && <b>{unreadCount}</b>}</span><button type="button" onClick={() => setView('compose')}><MessageCircle /> Новое обращение</button></div>}{historyLoading ? <div className="flux-feedback-history-state"><LoaderCircle className="animate-spin" /> Загружаем обращения…</div> : historyError ? <div className="flux-feedback-history-state"><p>{historyError}</p><button type="button" onClick={() => { void loadHistory(); }}>Повторить</button></div> : myItems.length ? <div className="flux-feedback-history-list">{myItems.map((item) => {
         const categoryItem = categories.find((candidate) => candidate.id === item.category) ?? categories[1];
-        return <article className="flux-feedback-history-item" key={item.id}><header><span>{categoryItem.label}</span><time>{formatCreatedAt(item.createdAt)}</time></header><p>{item.message}</p><small className={`is-${item.status}`}>{statusLabels[item.status]}</small><Conversation messages={item.messages} viewer="author" />{replyingId === item.id ? <div className="flux-feedback-inline-composer"><textarea autoFocus value={replyText} maxLength={1200} placeholder="Уточните у поддержки…" onChange={(event) => setReplyText(event.target.value)} /><div><button type="button" onClick={() => { setReplyingId(null); setReplyText(''); }}>Отмена</button><button type="button" disabled={sendingReply || !replyText.trim()} onClick={() => { void sendReply(item); }}>{sendingReply ? 'Отправляю…' : 'Отправить'}</button></div></div> : <button type="button" className="flux-feedback-reply-trigger" onClick={() => { setReplyingId(item.id); setReplyText(''); }}>Уточнить у FLUX</button>}</article>;
+        const lastActivity = [...item.messages].sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0]?.createdAt ?? item.createdAt;
+        const hasUnread = item.messages.some((message) => message.isSupport && !message.seenAt);
+        return <button type="button" className="flux-feedback-history-item" key={item.id} onClick={() => { setSelectedId(item.id); setView('detail'); }}><header><span>{categoryItem.label}</span><time>{formatCreatedAt(lastActivity)}</time></header><p>{item.message}</p><footer><small className={`is-${item.status}`}>{statusLabels[item.status]}</small>{hasUnread && <b>Новое</b>}</footer></button>;
       })}</div> : <div className="flux-feedback-history-state"><ClipboardList /> Пока нет отправленных обращений.</div>}
+      </>}
     </div>
   </DrawerContent></Drawer>;
 }
