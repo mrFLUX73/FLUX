@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type KeyboardEvent, type TouchEvent } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type KeyboardEvent, type TouchEvent } from 'react';
 import {
   Activity,
   ArrowLeft,
@@ -1607,7 +1607,26 @@ function TrainerClientsScreen({
 
 function trainerMessageTime(value: string) {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '' : new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(date);
+  return Number.isNaN(date.getTime()) ? '' : new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit' }).format(date);
+}
+
+function trainerMessageDay(value: string) {
+  const date = new Date(value); const now = new Date();
+  if (Number.isNaN(date.getTime())) return '';
+  if (date.toDateString() === now.toDateString()) return 'Сегодня';
+  const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) return 'Вчера';
+  return new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long' }).format(date);
+}
+
+function trainerMessageDayKey(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+function areTrainerMessagesGrouped(left: TrainerMessage | undefined, right: TrainerMessage | undefined) {
+  if (!left || !right || left.authorId !== right.authorId || trainerMessageDayKey(left.createdAt) !== trainerMessageDayKey(right.createdAt)) return false;
+  return Math.abs(new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()) <= 5 * 60 * 1000;
 }
 
 function inboxTime(value: string | null) {
@@ -1639,7 +1658,7 @@ function MessengerDrawer({ open, onOpenChange, userId, links, loading, error, su
   useEffect(() => { if (open) void refreshSupport(); }, [open, refreshSupport, supportRevision]);
   const support = supportInboxSummary(supportItems);
   return <Drawer open={open} onOpenChange={onOpenChange}><DrawerContent className="flux-drawer flux-messenger-drawer">
-    <DrawerHeader className="flux-drawer-header"><DrawerTitle>Сообщения</DrawerTitle><DrawerDescription>Личные чаты и диалоги с командой FLUX.</DrawerDescription></DrawerHeader>
+    <DrawerHeader className="flux-drawer-header"><DrawerTitle>Сообщения</DrawerTitle><DrawerDescription>Тренер и поддержка — в одном месте.</DrawerDescription></DrawerHeader>
     <div className="flux-messenger-body">
       {!online && <p className="flux-messenger-offline"><WifiOff /> Нет соединения — показываем последние загруженные данные.</p>}
       {loading ? <div className="flux-messenger-state"><LoaderCircle className="is-spinning" /> Загружаем диалоги…</div> : error ? <div className="flux-messenger-state is-error"><p>{error}</p><button type="button" onClick={onRetry}>Повторить</button></div> : <div className="flux-messenger-list">
@@ -1732,7 +1751,7 @@ function TrainerChatDrawer({ open, onOpenChange, onBack, backLabel, userId, link
   };
   const onScroll = () => { const node = scrollRef.current; if (!node) return; atBottomRef.current = node.scrollHeight - node.scrollTop - node.clientHeight < 72; if (atBottomRef.current) setHasNewBelow(false); };
   const drawerStyle = viewport ? { '--flux-chat-vh': `${viewport.height}px`, '--flux-chat-top': `${viewport.top}px` } as CSSProperties : undefined;
-  return <Drawer open={open} onOpenChange={onOpenChange}><DrawerContent className="flux-drawer flux-trainer-chat-drawer" style={drawerStyle}><DrawerHeader className="flux-drawer-header flux-trainer-chat-header"><button type="button" className="flux-drawer-back" onClick={onBack} aria-label={backLabel}><ArrowLeft /></button><div><DrawerTitle>{peerName || 'Чат с тренером'}</DrawerTitle></div></DrawerHeader><div className="flux-trainer-chat" ref={scrollRef} onScroll={onScroll}>{loading ? <p>Загружаем сообщения…</p> : messages.length ? messages.map((message) => <div key={message.id} className={`flux-trainer-message${message.authorId === userId ? ' is-own' : ''}`}><small>{message.authorId === userId ? 'Вы' : peerName} · {trainerMessageTime(message.createdAt)}</small><p>{message.body}</p></div>) : <p className="flux-trainer-chat-empty">Начните диалог — он виден только вам двоим.</p>}</div>{hasNewBelow && <button type="button" className="flux-trainer-new-messages" onClick={() => scrollToBottom()}>Новые сообщения ↓</button>}{error && <div className="flux-trainer-chat-error"><p>{error}</p><button type="button" onClick={() => { void refresh('sync'); }}>Повторить</button></div>}<div className="flux-trainer-chat-compose">{!online && <span>Нет соединения</span>}<textarea value={body} maxLength={2000} placeholder="Написать сообщение…" onChange={(event) => setBody(event.target.value)} /><button type="button" disabled={sending || !body.trim() || !online} onClick={() => { void send(); }} aria-label="Отправить сообщение">{sending ? <LoaderCircle className="is-spinning" /> : <Send />}</button></div></DrawerContent></Drawer>;
+  return <Drawer open={open} onOpenChange={onOpenChange}><DrawerContent className="flux-drawer flux-trainer-chat-drawer" style={drawerStyle}><DrawerHeader className="flux-drawer-header flux-trainer-chat-header"><button type="button" className="flux-drawer-back" onClick={onBack} aria-label={backLabel}><ArrowLeft /></button><div><DrawerTitle>{peerName || 'Чат с тренером'}</DrawerTitle></div></DrawerHeader><div className="flux-trainer-chat" ref={scrollRef} onScroll={onScroll}>{loading ? <p>Загружаем сообщения…</p> : messages.length ? messages.map((message, index) => { const previous = messages[index - 1]; const next = messages[index + 1]; const groupedBefore = areTrainerMessagesGrouped(previous, message); const groupedAfter = areTrainerMessagesGrouped(message, next); const showDay = !previous || trainerMessageDayKey(previous.createdAt) !== trainerMessageDayKey(message.createdAt); const showTime = !groupedAfter; return <Fragment key={message.id}>{showDay && <div className="flux-trainer-date-separator"><span>{trainerMessageDay(message.createdAt)}</span></div>}<div className={`flux-trainer-message${message.authorId === userId ? ' is-own' : ''}${groupedBefore ? ' is-grouped-before' : ''}${groupedAfter ? ' is-grouped-after' : ''}`}><p>{message.body}</p>{showTime && <time>{trainerMessageTime(message.createdAt)}</time>}</div></Fragment>; }) : <p className="flux-trainer-chat-empty">Начните диалог — он виден только вам двоим.</p>}</div>{hasNewBelow && <button type="button" className="flux-trainer-new-messages" onClick={() => scrollToBottom()}>Новые сообщения ↓</button>}{error && <div className="flux-trainer-chat-error"><p>{error}</p><button type="button" onClick={() => { void refresh('sync'); }}>Повторить</button></div>}<div className="flux-trainer-chat-compose">{!online && <span>Нет соединения</span>}<textarea value={body} maxLength={2000} placeholder="Написать сообщение…" onChange={(event) => setBody(event.target.value)} /><button type="button" disabled={sending || !body.trim() || !online} onClick={() => { void send(); }} aria-label="Отправить сообщение">{sending ? <LoaderCircle className="is-spinning" /> : <Send />}</button></div></DrawerContent></Drawer>;
 }
 
 function ClientOverviewDrawer({ open, onOpenChange, userId, link, onOpenChat }: { open: boolean; onOpenChange: (open: boolean) => void; userId: string; link: TrainerLink | null; onOpenChat: () => void }) {
