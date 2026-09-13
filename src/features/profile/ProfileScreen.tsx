@@ -403,14 +403,14 @@ export function ProfileScreen({
         <section className="flux-build-modal" role="dialog" aria-modal="true" aria-label="Что нового в FLUX" onMouseDown={(event) => event.stopPropagation()}>
           <header className="flux-build-modal-header">
             {buildInfoView === 'details' ? <button type="button" className="flux-build-modal-icon" onClick={() => setBuildInfoView('overview')} aria-label="Вернуться к информации о версии"><ArrowLeft /></button> : <span />}
-            <div><small>{buildInfoView === 'details' ? `Сборка #${selectedBuild.number || '—'}` : 'FLUX'}</small><strong>{buildInfoView === 'details' ? `Что нового в #${selectedBuild.number || '—'}` : 'Что нового в FLUX'}</strong></div>
+            <div><small>{buildInfoView === 'details' ? `Сборка ${selectedBuild.number || '—'}` : 'FLUX'}</small><strong>{buildInfoView === 'details' ? `Что нового в #${selectedBuild.number || '—'}` : 'Что нового в FLUX'}</strong></div>
             <button type="button" className="flux-build-modal-icon" onClick={() => setBuildInfoOpen(false)} aria-label="Закрыть"><X /></button>
           </header>
           <div className="flux-build-modal-body">
             {buildInfoView === 'overview' ? <>
               <section className="flux-build-current-card">
                 <div><span>Что изменилось</span><strong>{currentBuildRelease.title}</strong><ul>{currentBuildRelease.highlights.slice(0, 3).map((highlight) => <li key={highlight}>{highlight}</li>)}</ul></div>
-                <aside><small>Сборка</small><b>{buildRun ? `#${buildRun}` : '—'}</b></aside>
+                <aside><small>Сборка</small><b>{buildRun ?? '—'}</b></aside>
               </section>
               <button type="button" className="flux-build-full-list" onClick={() => { setSelectedBuildNumber(buildRun ?? ''); setBuildInfoView('details'); }}>Полный список изменений <ChevronRight /></button>
             </> : <>

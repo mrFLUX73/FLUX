@@ -46,6 +46,7 @@
   --flux-hover: #f5f9f2;
   --flux-card: #ffffff;
   --flux-divider: #e7ede4;
+  --flux-build-overlay: rgb(32 43 33 / 16%);
   --background: oklch(.991 .009 135);
   --foreground: oklch(.25 .035 140);
   --card: oklch(1 0 0);
@@ -265,6 +266,13 @@
   --background: #121812; --foreground: #f0f6e9; --card: #1a2318; --card-foreground: #f0f6e9; --popover: #1a2318; --popover-foreground: #f0f6e9; --primary: #b2ca89; --primary-foreground: #152012; --secondary: #273125; --secondary-foreground: #e4eed9; --muted: #1d271b; --muted-foreground: #abb5a0; --accent: #303b2b; --accent-foreground: #e4eed9; --destructive: #df7b7b; --border: #3d4a37; --input: #3d4a37; --ring: #8fa766;
 }
 
+:root[data-flux-theme='night'],
+:root[data-flux-theme='titan'],
+:root[data-flux-theme='forge'],
+:root[data-flux-theme='ranger'] {
+  --flux-build-overlay: rgb(0 0 0 / 42%);
+}
+
 * { box-sizing: border-box; }
 html { background: var(--flux-stage-bg); }
 body { margin: 0; background: var(--flux-stage-bg); color: var(--foreground); font-family: Manrope, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-weight: 400; }
@@ -425,7 +433,7 @@ button:active { transform: scale(.97); }
 .flux-build-info { display: flex; justify-content: flex-end; }
 .flux-build-badge { min-width: 37px; min-height: 25px; padding: 0 6px; border: 1px solid var(--flux-border); border-radius: 999px; background: var(--flux-card); color: var(--flux-muted); font-size: 8px; font-weight: 600; letter-spacing: .01em; }
 .flux-build-badge:active { transform: scale(.95); }
-.flux-build-modal-backdrop { position: absolute; z-index: 40; inset: 0; display: flex; align-items: flex-end; justify-content: center; padding: max(12px, env(safe-area-inset-top, 0px)) 12px max(12px, env(safe-area-inset-bottom, 0px)); background: color-mix(in srgb, var(--flux-ink) 20%, transparent); backdrop-filter: blur(13px) saturate(.88); -webkit-backdrop-filter: blur(13px) saturate(.88); animation: flux-build-modal-backdrop-in .2s ease-out both; overscroll-behavior: contain; }
+.flux-build-modal-backdrop { position: absolute; z-index: 40; inset: 0; display: flex; align-items: flex-end; justify-content: center; padding: max(12px, env(safe-area-inset-top, 0px)) 12px max(12px, env(safe-area-inset-bottom, 0px)); background: var(--flux-build-overlay); backdrop-filter: blur(13px); -webkit-backdrop-filter: blur(13px); animation: flux-build-modal-backdrop-in .2s ease-out both; overscroll-behavior: contain; }
 .flux-build-modal { width: min(100%, 390px); max-height: 100%; display: flex; flex-direction: column; overflow: hidden; border: 1px solid color-mix(in srgb, var(--flux-border) 86%, transparent); border-radius: 26px; background: color-mix(in srgb, var(--flux-card) 96%, transparent); box-shadow: 0 22px 64px color-mix(in srgb, var(--flux-ink) 28%, transparent); animation: flux-build-modal-enter .24s cubic-bezier(.22,.75,.25,1) both; }
 .flux-build-modal-header { display: grid; grid-template-columns: 40px minmax(0, 1fr) 40px; gap: 8px; align-items: center; padding: 15px 16px 12px; border-bottom: 1px solid var(--flux-divider); }
 .flux-build-modal-header > div { min-width: 0; text-align: center; }
@@ -436,16 +444,16 @@ button:active { transform: scale(.97); }
 .flux-build-modal-icon svg { width: 17px; height: 17px; }
 .flux-build-modal-body { min-height: 0; overflow-y: auto; padding: 16px; scrollbar-width: none; overscroll-behavior: contain; }
 .flux-build-modal-body::-webkit-scrollbar { display: none; }
-.flux-build-current-card { min-height: 218px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(90px, .42fr); overflow: hidden; border-radius: 21px; background: var(--flux-soft-2); }
+.flux-build-current-card { min-height: 218px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(96px, .38fr); overflow: hidden; border-radius: 21px; background: var(--flux-soft-2); }
 .flux-build-current-card > div { min-width: 0; padding: 20px 18px; }
 .flux-build-current-card span { display: block; color: var(--flux-muted); font-size: 8px; font-weight: 600; letter-spacing: .045em; text-transform: uppercase; }
 .flux-build-current-card strong { display: block; margin-top: 8px; color: var(--flux-ink); font-size: 17px; font-weight: 600; line-height: 1.18; letter-spacing: -.025em; }
 .flux-build-current-card ul { display: grid; gap: 6px; margin: 14px 0 0; padding: 0; list-style: none; }
 .flux-build-current-card li { position: relative; padding-left: 12px; color: var(--flux-muted); font-size: 9px; line-height: 1.35; }
 .flux-build-current-card li::before { content: '•'; position: absolute; left: 1px; color: var(--flux-primary); }
-.flux-build-current-card aside { display: grid; align-content: center; gap: 5px; padding: 18px 12px; border-left: 1px solid var(--flux-border); background: color-mix(in srgb, var(--flux-soft) 72%, var(--flux-card)); }
+.flux-build-current-card aside { display: grid; align-content: center; justify-items: center; gap: 5px; padding: 18px 9px; border-left: 1px solid var(--flux-border); background: color-mix(in srgb, var(--flux-soft) 72%, var(--flux-card)); text-align: center; }
 .flux-build-current-card aside small { color: var(--flux-muted); font-size: 8px; font-weight: 600; letter-spacing: .045em; text-transform: uppercase; }
-.flux-build-current-card aside b { color: var(--flux-primary); font-size: clamp(30px, 10vw, 42px); font-weight: 700; line-height: 1; letter-spacing: -.07em; white-space: nowrap; }
+.flux-build-current-card aside b { max-width: 100%; color: var(--flux-primary); font-size: clamp(27px, 9vw, 40px); font-weight: 700; line-height: 1; letter-spacing: -.07em; white-space: nowrap; }
 .flux-build-full-list { width: 100%; min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 11px; padding: 0 14px; border: 1px solid var(--flux-border); border-radius: 16px; background: var(--flux-card); color: var(--flux-primary); font-size: 10px; font-weight: 600; text-align: left; }
 .flux-build-full-list svg, .flux-build-history button > svg { width: 16px; height: 16px; flex: 0 0 auto; }
 .flux-build-detail-subtitle { margin: 0 2px 13px; color: var(--flux-muted); font-size: 10px; }
