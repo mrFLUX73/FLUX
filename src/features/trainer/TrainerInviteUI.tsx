@@ -49,27 +49,48 @@ export function TrainerInviteConfirmationDrawer({ open, code, preview, loading, 
 export function TrainerQrScannerDrawer({ open, onOpenChange, onScanned, onNotice }: { open: boolean; onOpenChange: (open: boolean) => void; onScanned: (value: string) => void; onNotice: (title: string, description: string, type?: 'success' | 'error' | 'info') => void }) {
   const videoRef = useRef<HTMLVideoElement>(null); const sessionRef = useRef<BarcodeScannerSession | null>(null);
   const onScannedRef = useRef(onScanned); const onNoticeRef = useRef(onNotice);
-  const [state, setState] = useState<'requesting' | 'scanning' | 'error'>('requesting'); const [message, setMessage] = useState(''); const [torch, setTorch] = useState(false); const [supportsTorch, setSupportsTorch] = useState(false);
+  const runRef = useRef(0);
+  const [state, setState] = useState<'permission' | 'requesting' | 'scanning' | 'error'>('permission'); const [message, setMessage] = useState(''); const [torch, setTorch] = useState(false); const [supportsTorch, setSupportsTorch] = useState(false);
   useEffect(() => { onScannedRef.current = onScanned; onNoticeRef.current = onNotice; }, [onNotice, onScanned]);
+  const stopCamera = () => {
+    runRef.current += 1;
+    sessionRef.current?.stop(); sessionRef.current = null;
+    const stream = videoRef.current?.srcObject;
+    if (stream instanceof MediaStream) stream.getTracks().forEach((track) => track.stop());
+    if (videoRef.current) { videoRef.current.pause(); videoRef.current.srcObject = null; }
+  };
   useEffect(() => {
-    if (!open) return;
-    let active = true; setState('requesting'); setMessage(''); setTorch(false); setSupportsTorch(false);
-    void (async () => {
-      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) { setState('error'); setMessage('Камера доступна только в защищённой версии сайта.'); return; }
-      try {
-        if (!videoRef.current) return;
-        const session = await startTrainerInviteQrScanner({ video: videoRef.current, onQr: (value) => { if (active) { sessionRef.current = null; onScannedRef.current(value); } }, onReady: (ready) => { if (active) { setState('scanning'); setSupportsTorch(ready.supportsTorch); } } });
-        if (!active) session.stop(); else sessionRef.current = session;
-      } catch (error) {
-        if (!active) return;
-        const name = error instanceof DOMException ? error.name : '';
-        setState('error'); setMessage(name === 'NotAllowedError' || name === 'SecurityError' ? 'Доступ к камере запрещён. Разрешите его в настройках Safari.' : 'Не удалось включить камеру. Используйте код тренера вручную.');
-      }
-    })();
-    return () => { active = false; sessionRef.current?.stop(); sessionRef.current = null; };
+    if (open) { setState('permission'); setMessage(''); setTorch(false); setSupportsTorch(false); }
+    return () => stopCamera();
   }, [open]);
+  const startCamera = async () => {
+    // This handler deliberately begins getUserMedia in the tap itself. Safari
+    // and Home Screen PWAs can reject or suspend camera requests begun later
+    // from a React effect after the user gesture has finished.
+    stopCamera();
+    const run = runRef.current;
+    setState('requesting'); setMessage(''); setTorch(false); setSupportsTorch(false);
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) { setState('error'); setMessage('Камера доступна только в защищённой версии FLUX. Откройте сайт по HTTPS.'); return; }
+    const video = videoRef.current;
+    if (!video) { setState('error'); setMessage('Не удалось подготовить экран камеры. Закройте окно и попробуйте снова.'); return; }
+    try {
+      const session = await startTrainerInviteQrScanner({ video, onQr: (value) => { if (run === runRef.current) { sessionRef.current = null; onScannedRef.current(value); } }, onReady: (ready) => { if (run === runRef.current) { setState('scanning'); setSupportsTorch(ready.supportsTorch); } } });
+      if (run !== runRef.current) session.stop(); else sessionRef.current = session;
+    } catch (error) {
+      if (run !== runRef.current) return;
+      const name = error instanceof DOMException ? error.name : '';
+      setState('error');
+      setMessage(name === 'NotAllowedError' || name === 'SecurityError'
+        ? 'FLUX не получил доступ к камере. Разрешите доступ в настройках Safari или iPhone и попробуйте снова.'
+        : name === 'NotFoundError' || name === 'DevicesNotFoundError'
+          ? 'На устройстве не найдена доступная камера.'
+          : name === 'NotReadableError' || name === 'TrackStartError'
+            ? 'Камера занята другим приложением. Закройте его и попробуйте снова.'
+            : 'Не удалось получить изображение с камеры. Попробуйте снова или используйте код тренера вручную.');
+    }
+  };
   const toggleTorch = async () => { try { await sessionRef.current?.setTorch(!torch); setTorch((value) => !value); } catch { onNoticeRef.current('Не удалось включить подсветку', 'Попробуйте изменить освещение.', 'info'); } };
-  return <Drawer open={open} onOpenChange={onOpenChange}><DrawerContent className="flux-drawer flux-trainer-qr-scanner"><DrawerHeader className="flux-drawer-header"><DrawerTitle>Сканировать QR тренера</DrawerTitle><DrawerDescription>Наведите камеру на приглашение FLUX.</DrawerDescription></DrawerHeader><div className="flux-trainer-qr-camera"><video ref={videoRef} autoPlay muted playsInline />{state === 'requesting' && <span><LoaderCircle className="is-spinning" /> Открываем камеру…</span>}{state === 'error' && <p>{message}</p>}{state === 'scanning' && <i aria-hidden="true" />}</div>{supportsTorch && state === 'scanning' && <Button type="button" variant="secondary" size="sm" className="flux-trainer-qr-torch" onClick={() => { void toggleTorch(); }}>{torch ? <FlashlightOff /> : <Flashlight />}{torch ? 'Выключить подсветку' : 'Включить подсветку'}</Button>}<Button type="button" variant="ghost" className="flux-trainer-qr-close" onClick={() => onOpenChange(false)}><X /> Закрыть</Button></DrawerContent></Drawer>;
+  return <Drawer open={open} onOpenChange={onOpenChange}><DrawerContent className="flux-drawer flux-trainer-qr-scanner"><DrawerHeader className="flux-drawer-header"><DrawerTitle>Сканировать QR тренера</DrawerTitle><DrawerDescription>{state === 'scanning' ? 'Наведите камеру на приглашение FLUX.' : 'FLUX запросит доступ к камере только после вашего нажатия.'}</DrawerDescription></DrawerHeader><div className="flux-trainer-qr-camera"><video ref={videoRef} autoPlay muted playsInline />{state === 'permission' && <span>Нажмите «Включить камеру», затем разрешите доступ в системном окне.</span>}{state === 'requesting' && <span><LoaderCircle className="is-spinning" /> Разрешите доступ к камере…</span>}{state === 'error' && <p>{message}</p>}{state === 'scanning' && <i aria-hidden="true" />}</div>{state !== 'scanning' && <Button type="button" className="flux-trainer-qr-start" onClick={() => { void startCamera(); }}>{state === 'error' ? 'Попробовать снова' : 'Включить камеру'}</Button>}{supportsTorch && state === 'scanning' && <Button type="button" variant="secondary" size="sm" className="flux-trainer-qr-torch" onClick={() => { void toggleTorch(); }}>{torch ? <FlashlightOff /> : <Flashlight />}{torch ? 'Выключить подсветку' : 'Включить подсветку'}</Button>}<Button type="button" variant="ghost" className="flux-trainer-qr-close" onClick={() => onOpenChange(false)}><X /> Закрыть</Button></DrawerContent></Drawer>;
 }
 
 export function TrainerRevokeConfirmationDrawer({ open, link, userId, saving, onOpenChange, onConfirm }: { open: boolean; link: { id: string; trainerId: string; trainerName: string; clientName: string } | null; userId: string; saving: boolean; onOpenChange: (open: boolean) => void; onConfirm: () => void }) {

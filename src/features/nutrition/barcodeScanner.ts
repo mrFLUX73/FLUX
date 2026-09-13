@@ -286,61 +286,99 @@ export async function startTrainerInviteQrScanner({
   onQr: (value: string) => void;
   onReady: (state: ScannerReadyState) => void;
 }): Promise<BarcodeScannerSession> {
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: false,
-    video: {
-      facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, max: 60 },
-    },
-  });
-  const track = stream.getVideoTracks()[0];
-  if (!track) {
-    stream.getTracks().forEach((item) => item.stop());
-    throw new DOMException('Не найдена камера', 'NotFoundError');
-  }
-  const capabilities = track.getCapabilities() as MediaTrackCapabilities & { focusMode?: string[]; torch?: boolean };
-  let continuousFocusRequested = false;
-  if (capabilities.focusMode?.includes('continuous')) {
-    try { await track.applyConstraints({ advanced: [{ focusMode: 'continuous' } as MediaTrackConstraintSet] }); continuousFocusRequested = true; } catch { /* optional */ }
-  }
-  video.srcObject = stream; video.muted = true; video.playsInline = true;
-  await video.play();
-  const [reader, detector] = await Promise.all([createQrReader(), Promise.resolve(nativeQrDetector())]);
-  const canvas = createCanvas(1, 1);
-  const supportsTorch = capabilities.torch === true;
-  let stopped = false; let scanning = false; let timer: number | null = null;
-  const stop = () => {
-    stopped = true;
-    if (timer !== null) window.clearTimeout(timer);
-    stream.getTracks().forEach((item) => item.stop());
-    if (video.srcObject === stream) video.srcObject = null;
-  };
-  const scanNextFrame = async () => {
-    if (stopped || scanning) return;
-    if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || !video.videoWidth || !video.videoHeight) {
-      timer = window.setTimeout(() => void scanNextFrame(), SCAN_DELAY_MS); return;
+  let stream: MediaStream | null = null;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: {
+        facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, max: 60 },
+      },
+    });
+    const track = stream.getVideoTracks()[0];
+    if (!track) throw new DOMException('Не найдена камера', 'NotFoundError');
+
+    const capabilities = track.getCapabilities() as MediaTrackCapabilities & { focusMode?: string[]; torch?: boolean };
+    let continuousFocusRequested = false;
+    if (capabilities.focusMode?.includes('continuous')) {
+      try { await track.applyConstraints({ advanced: [{ focusMode: 'continuous' } as MediaTrackConstraintSet] }); continuousFocusRequested = true; } catch { /* optional */ }
     }
-    scanning = true;
-    try {
-      drawScanVariant(canvas, video, video.videoWidth, video.videoHeight, 0);
-      let value: string | null = null;
-      if (detector) {
-        try { value = (await detector.detect(canvas)).find((match) => match.rawValue.trim())?.rawValue.trim() ?? null; } catch { /* ZXing fallback */ }
+
+    // iOS decides whether an inline stream may play from the element state at
+    // the moment srcObject is attached. Set every relevant property first.
+    video.muted = true;
+    video.defaultMuted = true;
+    video.autoplay = true;
+    video.playsInline = true;
+    video.setAttribute('muted', '');
+    video.setAttribute('playsinline', '');
+    video.setAttribute('webkit-playsinline', '');
+    video.srcObject = stream;
+
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const finish = (error?: Error) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        video.removeEventListener('playing', ready);
+        video.removeEventListener('loadeddata', ready);
+        video.removeEventListener('error', failed);
+        error ? reject(error) : resolve();
+      };
+      const ready = () => {
+        if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.videoWidth > 0 && video.videoHeight > 0) finish();
+      };
+      const failed = () => finish(new Error('Камера не передала изображение'));
+      const timer = window.setTimeout(() => failed(), 8000);
+      video.addEventListener('playing', ready);
+      video.addEventListener('loadeddata', ready);
+      video.addEventListener('error', failed, { once: true });
+      void video.play().then(ready).catch(() => failed());
+      ready();
+    });
+
+    const [reader, detector] = await Promise.all([createQrReader(), Promise.resolve(nativeQrDetector())]);
+    const canvas = createCanvas(1, 1);
+    const supportsTorch = capabilities.torch === true;
+    let stopped = false; let scanning = false; let timer: number | null = null;
+    const stop = () => {
+      stopped = true;
+      if (timer !== null) window.clearTimeout(timer);
+      stream?.getTracks().forEach((item) => item.stop());
+      if (video.srcObject === stream) video.srcObject = null;
+    };
+    const scanNextFrame = async () => {
+      if (stopped || scanning) return;
+      if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || !video.videoWidth || !video.videoHeight) {
+        timer = window.setTimeout(() => void scanNextFrame(), SCAN_DELAY_MS); return;
       }
-      if (!value) {
-        try { value = reader.decodeFromCanvas(canvas).getText().trim() || null; } catch { /* next frame */ }
-      }
-      if (value && !stopped) { stop(); onQr(value); return; }
-    } finally { scanning = false; }
-    if (!stopped) timer = window.setTimeout(() => void scanNextFrame(), SCAN_DELAY_MS);
-  };
-  onReady({ width: video.videoWidth, height: video.videoHeight, supportsTorch, continuousFocusRequested });
-  void scanNextFrame();
-  return {
-    stop,
-    supportsTorch,
-    setTorch: async (enabled) => {
-      if (!supportsTorch) return;
-      await track.applyConstraints({ advanced: [{ torch: enabled } as MediaTrackConstraintSet] });
-    },
-  };
+      scanning = true;
+      try {
+        drawScanVariant(canvas, video, video.videoWidth, video.videoHeight, 0);
+        let value: string | null = null;
+        if (detector) {
+          try { value = (await detector.detect(canvas)).find((match) => match.rawValue.trim())?.rawValue.trim() ?? null; } catch { /* ZXing fallback */ }
+        }
+        if (!value) {
+          try { value = reader.decodeFromCanvas(canvas).getText().trim() || null; } catch { /* next frame */ }
+        }
+        if (value && !stopped) { stop(); onQr(value); return; }
+      } finally { scanning = false; }
+      if (!stopped) timer = window.setTimeout(() => void scanNextFrame(), SCAN_DELAY_MS);
+    };
+    onReady({ width: video.videoWidth, height: video.videoHeight, supportsTorch, continuousFocusRequested });
+    void scanNextFrame();
+    return {
+      stop,
+      supportsTorch,
+      setTorch: async (enabled) => {
+        if (!supportsTorch) return;
+        await track.applyConstraints({ advanced: [{ torch: enabled } as MediaTrackConstraintSet] });
+      },
+    };
+  } catch (error) {
+    stream?.getTracks().forEach((item) => item.stop());
+    if (video.srcObject === stream) video.srcObject = null;
+    throw error;
+  }
 }
