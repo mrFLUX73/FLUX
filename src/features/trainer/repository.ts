@@ -31,6 +31,11 @@ export type TrainerMessage = {
 export type TrainerConnectionRequestOutcome = 'created' | 'already_pending' | 'already_active';
 export type TrainerConnectionErrorReason = 'invalid_code' | 'own_trainer' | 'active_trainer_exists';
 
+export type TrainerInvitePreview = {
+  trainerName: string;
+  connectionState: 'available' | 'already_pending' | 'already_active' | 'active_other';
+};
+
 export class TrainerConnectionError extends Error {
   constructor(public readonly reason: TrainerConnectionErrorReason) {
     super(reason);
@@ -150,10 +155,25 @@ export async function requestTrainerConnection(userId: string, code: string) {
   return { linkId: row.link_id, status: row.status, outcome: row.outcome };
 }
 
+export async function loadTrainerInvitePreview(userId: string, code: string): Promise<TrainerInvitePreview> {
+  const client = await getSupabaseClientForUser(userId);
+  const { data, error } = await client.rpc('get_trainer_invite_preview', { p_invite_code: code });
+  if (error) throw toTrainerConnectionError(error);
+  const row = (data as { trainer_name?: string | null; connection_state?: TrainerInvitePreview['connectionState'] }[] | null)?.[0];
+  if (!row?.trainer_name || !row.connection_state) throw new Error('Не удалось открыть приглашение');
+  return { trainerName: row.trainer_name, connectionState: row.connection_state };
+}
+
 export async function respondToTrainerConnection(userId: string, linkId: string, accept: boolean) {
   const client = await getSupabaseClientForUser(userId);
   const { error } = await client.rpc('respond_to_trainer_connection', { p_link_id: linkId, p_accept: accept });
   if (error) throw toTrainerConnectionError(error);
+}
+
+export async function revokeTrainerConnection(userId: string, linkId: string) {
+  const client = await getSupabaseClientForUser(userId);
+  const { error } = await client.rpc('revoke_trainer_connection', { p_link_id: linkId });
+  if (error) throw error;
 }
 
 export async function loadTrainerMessages(userId: string, linkId: string) {

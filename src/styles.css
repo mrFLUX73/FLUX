@@ -535,6 +535,36 @@ button:active { transform: scale(.97); }
 .flux-connect-trainer > div { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 10px; }
 .flux-connect-trainer [data-slot='input'] { height: 38px; padding-inline: 10px; border-radius: 11px; font-size: 10px; letter-spacing: .06em; }
 .flux-connect-trainer [data-slot='button'] { min-height: 38px; padding: 0 10px; border-radius: 11px; font-size: 8px; }
+.flux-trainer-scan-button { width: 100%; margin-top: 10px; }
+.flux-trainer-scan-button svg { width: 14px; height: 14px; }
+.flux-trainer-revoke-button { width: 100%; margin-top: 10px; color: var(--flux-muted); }
+.flux-trainer-invite-drawer, .flux-trainer-invite-confirm, .flux-trainer-qr-scanner, .flux-trainer-revoke-confirm { max-height: min(760px, calc(100dvh - 18px)); }
+.flux-trainer-invite-body, .flux-trainer-invite-confirm-body { display: grid; gap: 14px; padding: 16px; overflow-y: auto; }
+.flux-trainer-invite-qr { width: min(100%, 254px); aspect-ratio: 1; justify-self: center; padding: 10px; border-radius: 22px; background: #fff; object-fit: contain; }
+.flux-trainer-invite-qr.is-loading { display: grid; place-items: center; color: var(--flux-primary); }
+.flux-trainer-invite-body section { text-align: center; }
+.flux-trainer-invite-body section small, .flux-trainer-invite-code small, .flux-trainer-invite-person small { display: block; color: var(--flux-muted); font-size: 9px; }
+.flux-trainer-invite-body section strong { display: block; margin-top: 4px; color: var(--flux-ink); font-size: 17px; }
+.flux-trainer-invite-body section p, .flux-trainer-invite-confirm-body > p { margin: 7px 0 0; color: var(--flux-muted); font-size: 10px; line-height: 1.45; }
+.flux-trainer-invite-code { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px; border: 1px solid var(--flux-border); border-radius: 16px; background: var(--flux-soft-2); }
+.flux-trainer-invite-code strong { display: block; margin-top: 3px; color: var(--flux-ink); font-size: 15px; letter-spacing: .075em; }
+.flux-trainer-invite-code button { width: 38px; height: 38px; display: grid; flex: 0 0 auto; place-items: center; border: 0; border-radius: 12px; background: var(--flux-card); color: var(--flux-primary); }
+.flux-trainer-invite-code button svg, .flux-trainer-invite-link svg { width: 16px; height: 16px; }
+.flux-trainer-invite-link { display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 7px; border: 0; background: transparent; color: var(--flux-muted); font-size: 9px; }
+.flux-trainer-invite-person { display: grid; grid-template-columns: 38px 1fr; gap: 10px; align-items: center; padding: 12px; border-radius: 16px; background: var(--flux-soft); }
+.flux-trainer-invite-person > svg { width: 38px; height: 38px; padding: 10px; border-radius: 13px; background: var(--flux-card); color: var(--flux-primary); }
+.flux-trainer-invite-person i { font-style: normal; }
+.flux-trainer-invite-person strong { display: block; margin-top: 2px; color: var(--flux-ink); font-size: 13px; }
+.flux-trainer-invite-actions { display: flex; gap: 9px; padding: 16px; padding-top: 0; }
+.flux-trainer-invite-actions [data-slot='button'] { flex: 1; }
+.flux-trainer-invite-error { margin: 0; padding: 11px; border-radius: 13px; background: color-mix(in srgb, var(--flux-accent) 18%, var(--flux-soft)); color: var(--flux-ink); font-size: 10px; line-height: 1.45; }
+.flux-trainer-qr-scanner { --drawer-height: min(620px, calc(100dvh - 18px)); }
+.flux-trainer-qr-camera { position: relative; min-height: 280px; margin: 16px; overflow: hidden; border-radius: 21px; background: #08100b; }
+.flux-trainer-qr-camera video { width: 100%; height: 100%; min-height: 280px; object-fit: cover; }
+.flux-trainer-qr-camera > span, .flux-trainer-qr-camera > p { position: absolute; inset: 0; display: grid; place-items: center; gap: 8px; margin: 0; padding: 24px; background: color-mix(in srgb, #08100b 76%, transparent); color: #fff; font-size: 11px; text-align: center; }
+.flux-trainer-qr-camera > i { width: 64%; aspect-ratio: 1; position: absolute; top: 50%; left: 50%; border: 2px solid #fff; border-radius: 18px; box-shadow: 0 0 0 999px rgb(0 0 0 / 22%); transform: translate(-50%, -50%); }
+.flux-trainer-qr-torch, .flux-trainer-qr-close { margin: 0 16px 12px; }
+.flux-trainer-qr-close { width: calc(100% - 32px); }
 .flux-profile-sex-locked { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .flux-profile-sex-locked span, .flux-profile-sex-locked strong { display: block; }
 .flux-profile-sex-locked span { color: var(--flux-muted); font-size: 8px; }

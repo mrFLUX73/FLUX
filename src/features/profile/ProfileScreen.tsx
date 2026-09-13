@@ -1,4 +1,4 @@
-import { ArrowLeft, CalendarDays, Check, ChevronDown, ChevronRight, KeyRound, LogOut, MessageCircle, Pill, UsersRound, X } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Camera, Check, ChevronDown, ChevronRight, KeyRound, LogOut, MessageCircle, Pill, UsersRound, X } from 'lucide-react';
 import { useState, type CSSProperties } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -168,7 +168,9 @@ export function ProfileScreen({
   trainerLinks,
   trainerSaving,
   onChangeRole,
-  onConnectTrainer,
+  onBeginTrainerInvite,
+  onScanTrainerInvite,
+  onRevokeTrainer,
 }: {
   account: FluxAccount;
   avatar: DefaultAvatar;
@@ -185,7 +187,9 @@ export function ProfileScreen({
   trainerLinks: TrainerLink[];
   trainerSaving: boolean;
   onChangeRole: (role: 'user' | 'trainer') => void;
-  onConnectTrainer: (code: string) => void;
+  onBeginTrainerInvite: (code: string) => void;
+  onScanTrainerInvite: () => void;
+  onRevokeTrainer: (link: TrainerLink) => void;
 }) {
   const [buildInfoOpen, setBuildInfoOpen] = useState(false);
   const [buildInfoView, setBuildInfoView] = useState<'overview' | 'details'>('overview');
@@ -386,7 +390,7 @@ export function ProfileScreen({
               <button type="button" className={account.role === 'trainer' ? 'is-selected' : ''} onClick={() => onChangeRole('trainer')} disabled={trainerSaving}><span><strong>Тренер</strong><small>Клиенты, планы и контроль выполнения</small></span>{account.role === 'trainer' && <Check />}</button>
             </div>
             {account.role === 'trainer' && <div className="flux-trainer-code"><span><KeyRound aria-hidden="true" /><i><small>Ваш код тренера</small><strong>{ownTrainerCode ?? 'Создаём код…'}</strong></i></span><p>Передайте его клиенту. Заявка появится в разделе «Клиенты» и потребует вашего подтверждения.</p></div>}
-            {account.role === 'user' && <div className="flux-connect-trainer"><span><strong>Мой тренер</strong><small>{ownTrainer?.status === 'active' ? `${ownTrainer.trainerName} · связь активна` : ownTrainer?.status === 'pending' ? `${ownTrainer.trainerName} · ожидаем подтверждения` : 'Введите код тренера, чтобы отправить запрос.'}</small></span>{!ownTrainer && <div><Input value={trainerCodeInput} onChange={(event) => setTrainerCodeInput(event.target.value.toUpperCase())} placeholder="TR-XXXXXXXX" maxLength={11} aria-label="Код тренера" /><Button type="button" variant="secondary" disabled={trainerSaving || trainerCodeInput.trim().length < 11} onClick={() => onConnectTrainer(trainerCodeInput)}>Отправить запрос</Button></div>}</div>}
+            {account.role === 'user' && <div className="flux-connect-trainer"><span><strong>Мой тренер</strong><small>{ownTrainer?.status === 'active' ? `${ownTrainer.trainerName} · связь активна` : ownTrainer?.status === 'pending' ? `${ownTrainer.trainerName} · ожидаем подтверждения` : 'Подключитесь по QR-коду или коду тренера.'}</small></span>{!ownTrainer ? <><Button type="button" variant="secondary" className="flux-trainer-scan-button" onClick={onScanTrainerInvite} disabled={trainerSaving}><Camera /> Сканировать QR</Button><div><Input value={trainerCodeInput} onChange={(event) => setTrainerCodeInput(event.target.value.toUpperCase())} placeholder="TR-XXXXXXXX" maxLength={11} aria-label="Код тренера" /><Button type="button" variant="secondary" disabled={trainerSaving || trainerCodeInput.trim().length < 11} onClick={() => onBeginTrainerInvite(trainerCodeInput)}>Продолжить</Button></div></> : ownTrainer.status === 'active' ? <Button type="button" variant="ghost" className="flux-trainer-revoke-button" onClick={() => onRevokeTrainer(ownTrainer)} disabled={trainerSaving}>Отключиться от тренера</Button> : null}</div>}
           </>}
         </ProfileAccordion>
 

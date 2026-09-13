@@ -18,6 +18,7 @@ type NativeBarcodeDetector = { detect: (source: ImageBitmapSource) => Promise<Na
 type NativeBarcodeDetectorConstructor = new (options?: { formats?: string[] }) => NativeBarcodeDetector;
 
 const SCANNER_FORMATS = ['ean_13', 'ean_8', 'upc_a', 'upc_e'] as const;
+const QR_SCANNER_FORMATS = ['qr_code'] as const;
 const SCAN_DELAY_MS = 240;
 const MAX_FRAME_WIDTH = 1440;
 
@@ -39,6 +40,16 @@ function nativeDetector(): NativeBarcodeDetector | null {
   if (!Detector) return null;
   try {
     return new Detector({ formats: [...SCANNER_FORMATS] });
+  } catch {
+    return null;
+  }
+}
+
+function nativeQrDetector(): NativeBarcodeDetector | null {
+  const Detector = (window as Window & { BarcodeDetector?: NativeBarcodeDetectorConstructor }).BarcodeDetector;
+  if (!Detector) return null;
+  try {
+    return new Detector({ formats: [...QR_SCANNER_FORMATS] });
   } catch {
     return null;
   }
@@ -129,6 +140,16 @@ async function createReader(): Promise<BrowserMultiFormatReader> {
     delayBetweenScanSuccess: 500,
   });
   reader.possibleFormats = [BarcodeFormat.EAN_13, BarcodeFormat.EAN_8, BarcodeFormat.UPC_A, BarcodeFormat.UPC_E];
+  return reader;
+}
+
+async function createQrReader(): Promise<BrowserMultiFormatReader> {
+  const { BarcodeFormat, BrowserMultiFormatReader } = await import('@zxing/browser');
+  const reader = new BrowserMultiFormatReader(undefined, {
+    delayBetweenScanAttempts: SCAN_DELAY_MS,
+    delayBetweenScanSuccess: 500,
+  });
+  reader.possibleFormats = [BarcodeFormat.QR_CODE];
   return reader;
 }
 
@@ -244,6 +265,76 @@ export async function startBarcodeScanner({
   });
   void scanNextFrame();
 
+  return {
+    stop,
+    supportsTorch,
+    setTorch: async (enabled) => {
+      if (!supportsTorch) return;
+      await track.applyConstraints({ advanced: [{ torch: enabled } as MediaTrackConstraintSet] });
+    },
+  };
+}
+
+// Trainer invites use a separate QR mode. It intentionally returns the raw
+// payload so it never passes through EAN/UPC validation used by food scans.
+export async function startTrainerInviteQrScanner({
+  video,
+  onQr,
+  onReady,
+}: {
+  video: HTMLVideoElement;
+  onQr: (value: string) => void;
+  onReady: (state: ScannerReadyState) => void;
+}): Promise<BarcodeScannerSession> {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: false,
+    video: {
+      facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, max: 60 },
+    },
+  });
+  const track = stream.getVideoTracks()[0];
+  if (!track) {
+    stream.getTracks().forEach((item) => item.stop());
+    throw new DOMException('Не найдена камера', 'NotFoundError');
+  }
+  const capabilities = track.getCapabilities() as MediaTrackCapabilities & { focusMode?: string[]; torch?: boolean };
+  let continuousFocusRequested = false;
+  if (capabilities.focusMode?.includes('continuous')) {
+    try { await track.applyConstraints({ advanced: [{ focusMode: 'continuous' } as MediaTrackConstraintSet] }); continuousFocusRequested = true; } catch { /* optional */ }
+  }
+  video.srcObject = stream; video.muted = true; video.playsInline = true;
+  await video.play();
+  const [reader, detector] = await Promise.all([createQrReader(), Promise.resolve(nativeQrDetector())]);
+  const canvas = createCanvas(1, 1);
+  const supportsTorch = capabilities.torch === true;
+  let stopped = false; let scanning = false; let timer: number | null = null;
+  const stop = () => {
+    stopped = true;
+    if (timer !== null) window.clearTimeout(timer);
+    stream.getTracks().forEach((item) => item.stop());
+    if (video.srcObject === stream) video.srcObject = null;
+  };
+  const scanNextFrame = async () => {
+    if (stopped || scanning) return;
+    if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || !video.videoWidth || !video.videoHeight) {
+      timer = window.setTimeout(() => void scanNextFrame(), SCAN_DELAY_MS); return;
+    }
+    scanning = true;
+    try {
+      drawScanVariant(canvas, video, video.videoWidth, video.videoHeight, 0);
+      let value: string | null = null;
+      if (detector) {
+        try { value = (await detector.detect(canvas)).find((match) => match.rawValue.trim())?.rawValue.trim() ?? null; } catch { /* ZXing fallback */ }
+      }
+      if (!value) {
+        try { value = reader.decodeFromCanvas(canvas).getText().trim() || null; } catch { /* next frame */ }
+      }
+      if (value && !stopped) { stop(); onQr(value); return; }
+    } finally { scanning = false; }
+    if (!stopped) timer = window.setTimeout(() => void scanNextFrame(), SCAN_DELAY_MS);
+  };
+  onReady({ width: video.videoWidth, height: video.videoHeight, supportsTorch, continuousFocusRequested });
+  void scanNextFrame();
   return {
     stop,
     supportsTorch,

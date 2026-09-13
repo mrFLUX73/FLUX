@@ -106,7 +106,9 @@ import {
 import { loadCachedProfileDraft, loadCachedProfileTheme, loadProfileDraft, saveProfileDraft } from './features/profile/repository';
 import { AdminFeedbackScreen, AdminWorkspace, FeedbackDrawer } from './features/feedback/FeedbackUI';
 import { countUnreadFeedbackReplies, loadMyFeedback, type FeedbackItem } from './features/feedback/repository';
-import { countUnreadTrainerMessages, loadMyTrainerCode, loadTrainerClientOverview, loadTrainerHub, loadTrainerInbox, loadTrainerMessages, markTrainerMessagesSeen, requestTrainerConnection, respondToTrainerConnection, sendTrainerMessage, setAccountRole, TrainerConnectionError, type TrainerClientOverview, type TrainerInboxLink, type TrainerLink, type TrainerMessage } from './features/trainer/repository';
+import { countUnreadTrainerMessages, loadMyTrainerCode, loadTrainerClientOverview, loadTrainerHub, loadTrainerInbox, loadTrainerInvitePreview, loadTrainerMessages, markTrainerMessagesSeen, requestTrainerConnection, respondToTrainerConnection, revokeTrainerConnection, sendTrainerMessage, setAccountRole, TrainerConnectionError, type TrainerClientOverview, type TrainerInboxLink, type TrainerInvitePreview, type TrainerLink, type TrainerMessage } from './features/trainer/repository';
+import { clearPendingTrainerInvite, normalizeTrainerInvite, parseTrainerInviteQr, readInviteFromLocation, readPendingTrainerInvite, savePendingTrainerInvite } from './features/trainer/invite';
+import { TrainerInviteConfirmationDrawer, TrainerInviteDrawer, TrainerQrScannerDrawer, TrainerRevokeConfirmationDrawer } from './features/trainer/TrainerInviteUI';
 import {
   MEAL_KINDS,
   type MealEntry,
@@ -1662,20 +1664,24 @@ function TrainerClientsScreen({
   onRespond,
   onOpenClient,
   onOpenChat,
+  onInvite,
+  onRevoke,
 }: {
   links: TrainerLink[];
   loading: boolean;
   onRespond: (link: TrainerLink, accept: boolean) => void;
   onOpenClient: (link: TrainerLink) => void;
   onOpenChat: (link: TrainerLink) => void;
+  onInvite: () => void;
+  onRevoke: (link: TrainerLink) => void;
 }) {
   const pending = links.filter((link) => link.status === 'pending');
   const active = links.filter((link) => link.status === 'active');
   return (
     <>
-      <section className="flux-trainer-dashboard-hero"><span className="flux-rhythm-icon"><UsersRound /></span><div><small>Кабинет тренера</small><strong>Мои клиенты</strong><p>{active.length ? `${active.length} ${active.length === 1 ? 'активный клиент' : active.length < 5 ? 'активных клиента' : 'активных клиентов'} сейчас` : 'Когда клиент подтвердит связь, его прогресс появится здесь.'}</p></div></section>
+      <section className="flux-trainer-dashboard-hero"><span className="flux-rhythm-icon"><UsersRound /></span><div><small>Кабинет тренера</small><strong>Мои клиенты</strong><p>{active.length ? `${active.length} ${active.length === 1 ? 'активный клиент' : active.length < 5 ? 'активных клиента' : 'активных клиентов'} сейчас` : 'Когда клиент подтвердит связь, его прогресс появится здесь.'}</p></div><Button type="button" variant="secondary" size="sm" onClick={onInvite}>Пригласить клиента</Button></section>
       {pending.length > 0 && <section className="flux-trainer-client-section"><div className="flux-section-heading"><h2>Ожидают подтверждения</h2><span>{pending.length}</span></div>{pending.map((link) => <article key={link.id} className="flux-client-card is-pending"><span className="flux-avatar-placeholder">{link.clientName.slice(0, 1).toUpperCase()}</span><div><strong>{link.clientName}</strong><small>Хочет подключиться к вам в FLUX</small></div><aside><Button size="sm" onClick={() => onRespond(link, true)}>Принять</Button><button type="button" onClick={() => onRespond(link, false)} aria-label={`Отклонить заявку ${link.clientName}`}>×</button></aside></article>)}</section>}
-      <section className="flux-trainer-client-section"><div className="flux-section-heading"><h2>Активные клиенты</h2><span>{active.length}</span></div>{loading ? <p className="flux-trainer-empty">Загружаем связи…</p> : active.length ? active.map((link) => <article key={link.id} className="flux-client-card is-active" onClick={() => onOpenClient(link)}><span className="flux-avatar-placeholder">{link.clientName.slice(0, 1).toUpperCase()}</span><div><strong>{link.clientName}</strong><small>Открыть рацион, ритм и историю тренировок.</small></div><button type="button" onClick={(event) => { event.stopPropagation(); onOpenChat(link); }} aria-label={`Написать ${link.clientName}`}><MessageCircle /></button><ChevronRight /></article>) : <p className="flux-trainer-empty">Пока никого. Передайте свой код тренера из профиля — клиент отправит заявку, а вы её подтвердите здесь.</p>}</section>
+      <section className="flux-trainer-client-section"><div className="flux-section-heading"><h2>Активные клиенты</h2><span>{active.length}</span></div>{loading ? <p className="flux-trainer-empty">Загружаем связи…</p> : active.length ? active.map((link) => <article key={link.id} className="flux-client-card is-active" onClick={() => onOpenClient(link)}><span className="flux-avatar-placeholder">{link.clientName.slice(0, 1).toUpperCase()}</span><div><strong>{link.clientName}</strong><small>Открыть рацион, ритм и историю тренировок.</small></div><button type="button" onClick={(event) => { event.stopPropagation(); onOpenChat(link); }} aria-label={`Написать ${link.clientName}`}><MessageCircle /></button><button type="button" onClick={(event) => { event.stopPropagation(); onRevoke(link); }} aria-label={`Завершить работу с ${link.clientName}`}><X /></button><ChevronRight /></article>) : <p className="flux-trainer-empty">Пока никого. Передайте своё приглашение FLUX — клиент отправит заявку, а вы её подтвердите здесь.</p>}</section>
     </>
   );
 }
@@ -1934,6 +1940,14 @@ export default function App() {
   const [trainerCode, setTrainerCode] = useState<string | null>(null);
   const [trainerHubLoading, setTrainerHubLoading] = useState(false);
   const [trainerSaving, setTrainerSaving] = useState(false);
+  const [trainerInviteOpen, setTrainerInviteOpen] = useState(false);
+  const [trainerInviteCode, setTrainerInviteCode] = useState<string | null>(() => readInviteFromLocation() ?? readPendingTrainerInvite());
+  const [trainerInvitePreview, setTrainerInvitePreview] = useState<TrainerInvitePreview | null>(null);
+  const [trainerInvitePreviewOpen, setTrainerInvitePreviewOpen] = useState(false);
+  const [trainerInvitePreviewLoading, setTrainerInvitePreviewLoading] = useState(false);
+  const [trainerInvitePreviewError, setTrainerInvitePreviewError] = useState('');
+  const [trainerQrScannerOpen, setTrainerQrScannerOpen] = useState(false);
+  const [trainerRevokeLink, setTrainerRevokeLink] = useState<TrainerLink | null>(null);
   const [trainerChatLink, setTrainerChatLink] = useState<TrainerLink | null>(null);
   const [trainerChatOrigin, setTrainerChatOrigin] = useState<'inbox' | 'today' | 'clients' | 'client-overview'>('inbox');
   const [clientOverviewLink, setClientOverviewLink] = useState<TrainerLink | null>(null);
@@ -1949,6 +1963,7 @@ export default function App() {
   const [supportInboxRevision, setSupportInboxRevision] = useState(0);
   const totalUnread = supportUnread + trainerUnread;
   const [defaultAvatar, setDefaultAvatar] = useState<DefaultAvatar>(startupProfileRef.current?.avatar ?? 'short-hair');
+  const inviteAutolaunchRef = useRef('');
   const profileEditRevision = useRef(0);
   const calorieTarget = positiveTarget(profileDraft?.dailyCalories, 2000);
   const macroTargets = {
@@ -2029,6 +2044,26 @@ export default function App() {
   }, [account?.id]);
 
   useEffect(() => { void refreshTrainerHub(); }, [refreshTrainerHub]);
+
+  useEffect(() => {
+    const inviteFromUrl = readInviteFromLocation();
+    if (!inviteFromUrl) return;
+    savePendingTrainerInvite(inviteFromUrl);
+    setTrainerInviteCode(inviteFromUrl);
+    const url = new URL(window.location.href);
+    url.searchParams.delete('invite');
+    window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+  }, []);
+
+  useEffect(() => {
+    if (sessionResolved && !account && trainerInviteCode) openAuth('signup');
+  }, [account?.id, sessionResolved, trainerInviteCode]);
+
+  useEffect(() => {
+    if (!account || !trainerInviteCode || inviteAutolaunchRef.current === trainerInviteCode) return;
+    inviteAutolaunchRef.current = trainerInviteCode;
+    void beginTrainerInvite(trainerInviteCode);
+  }, [account?.id, trainerInviteCode]);
 
   const refreshTrainerInbox = useCallback(async (userId = account?.id) => {
     if (!userId) {
@@ -2416,6 +2451,7 @@ export default function App() {
       } else {
         toast.add({ title: 'Заявка отправлена', description: 'Тренер должен подтвердить связь в своём кабинете.', type: 'success' });
       }
+      return true;
     } catch (error) {
       if (error instanceof TrainerConnectionError && error.reason === 'own_trainer') {
         toast.add({ title: 'Нельзя подключиться к себе', description: 'Нельзя подключиться к собственному аккаунту тренера.', type: 'error' });
@@ -2426,6 +2462,66 @@ export default function App() {
       } else {
         toast.add({ title: 'Не удалось отправить заявку', description: 'Проверьте соединение и попробуйте ещё раз.', type: 'error' });
       }
+      return false;
+    } finally {
+      setTrainerSaving(false);
+    }
+  }
+
+  function clearTrainerInviteFlow() {
+    inviteAutolaunchRef.current = '';
+    setTrainerInvitePreviewOpen(false);
+    setTrainerInvitePreview(null);
+    setTrainerInvitePreviewError('');
+    setTrainerInviteCode(null);
+    clearPendingTrainerInvite();
+  }
+
+  async function beginTrainerInvite(code: string) {
+    const normalized = normalizeTrainerInvite(code);
+    if (!normalized) {
+      toast.add({ title: 'Неверный код', description: 'Введите код в формате TR-XXXXXXXX или отсканируйте QR-приглашение FLUX.', type: 'error' });
+      return;
+    }
+    savePendingTrainerInvite(normalized);
+    setTrainerInviteCode(normalized);
+    if (!account) {
+      openAuth('signup');
+      return;
+    }
+    inviteAutolaunchRef.current = normalized;
+    setTrainerInvitePreview(null);
+    setTrainerInvitePreviewError('');
+    setTrainerInvitePreviewOpen(true);
+    setTrainerInvitePreviewLoading(true);
+    try {
+      setTrainerInvitePreview(await loadTrainerInvitePreview(account.id, normalized));
+    } catch (error) {
+      if (error instanceof TrainerConnectionError && error.reason === 'own_trainer') setTrainerInvitePreviewError('Нельзя подключиться к собственному аккаунту тренера.');
+      else if (error instanceof TrainerConnectionError && error.reason === 'invalid_code') setTrainerInvitePreviewError('Тренер с таким кодом не найден.');
+      else setTrainerInvitePreviewError('Не удалось проверить приглашение. Проверьте соединение и попробуйте ещё раз.');
+    } finally {
+      setTrainerInvitePreviewLoading(false);
+    }
+  }
+
+  async function confirmTrainerInvite() {
+    if (!trainerInviteCode) return;
+    if (await connectToTrainer(trainerInviteCode)) clearTrainerInviteFlow();
+  }
+
+  async function revokeTrainerLink(link: TrainerLink) {
+    if (!account || trainerSaving) return;
+    setTrainerSaving(true);
+    try {
+      await revokeTrainerConnection(account.id, link.id);
+      setTrainerRevokeLink(null);
+      if (trainerChatLink?.id === link.id) setTrainerChatLink(null);
+      if (clientOverviewLink?.id === link.id) setClientOverviewLink(null);
+      await Promise.all([refreshTrainerHub(account.id), refreshTrainerInbox(account.id), refreshUnreadFeedbackReplies()]);
+      toast.add({ title: 'Связь завершена', description: link.trainerId === account.id ? `${link.clientName} больше не отображается среди активных клиентов.` : `${link.trainerName} больше не имеет доступа как ваш тренер.`, type: 'success' });
+    } catch {
+      toast.add({ title: 'Не удалось завершить связь', description: 'Проверьте соединение и повторите попытку.', type: 'error' });
     } finally {
       setTrainerSaving(false);
     }
@@ -2912,7 +3008,7 @@ export default function App() {
               {tab === 'food' && <FoodScreen entries={entries} target={calorieTarget} selectedDay={selectedNutritionDay} onSelectDay={setSelectedNutritionDay} historyLoading={historyLoading} mode={nutritionMode} isConnecting={nutritionConnecting} isAuthenticated={Boolean(account)} onAdd={(meal) => openFood(meal ?? currentMeal())} onEdit={setEditingEntry} onRemove={removeEntry} onRepeat={openPreviousMeal} repeatLoadingMeal={repeatLoadingMeal} />}
               {tab === 'workouts' && <WorkoutsScreen onStart={() => setWorkoutOpen(true)} sessions={workoutSessions} />}
               {tab === 'progress' && <ProgressScreen />}
-              {tab === 'clients' && account?.role === 'trainer' && <TrainerClientsScreen links={trainerLinks.filter((link) => link.trainerId === account.id)} loading={trainerHubLoading} onRespond={(link, accept) => { void respondToClient(link, accept); }} onOpenClient={setClientOverviewLink} onOpenChat={(link) => openTrainerChat(link, 'clients')} />}
+              {tab === 'clients' && account?.role === 'trainer' && <TrainerClientsScreen links={trainerLinks.filter((link) => link.trainerId === account.id)} loading={trainerHubLoading} onRespond={(link, accept) => { void respondToClient(link, accept); }} onOpenClient={setClientOverviewLink} onOpenChat={(link) => openTrainerChat(link, 'clients')} onInvite={() => setTrainerInviteOpen(true)} onRevoke={setTrainerRevokeLink} />}
               {tab === 'admin' && account?.isAdmin && <AdminFeedbackScreen userId={account.id} />}
             </div>
             <nav className={`flux-bottom-nav${account?.isAdmin || account?.role === 'trainer' ? ' has-admin' : ''}`} aria-label="Основная навигация">{navItems.map((item) => { const Icon = item.icon; return <button key={item.id} type="button" className={tab === item.id ? 'is-active' : ''} onClick={() => setTab(item.id)} aria-current={tab === item.id ? 'page' : undefined}><Icon /><span>{item.label}</span></button>; })}</nav>
@@ -2938,7 +3034,9 @@ export default function App() {
               trainerLinks={trainerLinks}
               trainerSaving={trainerSaving}
               onChangeRole={(role) => { void changeTrainerRole(role); }}
-              onConnectTrainer={(code) => { void connectToTrainer(code); }}
+              onBeginTrainerInvite={(code) => { void beginTrainerInvite(code); }}
+              onScanTrainerInvite={() => setTrainerQrScannerOpen(true)}
+              onRevokeTrainer={setTrainerRevokeLink}
             />
           )}
           </>}
@@ -3005,6 +3103,10 @@ export default function App() {
       {account && <MessengerDrawer open={messengerOpen} onOpenChange={setMessengerOpen} userId={account.id} links={trainerInboxLinks} loading={trainerInboxLoading} error={trainerInboxError} supportUnread={supportUnread} supportRevision={supportInboxRevision} online={isOnline} onRetry={() => { void refreshTrainerInbox(); }} onOpenChat={(link) => openTrainerChat(link, 'inbox')} onOpenSupport={() => { setMessengerOpen(false); openFeedback(undefined, 'inbox'); }} />}
       {account && <TrainerChatDrawer open={Boolean(trainerChatLink)} onOpenChange={(open) => { if (!open) setTrainerChatLink(null); }} onBack={returnFromTrainerChat} backLabel={trainerChatOrigin === 'inbox' ? 'Назад к сообщениям' : trainerChatOrigin === 'client-overview' ? 'Назад к карточке клиента' : trainerChatOrigin === 'clients' ? 'Назад к клиентам' : 'Назад на главную'} userId={account.id} link={trainerChatLink} online={isOnline} onInboxChanged={() => { void refreshUnreadFeedbackReplies(); void refreshTrainerInbox(); }} />}
       {account && <ClientOverviewDrawer open={Boolean(clientOverviewLink)} onOpenChange={(open) => { if (!open) setClientOverviewLink(null); }} userId={account.id} link={clientOverviewLink} onOpenChat={() => { if (clientOverviewLink) openTrainerChat(clientOverviewLink, 'client-overview'); }} />}
+      {account && <TrainerInviteDrawer open={trainerInviteOpen} onOpenChange={setTrainerInviteOpen} trainerName={account.displayName || 'Тренер FLUX'} code={trainerCode} onNotice={(title, description, type = 'info') => toast.add({ title, description, type })} />}
+      <TrainerInviteConfirmationDrawer open={trainerInvitePreviewOpen} code={trainerInviteCode} preview={trainerInvitePreview} loading={trainerInvitePreviewLoading} error={trainerInvitePreviewError} onOpenChange={setTrainerInvitePreviewOpen} onConfirm={() => { void confirmTrainerInvite(); }} onCancel={clearTrainerInviteFlow} />
+      <TrainerQrScannerDrawer open={trainerQrScannerOpen} onOpenChange={setTrainerQrScannerOpen} onScanned={(value) => { setTrainerQrScannerOpen(false); const code = parseTrainerInviteQr(value); if (!code) { toast.add({ title: 'Неизвестный QR-код', description: 'Это не QR-код приглашения FLUX.', type: 'error' }); return; } void beginTrainerInvite(code); }} onNotice={(title, description, type = 'info') => toast.add({ title, description, type })} />
+      {account && <TrainerRevokeConfirmationDrawer open={Boolean(trainerRevokeLink)} link={trainerRevokeLink} userId={account.id} saving={trainerSaving} onOpenChange={(open) => { if (!open) setTrainerRevokeLink(null); }} onConfirm={() => { if (trainerRevokeLink) void revokeTrainerLink(trainerRevokeLink); }} />}
     </Toaster>
   );
 }
