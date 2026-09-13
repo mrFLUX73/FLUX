@@ -79,7 +79,7 @@ import {
   loadLocalEntriesForDay,
   loadLocalEntriesForToday,
   loadNutritionEntriesForDay,
-  loadPreviousMealEntries,
+  loadPreviousMeals,
   nutritionScopeForUser,
   persistLocalEntriesForToday,
   persistLocalProduct,
@@ -92,6 +92,7 @@ import {
   updateRemoteMealEntry,
   type NutritionMode,
   type NutritionStorageScope,
+  type PreviousMeal,
 } from './features/nutrition/repository';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabase';
 import {
@@ -970,20 +971,34 @@ function QuickAddDrawer({
 function RepeatMealDrawer({
   open,
   meal,
+  history,
+  step,
   entries,
   selectedIds,
+  loading,
+  error,
   saving,
   onOpenChange,
+  onBack,
+  onChoose,
+  onRetry,
   onToggle,
   onToggleAll,
   onConfirm,
 }: {
   open: boolean;
   meal: MealKind;
+  history: PreviousMeal[];
+  step: 'history' | 'products';
   entries: MealEntry[];
   selectedIds: Set<string>;
+  loading: boolean;
+  error: string | null;
   saving: boolean;
   onOpenChange: (open: boolean) => void;
+  onBack: () => void;
+  onChoose: (candidate: PreviousMeal) => void;
+  onRetry: () => void;
   onToggle: (entryId: string) => void;
   onToggleAll: () => void;
   onConfirm: () => void;
@@ -991,45 +1006,37 @@ function RepeatMealDrawer({
   const selectedEntries = entries.filter((entry) => selectedIds.has(entry.entryId));
   const selectedCalories = selectedEntries.reduce((sum, entry) => sum + entry.kcal, 0);
   const sourceDate = entries[0]
-    ? new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long' }).format(new Date(entries[0].eatenAt))
+    ? new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }).format(new Date(entries[0].eatenAt)).replace(' в ', ' · ')
     : '';
   const allSelected = entries.length > 0 && selectedEntries.length === entries.length;
+  const mealTitle = `Выберите ${mealInSentence(meal)}`;
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange} showSwipeHandle>
       <DrawerContent className="flux-drawer flux-repeat-drawer">
         <DrawerHeader className="flux-drawer-header">
-          <div>
-            <DrawerTitle>Повторить {mealInSentence(meal)}</DrawerTitle>
-            <DrawerDescription>{sourceDate ? `Последний приём · ${sourceDate}` : 'Выберите продукты'}</DrawerDescription>
-          </div>
+          <button type="button" className="flux-drawer-back" onClick={onBack} aria-label={step === 'history' ? 'Вернуться к питанию' : 'Вернуться к списку приёмов'}><ArrowLeft /></button>
+          <div><DrawerTitle>{step === 'history' ? mealTitle : `Повторить ${mealInSentence(meal)}`}</DrawerTitle><DrawerDescription>{step === 'history' ? 'Последние 10 приёмов' : sourceDate}</DrawerDescription></div>
         </DrawerHeader>
-        <div className="flux-repeat-toolbar">
-          <span>{entries.length} {productCountLabel(entries.length)}</span>
-          <button type="button" onClick={onToggleAll}>{allSelected ? 'Снять выбор' : 'Выбрать все'}</button>
-        </div>
-        <div className="flux-repeat-list">
-          {entries.map((entry) => {
+        {step === 'history' ? (
+          loading ? <div className="flux-repeat-state"><LoaderCircle className="is-spinning" /> Загружаем историю…</div>
+            : error ? <div className="flux-repeat-state is-error"><p>{error}</p><Button variant="secondary" onClick={onRetry}>Повторить</Button></div>
+              : history.length ? <div className="flux-repeat-history">{history.map((candidate) => {
+                const kcal = candidate.entries.reduce((sum, entry) => sum + entry.kcal, 0);
+                const preview = candidate.entries.map((entry) => entry.name).join(', ');
+                const date = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }).format(new Date(candidate.eatenAt)).replace(' в ', ' · ');
+                return <button type="button" className="flux-repeat-history-row" key={candidate.id} onClick={() => onChoose(candidate)}><span><small>{date}</small><strong title={preview}>{preview}</strong><em>{candidate.entries.length} {productCountLabel(candidate.entries.length)} · {kcal} ккал</em></span><ChevronRight /></button>;
+              })}</div>
+                : <div className="flux-repeat-state"><Clock3 /><strong>Пока нечего повторять</strong><p>Когда здесь появится {mealInSentence(meal)}, его можно будет быстро повторить.</p></div>
+        ) : <>
+          <div className="flux-repeat-toolbar"><span>{entries.length} {productCountLabel(entries.length)}</span><button type="button" onClick={onToggleAll}>{allSelected ? 'Снять выбор' : 'Выбрать все'}</button></div>
+          <div className="flux-repeat-list">{entries.map((entry) => {
             const selected = selectedIds.has(entry.entryId);
-            return (
-              <button
-                className={`flux-repeat-row${selected ? ' is-selected' : ''}`}
-                type="button"
-                key={entry.entryId}
-                aria-pressed={selected}
-                onClick={() => onToggle(entry.entryId)}
-              >
-                <span className="flux-repeat-check">{selected && <Check />}</span>
-                <span><strong>{entry.name}</strong><small>{entry.amount} {entry.unit} · {entry.brand}</small></span>
-                <b>{entry.kcal}<small> ккал</small></b>
-              </button>
-            );
-          })}
-        </div>
-        <div className="flux-repeat-summary"><span>Будет добавлено</span><strong>{selectedEntries.length} · {selectedCalories} ккал</strong></div>
-        <Button className="flux-main-button flux-repeat-confirm" size="lg" disabled={!selectedEntries.length || saving} onClick={onConfirm}>
-          {saving ? <LoaderCircle className="is-spinning" /> : <Clock3 />} Повторить приём пищи
-        </Button>
+            return <button className={`flux-repeat-row${selected ? ' is-selected' : ''}`} type="button" key={entry.entryId} aria-pressed={selected} onClick={() => onToggle(entry.entryId)}><span className="flux-repeat-check">{selected && <Check />}</span><span><strong>{entry.name}</strong><small>{entry.amount} {entry.unit} · {entry.brand}</small></span><b>{entry.kcal}<small> ккал</small></b></button>;
+          })}</div>
+          <div className="flux-repeat-summary"><span>Будет добавлено</span><strong>{selectedEntries.length} · {selectedCalories} ккал</strong></div>
+          <Button className="flux-main-button flux-repeat-confirm" size="lg" disabled={!selectedEntries.length || saving} onClick={onConfirm}>{saving ? <LoaderCircle className="is-spinning" /> : <Clock3 />} Повторить приём пищи</Button>
+        </>}
       </DrawerContent>
     </Drawer>
   );
@@ -1838,9 +1845,12 @@ export default function App() {
   const [quickAddMeal, setQuickAddMeal] = useState<MealKind>(() => currentMeal());
   const [repeatMealOpen, setRepeatMealOpen] = useState(false);
   const [repeatMeal, setRepeatMeal] = useState<MealKind>('Завтрак');
+  const [repeatHistory, setRepeatHistory] = useState<PreviousMeal[]>([]);
+  const [repeatStep, setRepeatStep] = useState<'history' | 'products'>('history');
   const [repeatCandidates, setRepeatCandidates] = useState<MealEntry[]>([]);
   const [repeatSelectedIds, setRepeatSelectedIds] = useState<Set<string>>(() => new Set());
   const [repeatLoadingMeal, setRepeatLoadingMeal] = useState<MealKind | null>(null);
+  const [repeatHistoryError, setRepeatHistoryError] = useState<string | null>(null);
   const [repeatSaving, setRepeatSaving] = useState(false);
   const repeatRequestRevision = useRef(0);
   const [editingEntry, setEditingEntry] = useState<MealEntry | null>(null);
@@ -2533,25 +2543,43 @@ export default function App() {
 
   async function openPreviousMeal(meal: MealKind) {
     const requestRevision = ++repeatRequestRevision.current;
+    setRepeatMeal(meal);
+    setRepeatHistory([]);
+    setRepeatCandidates([]);
+    setRepeatSelectedIds(new Set());
+    setRepeatStep('history');
+    setRepeatHistoryError(null);
+    setRepeatMealOpen(true);
     setRepeatLoadingMeal(meal);
     try {
-      const previousEntries = await loadPreviousMealEntries(diary.scope, meal);
+      const previousMeals = await loadPreviousMeals(diary.scope, meal);
       if (requestRevision !== repeatRequestRevision.current) return;
-      if (!previousEntries.length) {
-        toast.add({
-          title: `Предыдущий ${mealInSentence(meal)} не найден`,
-          description: 'Когда появится история питания, FLUX предложит повторить её здесь.',
-          type: 'info',
-        });
-        return;
-      }
-      setRepeatMeal(meal);
-      setRepeatCandidates(previousEntries);
-      setRepeatSelectedIds(new Set(previousEntries.map((entry) => entry.entryId)));
-      setRepeatMealOpen(true);
+      setRepeatHistory(previousMeals);
+    } catch {
+      if (requestRevision === repeatRequestRevision.current) setRepeatHistoryError('Не удалось загрузить прошлые приёмы. Проверьте соединение и попробуйте ещё раз.');
     } finally {
       if (requestRevision === repeatRequestRevision.current) setRepeatLoadingMeal(null);
     }
+  }
+
+  function choosePreviousMeal(candidate: PreviousMeal) {
+    setRepeatCandidates(candidate.entries);
+    setRepeatSelectedIds(new Set(candidate.entries.map((entry) => entry.entryId)));
+    setRepeatStep('products');
+  }
+
+  function closeRepeatMeal() {
+    repeatRequestRevision.current += 1;
+    setRepeatMealOpen(false);
+    setRepeatStep('history');
+  }
+
+  function backFromRepeatMeal() {
+    if (repeatStep === 'products') {
+      setRepeatStep('history');
+      return;
+    }
+    closeRepeatMeal();
   }
 
   function toggleRepeatedEntry(entryId: string) {
@@ -2845,10 +2873,17 @@ export default function App() {
       <RepeatMealDrawer
         open={repeatMealOpen}
         meal={repeatMeal}
+        history={repeatHistory}
+        step={repeatStep}
         entries={repeatCandidates}
         selectedIds={repeatSelectedIds}
+        loading={repeatLoadingMeal === repeatMeal}
+        error={repeatHistoryError}
         saving={repeatSaving}
-        onOpenChange={setRepeatMealOpen}
+        onOpenChange={(nextOpen) => { if (!nextOpen) closeRepeatMeal(); }}
+        onBack={backFromRepeatMeal}
+        onChoose={choosePreviousMeal}
+        onRetry={() => { void openPreviousMeal(repeatMeal); }}
         onToggle={toggleRepeatedEntry}
         onToggleAll={toggleAllRepeatedEntries}
         onConfirm={() => { void repeatPreviousMeal(); }}

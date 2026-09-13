@@ -32,6 +32,12 @@ export function isSameNutritionScope(left: NutritionStorageScope, right: Nutriti
 
 export type NutritionMode = 'local' | 'supabase';
 
+export type PreviousMeal = {
+  id: string;
+  eatenAt: string;
+  entries: MealEntry[];
+};
+
 export type NutritionBootstrap = {
   mode: NutritionMode;
   products: Product[];
@@ -256,17 +262,29 @@ export function loadLocalEntriesForDay(scope: NutritionStorageScope, dayKey: str
   return readAllLocalEntries(scope).filter((entry) => isSameLocalDay(entry.eatenAt, dateFromLocalDayKey(dayKey)));
 }
 
-function previousLocalMealEntries(scope: NutritionStorageScope, meal: MealKind) {
+function previousMealHistory(entries: MealEntry[], meal: MealKind): PreviousMeal[] {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const candidates = readAllLocalEntries(scope)
+  const grouped = new Map<string, MealEntry[]>();
+  entries
     .filter((entry) => entry.meal === meal && new Date(entry.eatenAt).getTime() < today.getTime())
-    .sort((left, right) => right.eatenAt.localeCompare(left.eatenAt));
-  if (!candidates.length) return [];
-  const latestDay = new Date(candidates[0].eatenAt);
-  return candidates
-    .filter((entry) => isSameLocalDay(entry.eatenAt, latestDay))
-    .sort((left, right) => left.eatenAt.localeCompare(right.eatenAt));
+    .forEach((entry) => {
+      const date = new Date(entry.eatenAt);
+      const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+      grouped.set(key, [...(grouped.get(key) ?? []), entry]);
+    });
+
+  return [...grouped.entries()]
+    .map(([id, candidateEntries]) => {
+      const sortedEntries = [...candidateEntries].sort((left, right) => left.eatenAt.localeCompare(right.eatenAt));
+      return { id, eatenAt: sortedEntries[0].eatenAt, entries: sortedEntries };
+    })
+    .sort((left, right) => right.eatenAt.localeCompare(left.eatenAt))
+    .slice(0, 10);
+}
+
+function previousLocalMeals(scope: NutritionStorageScope, meal: MealKind) {
+  return previousMealHistory(readAllLocalEntries(scope), meal);
 }
 
 export function countGuestDiaryEntries() {
@@ -675,34 +693,19 @@ export async function loadNutritionEntriesForDay(scope: NutritionStorageScope, d
   }
 }
 
-async function loadRemotePreviousMealEntries(client: SupabaseClient, userId: string, meal: MealKind) {
+async function loadRemotePreviousMeals(client: SupabaseClient, userId: string, meal: MealKind) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const { data: latestMeals, error: latestError } = await client
+  const { data: meals, error: mealsError } = await client
     .from('meals')
     .select('id,meal_type,eaten_at')
     .eq('user_id', userId)
     .eq('meal_type', mealToDatabase(meal))
     .lt('eaten_at', today.toISOString())
     .order('eaten_at', { ascending: false })
-    .limit(1);
-  if (latestError) throw latestError;
-  const latestMeal = latestMeals?.[0];
-  if (!latestMeal) return [];
-
-  const latestDate = new Date(latestMeal.eaten_at);
-  const dayStart = new Date(latestDate);
-  dayStart.setHours(0, 0, 0, 0);
-  const dayEnd = new Date(dayStart);
-  dayEnd.setDate(dayEnd.getDate() + 1);
-  const { data: meals, error: mealsError } = await client
-    .from('meals')
-    .select('id,meal_type,eaten_at')
-    .eq('user_id', userId)
-    .eq('meal_type', mealToDatabase(meal))
-    .gte('eaten_at', dayStart.toISOString())
-    .lt('eaten_at', dayEnd.toISOString())
-    .order('eaten_at');
+    // A meal item is stored as a row, so keep enough rows to form ten full
+    // meals even when a user has a long breakfast.
+    .limit(500);
   if (mealsError) throw mealsError;
   if (!meals?.length) return [];
 
@@ -725,7 +728,7 @@ async function loadRemotePreviousMealEntries(client: SupabaseClient, userId: str
   }));
   const mealMap = new Map(meals.map((candidate) => [candidate.id, candidate]));
 
-  return items.flatMap((item): MealEntry[] => {
+  const entries = items.flatMap((item): MealEntry[] => {
     const storedMeal = mealMap.get(item.meal_id);
     if (!storedMeal) return [];
     const product = item.product_id ? productMap.get(item.product_id) : undefined;
@@ -753,24 +756,31 @@ async function loadRemotePreviousMealEntries(client: SupabaseClient, userId: str
       eatenAt: storedMeal.eaten_at,
     }];
   });
+  return previousMealHistory(entries, meal);
 }
 
-export async function loadPreviousMealEntries(scope: NutritionStorageScope, meal: MealKind) {
-  const localEntries = previousLocalMealEntries(scope, meal);
-  if (!isSupabaseConfigured || scope.kind === 'guest') return localEntries;
+export async function loadPreviousMeals(scope: NutritionStorageScope, meal: MealKind) {
+  const localMeals = previousLocalMeals(scope, meal);
+  if (!isSupabaseConfigured || scope.kind === 'guest') return localMeals;
 
   try {
     const client = await getSupabaseClientForUser(scope.userId);
-    const remoteEntries = await loadRemotePreviousMealEntries(client, scope.userId, meal);
-    if (!remoteEntries.length) return localEntries;
+    const remoteMeals = await loadRemotePreviousMeals(client, scope.userId, meal);
+    if (!remoteMeals.length) return localMeals;
     const current = readLocalDiary(scope);
     const merged = new Map(current.entries.map((entry) => [entry.entryId, entry]));
-    for (const entry of remoteEntries) merged.set(entry.entryId, entry);
+    for (const remoteMeal of remoteMeals) for (const entry of remoteMeal.entries) merged.set(entry.entryId, entry);
     persistLocalDiary({ ...current, entries: [...merged.values()] });
-    return remoteEntries;
+    return remoteMeals;
   } catch {
-    return localEntries;
+    return localMeals;
   }
+}
+
+// Kept as a small compatibility wrapper for callers outside the repeat flow.
+export async function loadPreviousMealEntries(scope: NutritionStorageScope, meal: MealKind) {
+  const meals = await loadPreviousMeals(scope, meal);
+  return meals[0]?.entries ?? [];
 }
 
 async function deleteRemoteEntryById(client: SupabaseClient, entryId: string) {
