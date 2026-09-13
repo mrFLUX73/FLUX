@@ -1964,6 +1964,9 @@ export default function App() {
   const totalUnread = supportUnread + trainerUnread;
   const [defaultAvatar, setDefaultAvatar] = useState<DefaultAvatar>(startupProfileRef.current?.avatar ?? 'short-hair');
   const inviteAutolaunchRef = useRef('');
+  const trainerHubRefreshInFlight = useRef<Promise<void> | null>(null);
+  const trainerHubLastUpdatedAt = useRef(0);
+  const trainerHubLoadedFor = useRef<string | null>(null);
   const profileEditRevision = useRef(0);
   const calorieTarget = positiveTarget(profileDraft?.dailyCalories, 2000);
   const macroTargets = {
@@ -2023,27 +2026,48 @@ export default function App() {
     return () => { active = false; };
   }, [account?.id]);
 
-  const refreshTrainerHub = useCallback(async (userId = account?.id, role = account?.role) => {
+  const refreshTrainerHub = useCallback((userId = account?.id, role = account?.role, options: { quiet?: boolean } = {}): Promise<void> => {
     if (!userId) {
       setTrainerLinks([]);
       setTrainerCode(null);
-      return;
+      trainerHubLoadedFor.current = null;
+      return Promise.resolve();
     }
-    setTrainerHubLoading(true);
-    try {
-      const [links, ownCode] = await Promise.all([loadTrainerHub(userId), role === 'trainer' ? loadMyTrainerCode(userId) : Promise.resolve(null)]);
-      setTrainerLinks(links);
-      setTrainerCode(ownCode ?? links.find((link) => link.trainerId === userId)?.trainerCode ?? null);
-    } catch {
-      // A local-only session or a deployment before the trainer migration is
-      // still usable; the role section explains the unavailable action.
-      setTrainerLinks([]);
-    } finally {
-      setTrainerHubLoading(false);
-    }
-  }, [account?.id]);
+    if (trainerHubRefreshInFlight.current) return trainerHubRefreshInFlight.current;
+    if (options.quiet && trainerHubLoadedFor.current === userId && Date.now() - trainerHubLastUpdatedAt.current < 900) return Promise.resolve();
+
+    const showLoading = !options.quiet || trainerHubLoadedFor.current !== userId;
+    if (showLoading) setTrainerHubLoading(true);
+    const request = (async () => {
+      try {
+        const [links, ownCode] = await Promise.all([
+          loadTrainerHub(userId),
+          role === 'trainer' && !options.quiet ? loadMyTrainerCode(userId) : Promise.resolve(null),
+        ]);
+        trainerHubLoadedFor.current = userId;
+        trainerHubLastUpdatedAt.current = Date.now();
+        setTrainerLinks(links);
+        if (!options.quiet || role !== 'trainer') setTrainerCode(ownCode ?? links.find((link) => link.trainerId === userId)?.trainerCode ?? null);
+      } catch {
+        // A quiet refresh must not hide usable data just because a background
+        // reconnect briefly coincides with an unavailable network.
+        if (!options.quiet) setTrainerLinks([]);
+      } finally {
+        if (showLoading) setTrainerHubLoading(false);
+      }
+    })();
+    trainerHubRefreshInFlight.current = request;
+    void request.finally(() => { if (trainerHubRefreshInFlight.current === request) trainerHubRefreshInFlight.current = null; });
+    return request;
+  }, [account?.id, account?.role]);
 
   useEffect(() => { void refreshTrainerHub(); }, [refreshTrainerHub]);
+
+  useEffect(() => {
+    if (trainerHubLoadedFor.current !== account?.id) return;
+    if (trainerChatLink && !trainerLinks.some((link) => link.id === trainerChatLink.id && link.status === 'active')) setTrainerChatLink(null);
+    if (clientOverviewLink && !trainerLinks.some((link) => link.id === clientOverviewLink.id && link.status === 'active')) setClientOverviewLink(null);
+  }, [account?.id, clientOverviewLink, trainerChatLink, trainerLinks]);
 
   useEffect(() => {
     const inviteFromUrl = readInviteFromLocation();
@@ -2108,10 +2132,18 @@ export default function App() {
     let disposed = false;
     let trainerChannel: { unsubscribe: () => Promise<unknown> } | null = null;
     let supportChannel: { unsubscribe: () => Promise<unknown> } | null = null;
+    let connectionResyncTimer: number | null = null;
     const refreshMessenger = () => {
       void refreshTrainerInbox();
       void refreshUnreadFeedbackReplies();
       setSupportInboxRevision((value) => value + 1);
+    };
+    const scheduleConnectionResync = () => {
+      if (disposed || !navigator.onLine || connectionResyncTimer !== null) return;
+      connectionResyncTimer = window.setTimeout(() => {
+        connectionResyncTimer = null;
+        void refreshTrainerHub(account.id, account.role, { quiet: true });
+      }, 160);
     };
     void getSupabaseClient().then(async (client) => {
       if (!client || disposed) return;
@@ -2121,21 +2153,31 @@ export default function App() {
       trainerChannel = client.channel(`trainer-user:${account.id}`, { config: { private: true } })
         .on('broadcast', { event: 'INSERT' }, refreshMessenger)
         .on('broadcast', { event: 'UPDATE' }, refreshMessenger)
-        .subscribe();
+        .on('broadcast', { event: 'trainer_connection_changed' }, scheduleConnectionResync)
+        .subscribe((status) => { if (status === 'SUBSCRIBED') scheduleConnectionResync(); });
       supportChannel = client.channel(`feedback-user:${account.id}`, { config: { private: true } })
         .on('broadcast', { event: 'INSERT' }, refreshMessenger)
         .on('broadcast', { event: 'UPDATE' }, refreshMessenger)
         .subscribe();
     });
-    const onOnline = () => refreshMessenger();
+    const onOnline = () => { refreshMessenger(); scheduleConnectionResync(); };
+    const onVisible = () => { if (document.visibilityState === 'visible') scheduleConnectionResync(); };
+    const onPageShow = () => scheduleConnectionResync();
     window.addEventListener('online', onOnline);
+    window.addEventListener('focus', scheduleConnectionResync);
+    window.addEventListener('pageshow', onPageShow);
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
       disposed = true;
       window.removeEventListener('online', onOnline);
+      window.removeEventListener('focus', scheduleConnectionResync);
+      window.removeEventListener('pageshow', onPageShow);
+      document.removeEventListener('visibilitychange', onVisible);
+      if (connectionResyncTimer !== null) window.clearTimeout(connectionResyncTimer);
       if (trainerChannel) void trainerChannel.unsubscribe();
       if (supportChannel) void supportChannel.unsubscribe();
     };
-  }, [account?.id, refreshTrainerInbox, refreshUnreadFeedbackReplies]);
+  }, [account?.id, account?.role, refreshTrainerHub, refreshTrainerInbox, refreshUnreadFeedbackReplies]);
 
   function setEntries(update: MealEntry[] | ((current: MealEntry[]) => MealEntry[])) {
     setDiary((current) => {
