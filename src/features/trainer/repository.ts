@@ -28,6 +28,16 @@ export type TrainerMessage = {
   seenAt: string | null;
 };
 
+export type TrainerConnectionRequestOutcome = 'created' | 'already_pending' | 'already_active';
+export type TrainerConnectionErrorReason = 'invalid_code' | 'own_trainer' | 'active_trainer_exists';
+
+export class TrainerConnectionError extends Error {
+  constructor(public readonly reason: TrainerConnectionErrorReason) {
+    super(reason);
+    this.name = 'TrainerConnectionError';
+  }
+}
+
 export type TrainerClientOverview = {
   clientId: string;
   clientName: string;
@@ -56,6 +66,16 @@ type TrainerHubRow = {
   client_id: string;
   client_name: string;
 };
+
+function toTrainerConnectionError(error: unknown) {
+  const message = typeof error === 'object' && error !== null && 'message' in error
+    ? String(error.message)
+    : '';
+  if (message === 'Trainer code not found') return new TrainerConnectionError('invalid_code');
+  if (message === 'Cannot connect to your own trainer account') return new TrainerConnectionError('own_trainer');
+  if (message === 'Client already has an active trainer') return new TrainerConnectionError('active_trainer_exists');
+  return error;
+}
 
 export async function loadTrainerHub(userId: string) {
   const client = await getSupabaseClientForUser(userId);
@@ -119,14 +139,21 @@ export async function setAccountRole(userId: string, role: 'user' | 'trainer') {
 
 export async function requestTrainerConnection(userId: string, code: string) {
   const client = await getSupabaseClientForUser(userId);
-  const { error } = await client.rpc('request_trainer_connection', { p_invite_code: code });
-  if (error) throw error;
+  const { data, error } = await client.rpc('request_trainer_connection', { p_invite_code: code });
+  if (error) throw toTrainerConnectionError(error);
+  // A deployed client may briefly meet the previous RPC contract while the
+  // database migration is being applied. Keep that request usable; the new
+  // server-side rules take effect as soon as migration 0021 is present.
+  if (typeof data === 'string') return { linkId: data, status: 'pending' as const, outcome: 'created' as const };
+  const row = (data as { link_id?: string; status?: TrainerLink['status']; outcome?: TrainerConnectionRequestOutcome }[] | null)?.[0];
+  if (!row?.link_id || !row.status || !row.outcome) throw new Error('Не удалось обработать заявку');
+  return { linkId: row.link_id, status: row.status, outcome: row.outcome };
 }
 
 export async function respondToTrainerConnection(userId: string, linkId: string, accept: boolean) {
   const client = await getSupabaseClientForUser(userId);
   const { error } = await client.rpc('respond_to_trainer_connection', { p_link_id: linkId, p_accept: accept });
-  if (error) throw error;
+  if (error) throw toTrainerConnectionError(error);
 }
 
 export async function loadTrainerMessages(userId: string, linkId: string) {

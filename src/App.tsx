@@ -106,7 +106,7 @@ import {
 import { loadCachedProfileDraft, loadCachedProfileTheme, loadProfileDraft, saveProfileDraft } from './features/profile/repository';
 import { AdminFeedbackScreen, AdminWorkspace, FeedbackDrawer } from './features/feedback/FeedbackUI';
 import { countUnreadFeedbackReplies, loadMyFeedback, type FeedbackItem } from './features/feedback/repository';
-import { countUnreadTrainerMessages, loadMyTrainerCode, loadTrainerClientOverview, loadTrainerHub, loadTrainerInbox, loadTrainerMessages, markTrainerMessagesSeen, requestTrainerConnection, respondToTrainerConnection, sendTrainerMessage, setAccountRole, type TrainerClientOverview, type TrainerInboxLink, type TrainerLink, type TrainerMessage } from './features/trainer/repository';
+import { countUnreadTrainerMessages, loadMyTrainerCode, loadTrainerClientOverview, loadTrainerHub, loadTrainerInbox, loadTrainerMessages, markTrainerMessagesSeen, requestTrainerConnection, respondToTrainerConnection, sendTrainerMessage, setAccountRole, TrainerConnectionError, type TrainerClientOverview, type TrainerInboxLink, type TrainerLink, type TrainerMessage } from './features/trainer/repository';
 import {
   MEAL_KINDS,
   type MealEntry,
@@ -2407,11 +2407,25 @@ export default function App() {
     if (!account || trainerSaving) return;
     setTrainerSaving(true);
     try {
-      await requestTrainerConnection(account.id, code);
+      const result = await requestTrainerConnection(account.id, code);
       await refreshTrainerHub(account.id);
-      toast.add({ title: 'Заявка отправлена', description: 'Тренер должен подтвердить связь в своём кабинете.', type: 'success' });
-    } catch {
-      toast.add({ title: 'Код не найден', description: 'Проверьте код тренера и попробуйте ещё раз.', type: 'error' });
+      if (result.outcome === 'already_active') {
+        toast.add({ title: 'Связь уже активна', description: 'Ваш тренер уже подключён к FLUX.', type: 'info' });
+      } else if (result.outcome === 'already_pending') {
+        toast.add({ title: 'Заявка уже отправлена', description: 'Ожидаем подтверждения тренера.', type: 'info' });
+      } else {
+        toast.add({ title: 'Заявка отправлена', description: 'Тренер должен подтвердить связь в своём кабинете.', type: 'success' });
+      }
+    } catch (error) {
+      if (error instanceof TrainerConnectionError && error.reason === 'own_trainer') {
+        toast.add({ title: 'Нельзя подключиться к себе', description: 'Нельзя подключиться к собственному аккаунту тренера.', type: 'error' });
+      } else if (error instanceof TrainerConnectionError && error.reason === 'active_trainer_exists') {
+        toast.add({ title: 'Тренер уже подключён', description: 'У вас уже есть активный тренер.', type: 'error' });
+      } else if (error instanceof TrainerConnectionError && error.reason === 'invalid_code') {
+        toast.add({ title: 'Тренер не найден', description: 'Тренер с таким кодом не найден.', type: 'error' });
+      } else {
+        toast.add({ title: 'Не удалось отправить заявку', description: 'Проверьте соединение и попробуйте ещё раз.', type: 'error' });
+      }
     } finally {
       setTrainerSaving(false);
     }
@@ -2424,8 +2438,12 @@ export default function App() {
       await respondToTrainerConnection(account.id, link.id, accept);
       await refreshTrainerHub(account.id);
       toast.add({ title: accept ? 'Клиент подключён' : 'Заявка отклонена', description: accept ? `${link.clientName} теперь появится в вашем кабинете.` : 'Клиент не получит доступ к кабинету тренера.', type: 'success' });
-    } catch {
-      toast.add({ title: 'Не удалось обработать заявку', description: 'Проверьте соединение и повторите попытку.', type: 'error' });
+    } catch (error) {
+      if (error instanceof TrainerConnectionError && error.reason === 'active_trainer_exists') {
+        toast.add({ title: 'У клиента уже есть тренер', description: 'Подключить его к ещё одному тренеру нельзя.', type: 'error' });
+      } else {
+        toast.add({ title: 'Не удалось обработать заявку', description: 'Проверьте соединение и повторите попытку.', type: 'error' });
+      }
     } finally {
       setTrainerSaving(false);
     }
