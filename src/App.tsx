@@ -201,6 +201,18 @@ function formatMacro(value: number) {
   return (Math.round(value * 10) / 10).toLocaleString('ru-RU', { maximumFractionDigits: 1 });
 }
 
+function rescaleMealEntry(entry: MealEntry, amount: number): MealEntry {
+  const scale = amount / entry.amount;
+  return {
+    ...entry,
+    amount,
+    kcal: Math.round(entry.kcal * scale),
+    protein: Math.round(entry.protein * scale * 10) / 10,
+    fat: Math.round(entry.fat * scale * 10) / 10,
+    carbs: Math.round(entry.carbs * scale * 10) / 10,
+  };
+}
+
 function emptyManualProduct(name = ''): ManualProductDraft {
   return { name, brand: '', amount: '', unit: 'г', kcal: '', protein: '', fat: '', carbs: '' };
 }
@@ -968,6 +980,50 @@ function QuickAddDrawer({
   );
 }
 
+function RepeatMealAmountDrawer({
+  entry,
+  open,
+  onOpenChange,
+  onDone,
+}: {
+  entry: MealEntry | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onDone: (entryId: string, amount: number) => void;
+}) {
+  const [amount, setAmount] = useState<number | ''>(entry?.amount ?? '');
+
+  useEffect(() => {
+    if (open && entry) setAmount(entry.amount);
+  }, [entry, open]);
+
+  if (!entry) return null;
+  const numericAmount = typeof amount === 'number' && Number.isFinite(amount) ? amount : 0;
+  const amountStep = entry.unit === 'шт' ? 1 : 10;
+  const preview = numericAmount > 0 ? rescaleMealEntry(entry, numericAmount) : null;
+
+  return <Drawer open={open} onOpenChange={onOpenChange} showSwipeHandle>
+    <DrawerContent className="flux-drawer flux-repeat-amount-drawer">
+      <DrawerHeader className="flux-drawer-header"><div><DrawerTitle>{entry.name}</DrawerTitle><DrawerDescription>Изменить количество перед повторением</DrawerDescription></div></DrawerHeader>
+      <div className="flux-portion-view flux-repeat-amount-view">
+        <div className="flux-portion-caption"><span>Количество</span><span>Было: {entry.amount} {entry.unit}</span></div>
+        <div className="flux-portion-stepper">
+          <Button variant="secondary" size="icon-lg" onClick={() => setAmount((value) => Math.max(0, (Number(value) || entry.amount) - amountStep))} aria-label="Уменьшить количество"><Minus /></Button>
+          <label><input className="flux-portion-input" inputMode="decimal" value={amount} onChange={(event) => {
+            const raw = event.target.value.trim().replace(',', '.');
+            const parsed = Number(raw);
+            setAmount(raw === '' || !Number.isFinite(parsed) ? '' : parsed);
+          }} aria-label={`Количество, ${entry.unit}`} /><span>{entry.unit}</span></label>
+          <Button variant="secondary" size="icon-lg" onClick={() => setAmount((value) => (Number(value) || entry.amount) + amountStep)} aria-label="Увеличить количество"><Plus /></Button>
+        </div>
+        {preview && <div className="flux-nutrient-grid"><div><span>Калории</span><strong><MorphNumber value={preview.kcal} /></strong><small>ккал</small></div><div><span>Белки</span><strong><MorphNumber value={formatMacro(preview.protein)} /></strong><small>г</small></div><div><span>Жиры</span><strong><MorphNumber value={formatMacro(preview.fat)} /></strong><small>г</small></div><div><span>Углеводы</span><strong><MorphNumber value={formatMacro(preview.carbs)} /></strong><small>г</small></div></div>}
+        {!preview && <p className="flux-repeat-amount-error">Введите количество больше нуля.</p>}
+        <Button className="flux-main-button" size="lg" disabled={!preview} onClick={() => onDone(entry.entryId, numericAmount)}><Check /> Готово</Button>
+      </div>
+    </DrawerContent>
+  </Drawer>;
+}
+
 function RepeatMealDrawer({
   open,
   meal,
@@ -982,6 +1038,7 @@ function RepeatMealDrawer({
   onBack,
   onChoose,
   onRetry,
+  onEditAmount,
   onToggle,
   onToggleAll,
   onConfirm,
@@ -999,6 +1056,7 @@ function RepeatMealDrawer({
   onBack: () => void;
   onChoose: (candidate: PreviousMeal) => void;
   onRetry: () => void;
+  onEditAmount: (entry: MealEntry) => void;
   onToggle: (entryId: string) => void;
   onToggleAll: () => void;
   onConfirm: () => void;
@@ -1032,7 +1090,7 @@ function RepeatMealDrawer({
           <div className="flux-repeat-toolbar"><span>{entries.length} {productCountLabel(entries.length)}</span><button type="button" onClick={onToggleAll}>{allSelected ? 'Снять выбор' : 'Выбрать все'}</button></div>
           <div className="flux-repeat-list">{entries.map((entry) => {
             const selected = selectedIds.has(entry.entryId);
-            return <button className={`flux-repeat-row${selected ? ' is-selected' : ''}`} type="button" key={entry.entryId} aria-pressed={selected} onClick={() => onToggle(entry.entryId)}><span className="flux-repeat-check">{selected && <Check />}</span><span><strong>{entry.name}</strong><small>{entry.amount} {entry.unit} · {entry.brand}</small></span><b>{entry.kcal}<small> ккал</small></b></button>;
+            return <div className={`flux-repeat-row${selected ? ' is-selected' : ''}`} key={entry.entryId}><button className="flux-repeat-check" type="button" aria-pressed={selected} aria-label={`${selected ? 'Убрать' : 'Выбрать'} ${entry.name}`} onClick={() => onToggle(entry.entryId)}>{selected && <Check />}</button><button type="button" className="flux-repeat-edit" onClick={() => onEditAmount(entry)}><span><strong>{entry.name}</strong><small>{entry.amount} {entry.unit} · {entry.brand} <ChevronRight /></small></span><b>{entry.kcal}<small> ккал</small></b></button></div>;
           })}</div>
           <div className="flux-repeat-summary"><span>Будет добавлено</span><strong>{selectedEntries.length} · {selectedCalories} ккал</strong></div>
           <Button className="flux-main-button flux-repeat-confirm" size="lg" disabled={!selectedEntries.length || saving} onClick={onConfirm}>{saving ? <LoaderCircle className="is-spinning" /> : <Clock3 />} Повторить приём пищи</Button>
@@ -1849,6 +1907,7 @@ export default function App() {
   const [repeatStep, setRepeatStep] = useState<'history' | 'products'>('history');
   const [repeatCandidates, setRepeatCandidates] = useState<MealEntry[]>([]);
   const [repeatSelectedIds, setRepeatSelectedIds] = useState<Set<string>>(() => new Set());
+  const [repeatAmountEntry, setRepeatAmountEntry] = useState<MealEntry | null>(null);
   const [repeatLoadingMeal, setRepeatLoadingMeal] = useState<MealKind | null>(null);
   const [repeatHistoryError, setRepeatHistoryError] = useState<string | null>(null);
   const [repeatSaving, setRepeatSaving] = useState(false);
@@ -2563,9 +2622,16 @@ export default function App() {
   }
 
   function choosePreviousMeal(candidate: PreviousMeal) {
-    setRepeatCandidates(candidate.entries);
-    setRepeatSelectedIds(new Set(candidate.entries.map((entry) => entry.entryId)));
+    const draftEntries = candidate.entries.map((entry) => ({ ...entry }));
+    setRepeatCandidates(draftEntries);
+    setRepeatSelectedIds(new Set(draftEntries.map((entry) => entry.entryId)));
     setRepeatStep('products');
+  }
+
+  function updateRepeatAmount(entryId: string, amount: number) {
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    setRepeatCandidates((current) => current.map((entry) => entry.entryId === entryId ? rescaleMealEntry(entry, amount) : entry));
+    setRepeatAmountEntry(null);
   }
 
   function closeRepeatMeal() {
@@ -2704,16 +2770,7 @@ export default function App() {
   async function updateEntry(entry: MealEntry, amount: number, meal: MealKind) {
     if (entrySaving || amount <= 0) return;
     const scope = diary.scope;
-    const scale = amount / entry.amount;
-    const nextEntry: MealEntry = {
-      ...entry,
-      amount,
-      meal,
-      kcal: Math.round(entry.kcal * scale),
-      protein: Math.round(entry.protein * scale * 10) / 10,
-      fat: Math.round(entry.fat * scale * 10) / 10,
-      carbs: Math.round(entry.carbs * scale * 10) / 10,
-    };
+    const nextEntry: MealEntry = { ...rescaleMealEntry(entry, amount), meal };
     const shouldQueueRemoteUpdate = isSupabaseConfigured && scope.kind === 'user';
     if (shouldQueueRemoteUpdate && !queueRemoteMealUpdate(scope, nextEntry)) {
       toast.add({ title: 'Не удалось сохранить изменения', description: 'Локальное хранилище недоступно. Попробуйте ещё раз.', type: 'error' });
@@ -2884,9 +2941,16 @@ export default function App() {
         onBack={backFromRepeatMeal}
         onChoose={choosePreviousMeal}
         onRetry={() => { void openPreviousMeal(repeatMeal); }}
+        onEditAmount={setRepeatAmountEntry}
         onToggle={toggleRepeatedEntry}
         onToggleAll={toggleAllRepeatedEntries}
         onConfirm={() => { void repeatPreviousMeal(); }}
+      />
+      <RepeatMealAmountDrawer
+        entry={repeatAmountEntry}
+        open={Boolean(repeatAmountEntry)}
+        onOpenChange={(open) => { if (!open) setRepeatAmountEntry(null); }}
+        onDone={updateRepeatAmount}
       />
       <EditMealEntryDrawer
         open={Boolean(editingEntry)}

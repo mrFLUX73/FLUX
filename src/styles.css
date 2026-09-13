@@ -1056,13 +1056,15 @@ button:active { transform: scale(.97); }
 .flux-repeat-toolbar button { padding: 7px 0 7px 12px; border: 0; background: transparent; color: var(--flux-primary); font-size: 9px; }
 .flux-repeat-list { min-height: 0; max-height: 320px; margin: 0 22px; overflow-y: auto; border-top: 1px solid var(--flux-divider); scrollbar-width: none; }
 .flux-repeat-list::-webkit-scrollbar { display: none; }
-.flux-repeat-row { width: 100%; min-height: 66px; display: grid; grid-template-columns: 25px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 2px; border: 0; border-bottom: 1px solid var(--flux-divider); background: transparent; color: var(--flux-ink); text-align: left; }
-.flux-repeat-row > span:nth-child(2) { min-width: 0; }
+.flux-repeat-row { width: 100%; min-height: 66px; display: grid; grid-template-columns: 25px minmax(0, 1fr); gap: 10px; align-items: center; padding: 8px 2px; border-bottom: 1px solid var(--flux-divider); }
+.flux-repeat-edit { min-width: 0; min-height: 48px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 0; border: 0; background: transparent; color: var(--flux-ink); text-align: left; }
+.flux-repeat-edit > span { min-width: 0; }
 .flux-repeat-row strong, .flux-repeat-row small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .flux-repeat-row strong { font-size: 11px; font-weight: 500; }
 .flux-repeat-row small { margin-top: 3px; color: var(--flux-muted); font-size: 8px; }
-.flux-repeat-row > b { font-size: 11px; font-weight: 500; white-space: nowrap; }
-.flux-repeat-row > b small { display: inline; }
+.flux-repeat-row small svg { width: 11px; height: 11px; margin-left: 3px; vertical-align: -2px; }
+.flux-repeat-edit > b { font-size: 11px; font-weight: 500; white-space: nowrap; }
+.flux-repeat-edit > b small { display: inline; }
 .flux-repeat-check { width: 21px; height: 21px; display: grid !important; place-items: center; border: 1px solid var(--flux-border); border-radius: 7px; background: var(--flux-card); color: var(--flux-on-primary); transition: background-color .2s ease, border-color .2s ease, transform .2s ease; }
 .flux-repeat-check svg { width: 12px; height: 12px; }
 .flux-repeat-row.is-selected .flux-repeat-check { border-color: var(--flux-accent); background: var(--flux-accent); transform: scale(1.04); }
@@ -1071,6 +1073,10 @@ button:active { transform: scale(.97); }
 .flux-repeat-summary strong { color: var(--flux-ink); font-size: 11px; font-weight: 500; }
 .flux-repeat-confirm { width: auto; margin: 12px 22px 0; }
 .flux-repeat-confirm svg { width: 16px; height: 16px; }
+.flux-repeat-amount-drawer { --drawer-content-height: min(575px, calc(100dvh - 18px)); padding-bottom: max(22px, env(safe-area-inset-bottom)); }
+.flux-repeat-amount-view { padding-bottom: max(24px, env(safe-area-inset-bottom)); }
+.flux-repeat-amount-view > .flux-main-button { width: 100%; margin-top: 20px; }
+.flux-repeat-amount-error { margin: 14px 0 0; color: #b7544c; font-size: 10px; text-align: center; }
 .flux-meal-picker { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 2px 22px 8px; }
 .flux-meal-picker button { min-height: 34px; padding: 0 6px; border: 1px solid var(--flux-border); border-radius: 12px; background: var(--flux-card); color: var(--flux-muted); font-size: 9px; }
 .flux-meal-picker button.is-active { border-color: transparent; background: var(--flux-soft); color: var(--flux-primary); font-weight: 500; }
