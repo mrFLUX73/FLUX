@@ -356,15 +356,25 @@ button:active { transform: scale(.97); }
 .flux-balance-editor-macros { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
 .flux-balance-editor-macros label > i { gap: 3px; padding-inline: 10px; }
 .flux-balance-editor-macros input { width: 0; font-size: 16px; }
-.flux-balance-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.flux-balance-heading { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 68px; gap: 10px; align-items: center; }
 .flux-eyebrow { display: block; margin-bottom: 6px; color: var(--flux-muted); font-size: 11px; }
 .flux-eyebrow small { color: var(--flux-primary); font-size: 10px; font-weight: 600; }
-.flux-balance-heading strong { display: block; color: var(--flux-ink); font-size: 27px; font-weight: 500; letter-spacing: -.04em; }
-.flux-balance-heading strong small { color: var(--flux-muted); font-size: 12px; font-weight: 400; letter-spacing: 0; }
+.flux-balance-calories { min-width: 0; }
+.flux-balance-calories strong, .flux-balance-calories small { display: block; }
+.flux-balance-calories strong { overflow: hidden; color: var(--flux-ink); font-size: clamp(21px, 7vw, 29px); font-weight: 500; letter-spacing: -.045em; text-overflow: ellipsis; white-space: nowrap; }
+.flux-balance-calories small { margin-top: 3px; color: var(--flux-muted); font-size: 9px; line-height: 1.2; }
 .flux-ring { width: 68px; height: 68px; flex: 0 0 68px; position: relative; display: grid; place-items: center; border-radius: 50%; background: conic-gradient(var(--flux-primary) 0 var(--flux-progress), color-mix(in srgb, var(--flux-primary) 12%, transparent) var(--flux-progress) 360deg); transition: --flux-progress .7s cubic-bezier(.22,.75,.25,1), transform .3s ease; }
 .flux-ring:hover { transform: scale(1.035); }
 .flux-ring::after { content: ''; position: absolute; inset: 7px; border-radius: 50%; background: var(--flux-soft); }
-.flux-ring span { position: relative; z-index: 1; font-size: 12px; font-weight: 500; }
+.flux-ring span { position: relative; z-index: 1; display: grid; justify-items: center; gap: 1px; }
+.flux-ring b { font-size: 12px; font-weight: 600; }
+.flux-ring small { color: var(--flux-muted); font-size: 6px; font-weight: 500; }
+.flux-calorie-progress { margin-top: 16px; }
+.flux-calorie-progress > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--flux-muted); font-size: 9px; }
+.flux-calorie-progress b { color: var(--flux-primary); font-weight: 600; }
+.flux-calorie-progress [data-slot='progress'] { margin-top: 6px; gap: 0; }
+.flux-calorie-progress [data-slot='progress-track'] { background: color-mix(in srgb, var(--flux-primary) 12%, transparent); }
+.flux-calorie-progress [data-slot='progress-indicator'] { background: var(--flux-accent); }
 .flux-macro-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 22px; }
 .flux-macro-grid > div { min-width: 0; }
 .flux-macro-grid span, .flux-macro-grid strong { display: block; font-size: 9px; }

@@ -1400,8 +1400,12 @@ function TodayScreen({
   workoutSessions: WorkoutSession[];
   onEditBalance: () => void;
 }) {
-  const remaining = Math.max(0, target - totals.kcal);
-  const progress = Math.min(100, Math.round((totals.kcal / target) * 100));
+  const consumed = Math.max(0, Math.round(totals.kcal));
+  const balanceDelta = target - consumed;
+  const balanceAmount = Math.abs(balanceDelta);
+  const balanceLabel = balanceDelta < 0 ? 'ккал сверх цели' : 'ккал осталось';
+  const progress = target > 0 ? Math.round((consumed / target) * 100) : 0;
+  const ringProgress = Math.min(100, Math.max(0, progress));
   const mealsLogged = new Set(entries.map((entry) => entry.meal)).size;
   const workoutsToday = workoutSessions.filter((session) => localDayKey(new Date(session.completedAt)) === localDayKey()).length;
   const overFat = totals.fat - macroTargets.fat;
@@ -1420,7 +1424,13 @@ function TodayScreen({
   return (
     <>
       <button className="flux-balance-card flux-balance-card--interactive" type="button" onClick={onEditBalance} aria-label="Изменить дневной баланс">
-        <div className="flux-balance-heading"><div><span className="flux-eyebrow">Баланс на сегодня <small>· изменить цели</small></span><strong><MorphNumber value={remaining.toLocaleString('ru-RU')} /> <small>ккал осталось</small></strong></div><div className="flux-ring" style={{ '--flux-progress': `${progress * 3.6}deg` } as CSSProperties}><span>{progress}%</span></div></div>
+        <span className="flux-eyebrow">Баланс на сегодня <small>· изменить цели</small></span>
+        <div className="flux-balance-heading">
+          <div className="flux-balance-calories"><strong><MorphNumber value={consumed.toLocaleString('ru-RU')} /></strong><small>ккал съедено</small></div>
+          <div className="flux-balance-calories"><strong><MorphNumber value={balanceAmount.toLocaleString('ru-RU')} /></strong><small>{balanceLabel}</small></div>
+          <div className="flux-ring" style={{ '--flux-progress': `${ringProgress * 3.6}deg` } as CSSProperties}><span><b>{progress}%</b><small>от цели</small></span></div>
+        </div>
+        <div className="flux-calorie-progress"><div><span>{consumed.toLocaleString('ru-RU')} / {target.toLocaleString('ru-RU')} ккал</span><b>{progress}%</b></div><Progress value={ringProgress} aria-label={`${consumed} из ${target} килокалорий`} /></div>
         <div className="flux-macro-grid">{macros.map((macro) => <div key={macro.label}><span>{macro.label}</span><strong>{macro.value} / {macro.target} г</strong><Progress value={(macro.value / macro.target) * 100} aria-label={`${macro.label}: ${macro.value} из ${macro.target} грамм`} /></div>)}</div>
       </button>
       <section className="flux-today-rhythm" aria-label="Ритм дня">
