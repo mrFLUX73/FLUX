@@ -1044,6 +1044,70 @@ button:active { transform: scale(.97); }
 .flux-client-overview-grid em { color: var(--flux-muted); font-size: 7px; font-style: normal; }
 .flux-client-chat-button { width: 100%; min-height: 44px; grid-template-columns: max-content max-content; gap: 7px; justify-content: center; font-size: 11px; font-weight: 600; }
 .flux-client-chat-button svg { width: 16px; height: 16px; }
+.flux-client-card small i { width: 5px; height: 5px; display: inline-block; margin: 0 4px 1px 0; border-radius: 50%; background: var(--flux-accent); }
+.flux-client-workspace-drawer { --drawer-content-height: min(760px, calc(100dvh - 18px)); display: flex; flex-direction: column; overflow: hidden; padding-bottom: max(14px, env(safe-area-inset-bottom)); }
+.flux-client-workspace-header { display: grid; grid-template-columns: 32px minmax(0, 1fr) 36px; gap: 9px; align-items: center; }
+.flux-client-workspace-header .flux-avatar-placeholder { width: 36px; height: 36px; }
+.flux-client-workspace-body { min-height: 0; flex: 1 1 auto; overflow-y: auto; padding: 4px 22px max(18px, env(safe-area-inset-bottom)); }
+.flux-client-actions { display: grid; grid-template-columns: 1.35fr 1fr 1fr auto; gap: 7px; }
+.flux-client-actions [data-slot='button'], .flux-client-actions > button { min-width: 0; min-height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 0 8px; border: 1px solid var(--flux-border); border-radius: 12px; background: var(--flux-card); color: var(--flux-primary); font: inherit; font-size: 9px; font-weight: 600; white-space: nowrap; }
+.flux-client-actions [data-slot='button'] { border: 0; background: var(--flux-primary); color: var(--flux-on-primary); }
+.flux-client-actions > button svg, .flux-client-actions [data-slot='button'] svg { width: 13px; height: 13px; flex: 0 0 auto; }
+.flux-client-actions > button.is-more { width: 38px; padding: 0; font-size: 0; color: var(--flux-muted); }
+.flux-client-actions > button.is-more svg { width: 16px; height: 16px; }
+.flux-client-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px; margin-top: 15px; padding: 4px; border-radius: 14px; background: var(--flux-soft-2); }
+.flux-client-tabs button { min-width: 0; min-height: 31px; padding: 4px 3px; border: 0; border-radius: 10px; background: transparent; color: var(--flux-muted); font: inherit; font-size: 8px; font-weight: 600; white-space: nowrap; }
+.flux-client-tabs button.is-active { background: var(--flux-card); color: var(--flux-primary); box-shadow: 0 2px 7px color-mix(in srgb, var(--flux-ink) 8%, transparent); }
+.flux-client-workspace-content { display: grid; gap: 11px; margin-top: 14px; }
+.flux-client-goal-card, .flux-client-facts > div, .flux-client-meal, .flux-client-progress-empty { padding: 15px; border-radius: 18px; background: var(--flux-soft); }
+.flux-client-goal-card small, .flux-client-facts small { display: block; color: var(--flux-muted); font-size: 9px; }
+.flux-client-goal-card strong, .flux-client-facts strong { display: block; margin-top: 5px; color: var(--flux-ink); font-size: 18px; font-weight: 500; letter-spacing: -.03em; }
+.flux-client-goal-card strong em, .flux-client-facts strong em { color: var(--flux-muted); font-size: 11px; font-style: normal; font-weight: 500; }
+.flux-client-goal-card p, .flux-client-facts p { margin: 6px 0 0; color: var(--flux-muted); font-size: 9px; line-height: 1.45; }
+.flux-client-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.flux-client-facts > div { min-width: 0; padding: 13px; background: var(--flux-card); border: 1px solid var(--flux-border); }
+.flux-client-facts strong { overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.flux-trainer-notes { margin-top: 6px; }
+.flux-trainer-notes-compose { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 9px; }
+.flux-trainer-notes-compose textarea { min-height: 42px; max-height: 110px; resize: vertical; padding: 10px 11px; border: 1px solid var(--flux-border); border-radius: 13px; outline: 0; background: var(--flux-card); color: var(--flux-ink); font: inherit; font-size: 10px; line-height: 1.35; }
+.flux-trainer-notes-compose textarea:focus { border-color: var(--flux-accent); }
+.flux-trainer-notes-compose [data-slot='button'] { align-self: end; min-height: 38px; border-radius: 11px; font-size: 9px; }
+.flux-note-cancel { margin-top: 6px; padding: 0; border: 0; background: transparent; color: var(--flux-primary); font: inherit; font-size: 9px; font-weight: 600; }
+.flux-trainer-notes-list { display: grid; gap: 7px; margin-top: 10px; }
+.flux-trainer-notes-list article { position: relative; padding: 11px 66px 10px 12px; border: 1px solid var(--flux-border); border-radius: 14px; background: var(--flux-card); }
+.flux-trainer-notes-list p { margin: 0; color: var(--flux-ink); font-size: 10px; line-height: 1.42; white-space: pre-wrap; }
+.flux-trainer-notes-list small { display: block; margin-top: 7px; color: var(--flux-muted); font-size: 8px; }
+.flux-trainer-notes-list article > span { position: absolute; top: 9px; right: 8px; display: flex; gap: 3px; }
+.flux-trainer-notes-list button { width: 25px; height: 25px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 8px; background: var(--flux-soft); color: var(--flux-primary); }
+.flux-trainer-notes-list button:last-child { color: #b34a42; }
+.flux-trainer-notes-list svg { width: 12px; height: 12px; }
+.flux-client-day-picker { display: flex; align-items: center; justify-content: space-between; padding: 0 2px; color: var(--flux-muted); font-size: 9px; }
+.flux-client-day-picker input { min-height: 31px; padding: 0 8px; border: 1px solid var(--flux-border); border-radius: 10px; background: var(--flux-card); color: var(--flux-primary); font: inherit; font-size: 9px; }
+.flux-client-meal { padding: 0; overflow: hidden; border: 1px solid var(--flux-border); background: var(--flux-card); }
+.flux-client-meal header, .flux-client-meal > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; }
+.flux-client-meal header { background: var(--flux-soft); }
+.flux-client-meal header strong { color: var(--flux-ink); font-size: 11px; font-weight: 600; }
+.flux-client-meal time { color: var(--flux-muted); font-size: 8px; }
+.flux-client-meal > div { border-top: 1px solid var(--flux-border); }
+.flux-client-meal span { min-width: 0; }
+.flux-client-meal b, .flux-client-meal small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flux-client-meal b { color: var(--flux-ink); font-size: 10px; font-weight: 500; }
+.flux-client-meal small { margin-top: 2px; color: var(--flux-muted); font-size: 8px; }
+.flux-client-meal > div > strong { color: var(--flux-primary); font-size: 10px; white-space: nowrap; }
+.flux-client-sessions > div:not(.flux-section-heading) { min-height: 57px; display: grid; grid-template-columns: 34px 1fr; gap: 9px; align-items: center; border-bottom: 1px solid var(--flux-border); }
+.flux-client-sessions .flux-rhythm-icon { width: 34px; height: 34px; border-radius: 11px; }
+.flux-client-sessions .flux-rhythm-icon svg { width: 15px; height: 15px; }
+.flux-client-sessions p { min-width: 0; margin: 0; }
+.flux-client-sessions strong, .flux-client-sessions small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flux-client-sessions strong { color: var(--flux-ink); font-size: 10px; font-weight: 500; }
+.flux-client-sessions small { margin-top: 3px; color: var(--flux-muted); font-size: 8px; }
+.flux-client-progress-empty { display: grid; justify-items: start; gap: 5px; background: var(--flux-card); border: 1px dashed var(--flux-border); }
+.flux-client-progress-empty svg { width: 20px; height: 20px; color: var(--flux-primary); }
+.flux-client-progress-empty strong { color: var(--flux-ink); font-size: 12px; font-weight: 500; }
+.flux-client-progress-empty p, .flux-client-inline-error { margin: 0; color: var(--flux-muted); font-size: 9px; line-height: 1.45; }
+.flux-client-inline-error { color: #b34a42; }
+.flux-trainer-workspace-state { padding: 16px 22px; }
+.flux-trainer-workspace-state p { color: var(--flux-muted); font-size: 10px; }
 .flux-feedback-reply-body { padding: 0 22px; }
 
 .flux-admin-screen { min-height: 100%; padding-bottom: 12px; }
@@ -1408,10 +1472,10 @@ button:active { transform: scale(.97); }
   .flux-trainer-chat-header { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px; align-items: center; padding-top: max(12px, env(safe-area-inset-top, 0px)); }
   .flux-trainer-chat-header .flux-drawer-back { width: 44px; height: 44px; display: grid; }
   .flux-trainer-chat-compose { padding: 12px max(22px, env(safe-area-inset-right, 0px)) max(12px, env(safe-area-inset-bottom, 0px)) max(22px, env(safe-area-inset-left, 0px)); }
-  .flux-messenger-drawer, .flux-feedback-drawer { --drawer-content-height: 100dvh; position: fixed !important; inset: 0 !important; width: 100% !important; height: 100dvh !important; max-height: none !important; margin: 0 !important; border: 0 !important; border-radius: 0 !important; padding: 0 !important; display: flex; flex-direction: column; }
-  .flux-messenger-drawer [data-slot='drawer-swipe-handle'], .flux-feedback-drawer [data-slot='drawer-swipe-handle'] { display: none; }
-  .flux-messenger-drawer .flux-drawer-header, .flux-feedback-drawer .flux-drawer-header { padding-top: max(12px, env(safe-area-inset-top, 0px)); }
-  .flux-messenger-body, .flux-feedback-body { min-height: 0; flex: 1 1 auto; overflow-y: auto; padding-bottom: max(16px, env(safe-area-inset-bottom, 0px)); }
+  .flux-messenger-drawer, .flux-feedback-drawer, .flux-client-workspace-drawer { --drawer-content-height: 100dvh; position: fixed !important; inset: 0 !important; width: 100% !important; height: 100dvh !important; max-height: none !important; margin: 0 !important; border: 0 !important; border-radius: 0 !important; padding: 0 !important; display: flex; flex-direction: column; }
+  .flux-messenger-drawer [data-slot='drawer-swipe-handle'], .flux-feedback-drawer [data-slot='drawer-swipe-handle'], .flux-client-workspace-drawer [data-slot='drawer-swipe-handle'] { display: none; }
+  .flux-messenger-drawer .flux-drawer-header, .flux-feedback-drawer .flux-drawer-header, .flux-client-workspace-drawer .flux-drawer-header { padding-top: max(12px, env(safe-area-inset-top, 0px)); }
+  .flux-messenger-body, .flux-feedback-body, .flux-client-workspace-body { min-height: 0; flex: 1 1 auto; overflow-y: auto; padding-bottom: max(16px, env(safe-area-inset-bottom, 0px)); }
   .flux-feedback-header .flux-drawer-back { width: 44px; height: 44px; display: grid; }
   .flux-feedback-history-list { max-height: none; }
 }

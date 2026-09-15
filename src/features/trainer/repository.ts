@@ -61,6 +61,14 @@ export type TrainerClientOverview = {
   lastWorkoutAt: string | null;
 };
 
+export type TrainerNutritionItem = { id: string; name: string; amountG: number; kcal: number; protein: number; fat: number; carbs: number };
+export type TrainerNutritionMeal = { id: string; type: string; eatenAt: string; items: TrainerNutritionItem[] };
+export type TrainerClientNutrition = { day: string; goalKcal: number | null; kcal: number; protein: number; fat: number; carbs: number; meals: TrainerNutritionMeal[] };
+export type TrainerWorkoutPlan = { name: string; description: string | null; durationMinutes: number | null };
+export type TrainerWorkoutSession = { id: string; title: string; status: string; startedAt: string; completedAt: string | null };
+export type TrainerClientWorkouts = { plan: TrainerWorkoutPlan | null; sessions: TrainerWorkoutSession[] };
+export type TrainerClientNote = { id: string; body: string; createdAt: string; updatedAt: string };
+
 type TrainerHubRow = {
   link_id: string;
   status: TrainerLink['status'];
@@ -226,4 +234,44 @@ export async function loadTrainerClientOverview(userId: string, linkId: string):
     calorieGoal: row.calorie_goal == null ? null : number('calorie_goal'), proteinGoal: row.protein_goal == null ? null : number('protein_goal'), fatGoal: row.fat_goal == null ? null : number('fat_goal'), carbsGoal: row.carbs_goal == null ? null : number('carbs_goal'),
     todayKcal: number('today_kcal'), todayProtein: number('today_protein'), todayFat: number('today_fat'), todayCarbs: number('today_carbs'), mealsToday: number('meals_today'), nutritionDays7: number('nutrition_days_7'), workouts7: number('workouts_7'), lastWorkoutAt: row.last_workout_at == null ? null : String(row.last_workout_at),
   };
+}
+
+function readNumber(value: unknown) { return typeof value === 'number' ? value : Number(value ?? 0); }
+
+export async function loadTrainerClientNutrition(userId: string, linkId: string, day: string): Promise<TrainerClientNutrition> {
+  const client = await getSupabaseClientForUser(userId);
+  const { data, error } = await client.rpc('get_trainer_client_nutrition', { p_link_id: linkId, p_day: day });
+  if (error) throw error;
+  const row = (data ?? {}) as Record<string, unknown>;
+  const meals = Array.isArray(row.meals) ? row.meals : [];
+  return { day: String(row.day ?? day), goalKcal: row.goal_kcal == null ? null : readNumber(row.goal_kcal), kcal: readNumber(row.kcal), protein: readNumber(row.protein), fat: readNumber(row.fat), carbs: readNumber(row.carbs), meals: meals.map((meal) => {
+    const item = meal as Record<string, unknown>;
+    return { id: String(item.id), type: String(item.type), eatenAt: String(item.eaten_at), items: (Array.isArray(item.items) ? item.items : []).map((raw) => { const value = raw as Record<string, unknown>; return { id: String(value.id), name: String(value.name), amountG: readNumber(value.amount_g), kcal: readNumber(value.kcal), protein: readNumber(value.protein), fat: readNumber(value.fat), carbs: readNumber(value.carbs) }; }) };
+  }) };
+}
+
+export async function loadTrainerClientWorkouts(userId: string, linkId: string): Promise<TrainerClientWorkouts> {
+  const client = await getSupabaseClientForUser(userId);
+  const { data, error } = await client.rpc('get_trainer_client_workouts', { p_link_id: linkId });
+  if (error) throw error;
+  const row = (data ?? {}) as Record<string, unknown>; const plan = row.plan as Record<string, unknown> | null;
+  return { plan: plan ? { name: String(plan.name), description: plan.description == null ? null : String(plan.description), durationMinutes: plan.duration_minutes == null ? null : readNumber(plan.duration_minutes) } : null, sessions: (Array.isArray(row.sessions) ? row.sessions : []).map((raw) => { const value = raw as Record<string, unknown>; return { id: String(value.id), title: String(value.title), status: String(value.status), startedAt: String(value.started_at), completedAt: value.completed_at == null ? null : String(value.completed_at) }; }) };
+}
+
+export async function loadTrainerClientNotes(userId: string, linkId: string): Promise<TrainerClientNote[]> {
+  const client = await getSupabaseClientForUser(userId); const { data, error } = await client.rpc('get_trainer_client_notes', { p_link_id: linkId });
+  if (error) throw error;
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => ({ id: String(row.id), body: String(row.body), createdAt: String(row.created_at), updatedAt: String(row.updated_at) }));
+}
+
+export async function saveTrainerClientNote(userId: string, linkId: string, body: string, noteId?: string) {
+  const client = await getSupabaseClientForUser(userId); const { data, error } = await client.rpc('save_trainer_client_note', { p_link_id: linkId, p_note_id: noteId ?? null, p_body: body });
+  if (error) throw error;
+  const row = (data as Record<string, unknown>[] | null)?.[0]; if (!row) throw new Error('Не удалось сохранить заметку');
+  return { id: String(row.id), body: String(row.body), createdAt: String(row.created_at), updatedAt: String(row.updated_at) } satisfies TrainerClientNote;
+}
+
+export async function deleteTrainerClientNote(userId: string, linkId: string, noteId: string) {
+  const client = await getSupabaseClientForUser(userId); const { error } = await client.rpc('delete_trainer_client_note', { p_link_id: linkId, p_note_id: noteId });
+  if (error) throw error;
 }
