@@ -20,6 +20,7 @@ import {
   LoaderCircle,
   Minus,
   MessageCircle,
+  MoreHorizontal,
   Pencil,
   Pause,
   Play,
@@ -1677,11 +1678,12 @@ function TrainerClientsScreen({
 }) {
   const pending = links.filter((link) => link.status === 'pending');
   const active = links.filter((link) => link.status === 'active');
+  const [actionsFor, setActionsFor] = useState<string | null>(null);
   return (
     <>
       <section className="flux-trainer-dashboard-hero"><span className="flux-rhythm-icon"><UsersRound /></span><div><small>Кабинет тренера</small><strong>Мои клиенты</strong><p>{active.length ? `${active.length} ${active.length === 1 ? 'активный клиент' : active.length < 5 ? 'активных клиента' : 'активных клиентов'} сейчас` : 'Когда клиент подтвердит связь, его прогресс появится здесь.'}</p></div><Button type="button" variant="secondary" size="sm" onClick={onInvite}>Пригласить клиента</Button></section>
       {pending.length > 0 && <section className="flux-trainer-client-section"><div className="flux-section-heading"><h2>Ожидают подтверждения</h2><span>{pending.length}</span></div>{pending.map((link) => <article key={link.id} className="flux-client-card is-pending"><span className="flux-avatar-placeholder">{link.clientName.slice(0, 1).toUpperCase()}</span><div><strong>{link.clientName}</strong><small>Хочет подключиться к вам в FLUX</small></div><aside><Button size="sm" onClick={() => onRespond(link, true)}>Принять</Button><button type="button" onClick={() => onRespond(link, false)} aria-label={`Отклонить заявку ${link.clientName}`}>×</button></aside></article>)}</section>}
-      <section className="flux-trainer-client-section"><div className="flux-section-heading"><h2>Активные клиенты</h2><span>{active.length}</span></div>{loading ? <p className="flux-trainer-empty">Загружаем связи…</p> : active.length ? active.map((link) => <article key={link.id} className="flux-client-card is-active" onClick={() => onOpenClient(link)}><span className="flux-avatar-placeholder">{link.clientName.slice(0, 1).toUpperCase()}</span><div><strong>{link.clientName}</strong><small><i /> Активная связь · открыть карточку</small></div><button type="button" onClick={(event) => { event.stopPropagation(); onOpenChat(link); }} aria-label={`Написать ${link.clientName}`}><MessageCircle /></button><button type="button" onClick={(event) => { event.stopPropagation(); onRevoke(link); }} aria-label={`Завершить работу с ${link.clientName}`}><X /></button><ChevronRight /></article>) : <p className="flux-trainer-empty">Пока никого. Передайте своё приглашение FLUX — клиент отправит заявку, а вы её подтвердите здесь.</p>}</section>
+      <section className="flux-trainer-client-section"><div className="flux-section-heading"><h2>Активные клиенты</h2><span>{active.length}</span></div>{loading ? <p className="flux-trainer-empty">Загружаем связи…</p> : active.length ? active.map((link) => <article key={link.id} className="flux-client-card is-active"><span className="flux-avatar-placeholder">{link.clientName.slice(0, 1).toUpperCase()}</span><button type="button" className="flux-client-card-main" onClick={() => onOpenClient(link)}><strong>{link.clientName}</strong><small><i /> Активная связь</small></button><aside className="flux-client-card-actions"><button type="button" onClick={() => onOpenChat(link)} aria-label={`Написать ${link.clientName}`}><MessageCircle /></button><button type="button" onClick={() => setActionsFor((current) => current === link.id ? null : link.id)} aria-label={`Действия для ${link.clientName}`} aria-expanded={actionsFor === link.id}><MoreHorizontal /></button>{actionsFor === link.id && <div className="flux-client-actions-menu"><button type="button" onClick={() => { setActionsFor(null); onRevoke(link); }}><X /> Завершить связь</button></div>}</aside></article>) : <p className="flux-trainer-empty">Пока никого. Передайте своё приглашение FLUX — клиент отправит заявку, а вы её подтвердите здесь.</p>}</section>
     </>
   );
 }

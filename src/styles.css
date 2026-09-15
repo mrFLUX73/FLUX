@@ -782,16 +782,18 @@ button:active { transform: scale(.97); }
 .flux-workout-history small, .flux-workout-history > p { margin-top: 3px; color: var(--flux-muted); font-size: 8px; }
 .flux-workout-history > p { margin: 10px 0 0; }
 .flux-workout-history b { min-width: 25px; display: grid; place-items: center; padding: 5px; border-radius: 9px; background: var(--flux-soft); color: var(--flux-primary); font-size: 10px; font-weight: 600; }
-.flux-trainer-dashboard-hero { min-height: 106px; display: grid; grid-template-columns: 48px 1fr; gap: 13px; align-items: center; padding: 17px; border-radius: 23px; background: var(--flux-soft); }
+.flux-trainer-dashboard-hero { min-height: 106px; display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; gap: 13px; align-items: center; padding: 17px; border-radius: 23px; background: var(--flux-soft); }
 .flux-trainer-dashboard-hero .flux-rhythm-icon { width: 48px; height: 48px; border-radius: 16px; background: var(--flux-card); }
 .flux-trainer-dashboard-hero .flux-rhythm-icon svg { width: 23px; height: 23px; }
 .flux-trainer-dashboard-hero small, .flux-trainer-dashboard-hero strong { display: block; }
 .flux-trainer-dashboard-hero small { color: var(--flux-muted); font-size: 9px; }
 .flux-trainer-dashboard-hero strong { margin-top: 4px; color: var(--flux-ink); font-size: 20px; font-weight: 500; letter-spacing: -.03em; }
 .flux-trainer-dashboard-hero p { margin: 4px 0 0; color: var(--flux-muted); font-size: 9px; line-height: 1.4; }
+.flux-trainer-dashboard-hero > div { min-width: 0; }
+.flux-trainer-dashboard-hero > [data-slot='button'] { min-height: 32px; padding-inline: 9px; border-radius: 11px; white-space: nowrap; }
 .flux-trainer-client-section { margin-top: 20px; }
 .flux-trainer-client-section .flux-section-heading > span { color: var(--flux-muted); font-size: 9px; }
-.flux-client-card { min-height: 66px; display: grid; grid-template-columns: 36px 1fr auto; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--flux-border); }
+.flux-client-card { min-height: 66px; display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--flux-border); }
 .flux-avatar-placeholder { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 12px; background: var(--flux-soft); color: var(--flux-primary); font-size: 13px; font-weight: 600; }
 .flux-client-card > div { min-width: 0; }
 .flux-client-card strong, .flux-client-card small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -802,6 +804,16 @@ button:active { transform: scale(.97); }
 .flux-client-card aside { display: flex; align-items: center; gap: 6px; }
 .flux-client-card aside [data-slot='button'] { min-height: 30px; padding: 0 9px; border-radius: 10px; font-size: 8px; }
 .flux-client-card aside > button { width: 27px; height: 27px; padding: 0; border: 0; border-radius: 9px; background: var(--flux-surface-soft); color: var(--flux-muted); font-size: 16px; }
+.flux-client-card.is-active { position: relative; }
+.flux-client-card-main { min-width: 0; padding: 3px 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; }
+.flux-client-card-main strong, .flux-client-card-main small { max-width: 100%; }
+.flux-client-card-main small i { width: 5px; height: 5px; display: inline-block; margin: 0 4px 1px 0; border-radius: 50%; background: var(--flux-accent); }
+.flux-client-card-actions { position: relative; flex: 0 0 auto; gap: 6px !important; }
+.flux-client-card-actions > button { width: 34px !important; height: 34px !important; display: grid; place-items: center; padding: 0 !important; border: 1px solid var(--flux-border) !important; border-radius: 11px !important; background: var(--flux-card) !important; color: var(--flux-primary) !important; }
+.flux-client-card-actions > button svg { width: 16px; height: 16px; }
+.flux-client-actions-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 5; min-width: 148px; padding: 5px; border: 1px solid var(--flux-border); border-radius: 13px; background: var(--flux-card); box-shadow: 0 10px 24px color-mix(in srgb, var(--flux-ink) 16%, transparent); }
+.flux-client-actions-menu button { width: 100% !important; min-height: 35px; display: flex !important; align-items: center; gap: 7px; padding: 0 8px !important; border: 0 !important; border-radius: 9px !important; background: color-mix(in srgb, #b34a42 9%, var(--flux-card)) !important; color: #b34a42 !important; font: inherit !important; font-size: 9px !important; font-weight: 600; white-space: nowrap; }
+.flux-client-actions-menu svg { width: 14px; height: 14px; }
 .flux-streak-card { padding: 20px; border-radius: 24px; background: var(--flux-primary); color: var(--flux-on-primary); display: grid; grid-template-columns: 48px 1fr; gap: 13px; align-items: center; }
 .flux-streak-card > span { width: 48px; height: 48px; border-radius: 17px; background: color-mix(in srgb, var(--flux-on-primary) 13%, transparent); display: grid; place-items: center; }
 .flux-streak-card > span svg { width: 22px; height: 22px; }
@@ -1044,7 +1056,6 @@ button:active { transform: scale(.97); }
 .flux-client-overview-grid em { color: var(--flux-muted); font-size: 7px; font-style: normal; }
 .flux-client-chat-button { width: 100%; min-height: 44px; grid-template-columns: max-content max-content; gap: 7px; justify-content: center; font-size: 11px; font-weight: 600; }
 .flux-client-chat-button svg { width: 16px; height: 16px; }
-.flux-client-card small i { width: 5px; height: 5px; display: inline-block; margin: 0 4px 1px 0; border-radius: 50%; background: var(--flux-accent); }
 .flux-client-workspace-drawer { --drawer-content-height: min(760px, calc(100dvh - 18px)); display: flex; flex-direction: column; overflow: hidden; padding-bottom: max(14px, env(safe-area-inset-bottom)); }
 .flux-client-workspace-header { display: grid; grid-template-columns: 32px minmax(0, 1fr) 36px; gap: 9px; align-items: center; }
 .flux-client-workspace-header .flux-avatar-placeholder { width: 36px; height: 36px; }
