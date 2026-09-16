@@ -167,12 +167,21 @@ async function seedWorkouts(admin, clientId) {
   assertError(planError, 'Не удалось добавить test workout plan');
   const { data: planExercises, error: planExercisesError } = await admin.from('workout_plan_exercises').insert([
     { plan_id: plan.id, user_id: clientId, exercise_id: byName.Приседания, day_number: 1, sort_order: 1, target_sets: 3, target_reps_min: 12, rest_seconds: 30 }, { plan_id: plan.id, user_id: clientId, exercise_id: byName.Отжимания, day_number: 1, sort_order: 2, target_sets: 3, target_duration_seconds: 20, rest_seconds: 10 }, { plan_id: plan.id, user_id: clientId, exercise_id: byName.Планка, day_number: 1, sort_order: 3, target_sets: 2, target_duration_seconds: 30, rest_seconds: 30 },
-  ]).select('id,exercise_id');
+  ]).select('id,exercise_id,day_number,sort_order,target_sets,target_reps_min,target_reps_max,target_duration_seconds,target_distance_m,target_weight_kg,rest_seconds,notes');
   assertError(planExercisesError, 'Не удалось добавить test plan exercises');
-  const { data: completed, error: completedError } = await admin.from('workout_sessions').insert({ user_id: clientId, plan_id: plan.id, title: 'Базовая сила', status: 'completed', started_at: isoAt(1, 19), completed_at: isoAt(1, 19) }).select('id').single();
+  const exerciseById = Object.fromEntries(exercises.map((exercise) => [exercise.id, exercise]));
+  const planSnapshot = planExercises.map((step) => ({
+    step_id: step.id, exercise_id: step.exercise_id, name: exerciseById[step.exercise_id].name,
+    instructions: null, measurement_type: exerciseById[step.exercise_id].measurement_type,
+    day_number: step.day_number, sort_order: step.sort_order, target_sets: step.target_sets,
+    target_reps_min: step.target_reps_min, target_reps_max: step.target_reps_max,
+    target_duration_seconds: step.target_duration_seconds, target_distance_m: step.target_distance_m,
+    target_weight_kg: step.target_weight_kg, rest_seconds: step.rest_seconds, notes: step.notes,
+  }));
+  const { data: completed, error: completedError } = await admin.from('workout_sessions').insert({ user_id: clientId, plan_id: plan.id, source_type: 'personal_plan', plan_snapshot: planSnapshot, title: 'Базовая сила', status: 'completed', started_at: isoAt(1, 19), completed_at: isoAt(1, 19) }).select('id').single();
   assertError(completedError, 'Не удалось добавить completed workout');
   assertError((await admin.from('workout_sessions').insert({ user_id: clientId, plan_id: plan.id, title: 'Базовая сила', status: 'planned', started_at: isoAt(0, 19) })).error, 'Не удалось добавить planned workout');
-  assertError((await admin.from('performed_sets').insert(planExercises.slice(0, 2).map((item, index) => ({ workout_session_id: completed.id, user_id: clientId, exercise_id: item.exercise_id, plan_exercise_id: item.id, exercise_name: index === 0 ? 'Приседания' : 'Отжимания', set_number: index + 1, reps: index === 0 ? 12 : null, duration_seconds: index === 1 ? 20 : null, is_completed: true, completed_at: isoAt(1, 19) })))).error, 'Не удалось добавить performed sets');
+  assertError((await admin.from('performed_sets').insert(planExercises.slice(0, 2).map((item, index) => ({ workout_session_id: completed.id, user_id: clientId, exercise_id: item.exercise_id, plan_exercise_id: item.id, session_step_id: item.id, client_set_key: crypto.randomUUID(), exercise_name: index === 0 ? 'Приседания' : 'Отжимания', set_number: index + 1, reps: index === 0 ? 12 : null, duration_seconds: index === 1 ? 20 : null, is_completed: true, completed_at: isoAt(1, 19) })))).error, 'Не удалось добавить performed sets');
 }
 
 async function seedTrainerData(admin, ids) {

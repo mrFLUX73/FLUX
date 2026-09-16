@@ -65,6 +65,8 @@ import {
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Toaster, toast } from '@/components/ui/toast';
+import { WorkoutEngineScreen } from './features/workouts/WorkoutUI';
+import { loadWorkoutHistory, type WorkoutHistoryItem } from './features/workouts/repository';
 import { fallbackProducts, matchesProductSearch, productSearchRank } from './features/nutrition/catalog';
 import { decodeBarcodeImage, startBarcodeScanner, type BarcodeScannerSession } from './features/nutrition/barcodeScanner';
 import { getNutriapixProduct, lookupProductByBarcode, searchProductsByName, type ProductSearchCandidate } from './features/nutrition/productSearch';
@@ -1193,32 +1195,6 @@ type WorkoutSession = {
   feeling: 'Легко' | 'В самый раз' | 'Тяжело';
 };
 
-function workoutStorageKey(accountId?: string) {
-  return `flux.workouts.v1.${accountId ?? 'guest'}`;
-}
-
-function loadWorkoutSessions(accountId?: string): WorkoutSession[] {
-  try {
-    const raw = window.localStorage.getItem(workoutStorageKey(accountId));
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed.filter((item): item is WorkoutSession => (
-      item && typeof item.id === 'string' && typeof item.completedAt === 'string' &&
-      typeof item.durationMinutes === 'number' && typeof item.completedSets === 'number'
-    )) : [];
-  } catch {
-    return [];
-  }
-}
-
-function persistWorkoutSessions(accountId: string | undefined, sessions: WorkoutSession[]) {
-  try {
-    window.localStorage.setItem(workoutStorageKey(accountId), JSON.stringify(sessions.slice(0, 60)));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 function workoutDateLabel(value: string) {
   return new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long' }).format(new Date(value));
 }
@@ -1404,7 +1380,7 @@ function TodayScreen({
   macroTargets: typeof defaultMacroTargets;
   entries: MealEntry[];
   weekActivity: { key: string; weekday: string; day: number; hasFood: boolean }[];
-  workoutSessions: WorkoutSession[];
+  workoutSessions: WorkoutHistoryItem[];
   onEditBalance: () => void;
 }) {
   const consumed = Math.max(0, Math.round(totals.kcal));
@@ -1414,7 +1390,7 @@ function TodayScreen({
   const progress = target > 0 ? Math.round((consumed / target) * 100) : 0;
   const ringProgress = Math.min(100, Math.max(0, progress));
   const mealsLogged = new Set(entries.map((entry) => entry.meal)).size;
-  const workoutsToday = workoutSessions.filter((session) => localDayKey(new Date(session.completedAt)) === localDayKey()).length;
+  const workoutsToday = workoutSessions.filter((session) => session.completedAt && localDayKey(new Date(session.completedAt)) === localDayKey()).length;
   const overFat = totals.fat - macroTargets.fat;
   const remainingProtein = Math.max(0, macroTargets.protein - totals.protein);
   const focus = overFat > 0
@@ -1948,8 +1924,7 @@ export default function App() {
   const repeatRequestRevision = useRef(0);
   const [editingEntry, setEditingEntry] = useState<MealEntry | null>(null);
   const [entrySaving, setEntrySaving] = useState(false);
-  const [workoutOpen, setWorkoutOpen] = useState(false);
-  const [workoutSessions, setWorkoutSessions] = useState<WorkoutSession[]>(() => loadWorkoutSessions(startupAccountRef.current?.id));
+  const [workoutSessions, setWorkoutSessions] = useState<WorkoutHistoryItem[]>([]);
   const [profileOpen, setProfileOpen] = useState(false);
   const [dailyBalanceOpen, setDailyBalanceOpen] = useState(false);
   const [profileDraft, setProfileDraft] = useState<ProfileDraft | null>(startupProfileRef.current?.draft ?? null);
@@ -1994,21 +1969,18 @@ export default function App() {
   };
 
   useEffect(() => {
-    setWorkoutSessions(loadWorkoutSessions(account?.id));
-  }, [account?.id]);
-
-  function saveWorkoutSession(session: WorkoutSession) {
-    setWorkoutSessions((current) => {
-      const next = [session, ...current];
-      if (!persistWorkoutSessions(account?.id, next)) {
-        toast.add({ title: 'Тренировка завершена', description: 'Не удалось сохранить историю на устройстве.', type: 'info' });
-      } else {
-        toast.add({ title: 'Тренировка сохранена', description: `${session.durationMinutes} мин · ${session.completedSets} подходов · ${session.feeling}.`, type: 'success' });
-      }
-      return next;
+    let active = true;
+    if (!account) {
+      setWorkoutSessions([]);
+      return () => { active = false; };
+    }
+    void loadWorkoutHistory(account.id).then((history) => {
+      if (active) setWorkoutSessions(history);
+    }).catch(() => {
+      if (active) setWorkoutSessions([]);
     });
-    setWorkoutOpen(false);
-  }
+    return () => { active = false; };
+  }, [account?.id]);
 
   useEffect(() => {
     let active = true;
@@ -3037,7 +3009,7 @@ export default function App() {
         <section className="flux-app-shell" aria-label="Приложение FLUX">
           {startupVisible ? <InitializationScreen /> : <>
           {!isOnline && <div className="flux-offline-pill" role="status"><WifiOff /> Офлайн · изменения сохраняются</div>}
-          <div className="flux-base-app" aria-hidden={workoutOpen || profileOpen || undefined} inert={workoutOpen || profileOpen || undefined}>
+          <div className="flux-base-app" aria-hidden={profileOpen || undefined} inert={profileOpen || undefined}>
             {tab === 'food' && <div className={`flux-pull-indicator${pullDistance > 0 || pullFeedback !== 'idle' ? ' is-visible' : ''}${pullDistance >= 62 ? ' is-ready' : ''}${pullFeedback === 'refreshing' ? ' is-refreshing' : ''}${pullFeedback === 'updated' ? ' is-updated' : ''}${pullFeedback === 'error' ? ' is-error' : ''}`} style={{ '--flux-pull-distance': `${pullDistance}px` } as CSSProperties} aria-live="polite">
               {pullFeedback === 'refreshing' ? <LoaderCircle className="is-spinning" /> : pullFeedback === 'updated' ? <Check /> : <RefreshCw />}
               <span>{pullFeedback === 'refreshing' ? 'Обновляем рацион…' : pullFeedback === 'updated' ? 'Рацион обновлён' : pullFeedback === 'error' ? 'Не удалось обновить' : pullDistance >= 62 ? 'Отпустите, чтобы обновить' : 'Потяните, чтобы обновить'}</span>
@@ -3066,14 +3038,13 @@ export default function App() {
               {tab === 'today' && <TodayScreen totals={totals} target={calorieTarget} macroTargets={macroTargets} entries={entries} weekActivity={weekActivity} workoutSessions={workoutSessions} onEditBalance={openDailyBalance} />}
               {tab === 'today' && account && trainerLinks.find((link) => link.clientId === account.id && link.status === 'active') && (() => { const link = trainerLinks.find((candidate) => candidate.clientId === account.id && candidate.status === 'active')!; return <button type="button" className="flux-my-trainer-card" onClick={() => openTrainerChat(link, 'today')}><span className="flux-rhythm-icon"><MessageCircle /></span><span><small>Ваш тренер</small><strong>{link.trainerName}</strong><em>Открыть сообщения</em></span><ChevronRight /></button>; })()}
               {tab === 'food' && <FoodScreen entries={entries} target={calorieTarget} selectedDay={selectedNutritionDay} onSelectDay={setSelectedNutritionDay} historyLoading={historyLoading} mode={nutritionMode} isConnecting={nutritionConnecting} isAuthenticated={Boolean(account)} onAdd={(meal) => openFood(meal ?? currentMeal())} onEdit={setEditingEntry} onRemove={removeEntry} onRepeat={openPreviousMeal} repeatLoadingMeal={repeatLoadingMeal} />}
-              {tab === 'workouts' && <WorkoutsScreen onStart={() => setWorkoutOpen(true)} sessions={workoutSessions} />}
+              {tab === 'workouts' && <WorkoutEngineScreen userId={account?.id ?? null} />}
               {tab === 'progress' && <ProgressScreen />}
               {tab === 'clients' && account?.role === 'trainer' && <TrainerClientsScreen links={trainerLinks.filter((link) => link.trainerId === account.id)} loading={trainerHubLoading} onRespond={(link, accept) => { void respondToClient(link, accept); }} onOpenClient={setClientOverviewLink} onOpenChat={(link) => openTrainerChat(link, 'clients')} onInvite={() => setTrainerInviteOpen(true)} onRevoke={setTrainerRevokeLink} />}
               {tab === 'admin' && account?.isAdmin && <AdminFeedbackScreen userId={account.id} />}
             </div>
             <nav className={`flux-bottom-nav${account?.isAdmin || account?.role === 'trainer' ? ' has-admin' : ''}`} aria-label="Основная навигация">{navItems.map((item) => { const Icon = item.icon; return <button key={item.id} type="button" className={tab === item.id ? 'is-active' : ''} onClick={() => setTab(item.id)} aria-current={tab === item.id ? 'page' : undefined}><Icon /><span>{item.label}</span></button>; })}</nav>
           </div>
-          {workoutOpen && <WorkoutFlow onClose={() => setWorkoutOpen(false)} onComplete={saveWorkoutSession} />}
           {profileOpen && account && profileDraft && (
             <ProfileScreen
               account={account}

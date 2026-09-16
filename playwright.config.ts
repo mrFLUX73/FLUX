@@ -4,6 +4,10 @@ export default defineConfig({
   testDir: './e2e',
   timeout: 45_000,
   fullyParallel: false,
+  // Auth-state fixtures create one-time Supabase sessions. Running files in
+  // parallel could overwrite a persona's storage state while another smoke
+  // test is reading it, making the result nondeterministic.
+  workers: 1,
   forbidOnly: Boolean(process.env.CI),
   reporter: [['list'], ['html', { open: 'never', outputFolder: 'playwright-report' }]],
   outputDir: 'test-results',

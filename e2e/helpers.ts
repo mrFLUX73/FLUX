@@ -143,3 +143,24 @@ export async function storedSessionRpcStatus(page: Page, fn: string, body: Recor
     return { status: response.status, authenticated: true, userId: sessionData.session.user.id };
   }, { url: environment('VITE_SUPABASE_URL'), key: environment('VITE_SUPABASE_PUBLISHABLE_KEY'), fn, body });
 }
+
+export async function storedSessionRpc(page: Page, fn: string, body: Record<string, unknown>) {
+  const localSdk = await readFile(path.join(process.cwd(), 'node_modules/@supabase/supabase-js/dist/umd/supabase.js'), 'utf8');
+  await page.addScriptTag({ content: localSdk });
+  return page.evaluate(async ({ url, key, fn, body }) => {
+    const client = (window as typeof window & { supabase: { createClient: typeof createClient } }).supabase.createClient(url, key, {
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+    });
+    const { data: sessionData, error: sessionError } = await client.auth.getSession();
+    if (sessionError || !sessionData.session) return { status: 0, authenticated: false, data: null };
+    const response = await fetch(`${url}/rest/v1/rpc/${fn}`, {
+      method: 'POST',
+      headers: { apikey: key, Authorization: `Bearer ${sessionData.session.access_token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const text = await response.text();
+    let data: unknown = null;
+    try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+    return { status: response.status, authenticated: true, data };
+  }, { url: environment('VITE_SUPABASE_URL'), key: environment('VITE_SUPABASE_PUBLISHABLE_KEY'), fn, body });
+}

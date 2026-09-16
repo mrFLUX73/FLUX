@@ -45,7 +45,7 @@ test('Test Client: core product smoke', async ({ browser }) => {
 
   await page.getByRole('button', { name: 'Тренировки', exact: true }).click(); await settleUi(page);
   await expect(page.getByRole('heading', { name: 'Тренировки', exact: true })).toBeVisible();
-  await expect(page.getByText('План', { exact: true })).toBeVisible();
+  await expect(page.getByText('Мои планы', { exact: true })).toBeVisible();
   await expect(page.getByLabel('История тренировок')).toBeVisible();
   await expectNoRawValues(page); await expectNoHorizontalOverflow(page);
 
@@ -145,8 +145,8 @@ test('Other Trainer: UI and RPC isolation from Test Client', async ({ browser })
   await context.close();
 });
 
-test('responsive: client and trainer critical screens fit 320–430px', async ({ browser }) => {
-  for (const width of [320, 375, 390, 430]) {
+async function verifyResponsiveCriticalScreens(browser: import('@playwright/test').Browser, widths: number[]) {
+  for (const width of widths) {
     const client = await pageFor(browser, 'CLIENT', width);
     for (const label of ['Сегодня', 'Питание'] as const) { await client.page.getByRole('button', { name: label, exact: true }).click(); await settleUi(client.page); await expectNoHorizontalOverflow(client.page); }
     await client.page.getByLabel('Открыть мой профиль').click(); await settleUi(client.page); await expectNoHorizontalOverflow(client.page);
@@ -169,4 +169,10 @@ test('responsive: client and trainer critical screens fit 320–430px', async ({
     await trainer.page.getByRole('button', { name: 'Питание', exact: true }).last().click(); await settleUi(trainer.page); await expectNoHorizontalOverflow(trainer.page);
     await trainer.context.close();
   }
-});
+}
+
+for (const width of [320, 375, 390, 430]) {
+  test(`responsive: client and trainer critical screens fit ${width}px`, async ({ browser }) => {
+    await verifyResponsiveCriticalScreens(browser, [width]);
+  });
+}
