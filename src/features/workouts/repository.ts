@@ -31,6 +31,35 @@ export type WorkoutPlanStep = {
 
 export type WorkoutPlan = WorkoutPlanSummary & { exercises: WorkoutPlanStep[] };
 
+export type PersonalExercise = {
+  id: string;
+  name: string;
+  measurementType: 'reps' | 'duration' | 'distance';
+  instructions: string | null;
+  category: string | null;
+};
+
+export type WorkoutPlanDraftStep = {
+  exerciseId: string;
+  targetSets: number;
+  targetRepsMin?: number | null;
+  targetRepsMax?: number | null;
+  targetDurationSeconds?: number | null;
+  targetDistanceM?: number | null;
+  targetWeightKg?: number | null;
+  restSeconds: number;
+  notes?: string | null;
+};
+
+export type WorkoutPlanDraft = {
+  id?: string | null;
+  name: string;
+  description?: string | null;
+  level?: 'beginner' | 'intermediate' | 'advanced' | null;
+  estimatedDurationMinutes?: number | null;
+  steps: WorkoutPlanDraftStep[];
+};
+
 export type PerformedSet = {
   id: string;
   clientSetKey: string | null;
@@ -123,10 +152,76 @@ export async function loadWorkoutPlans(userId: string): Promise<WorkoutPlanSumma
   });
 }
 
+function toPersonalExercise(raw: unknown): PersonalExercise {
+  const value = record(raw); const type = String(value.measurement_type ?? 'reps');
+  return { id: String(value.id), name: String(value.name ?? 'Упражнение'), measurementType: type === 'duration' || type === 'distance' ? type : 'reps', instructions: value.instructions == null ? null : String(value.instructions), category: value.category == null ? null : String(value.category) };
+}
+
+export async function loadMyExercises(userId: string): Promise<PersonalExercise[]> {
+  const client = await getSupabaseClientForUser(userId);
+  const { data, error } = await client.rpc('get_my_exercises');
+  if (error) throw error;
+  return ((data ?? []) as unknown[]).map(toPersonalExercise);
+}
+
+export async function createMyExercise(userId: string, input: { name: string; measurementType: PersonalExercise['measurementType']; instructions?: string | null; category?: string | null }) {
+  const client = await getSupabaseClientForUser(userId);
+  const { data, error } = await client.rpc('create_my_exercise', { p_name: input.name, p_measurement_type: input.measurementType, p_instructions: input.instructions ?? null, p_category: input.category ?? null });
+  if (error) throw error;
+  return toPersonalExercise(data);
+}
+
+export async function updateMyExercise(userId: string, exerciseId: string, input: { name: string; instructions?: string | null; category?: string | null }) {
+  const client = await getSupabaseClientForUser(userId);
+  const { data, error } = await client.rpc('update_my_exercise', { p_exercise_id: exerciseId, p_name: input.name, p_instructions: input.instructions ?? null, p_category: input.category ?? null });
+  if (error) throw error;
+  return toPersonalExercise(data);
+}
+
+export async function deleteMyExercise(userId: string, exerciseId: string) {
+  const client = await getSupabaseClientForUser(userId);
+  const { error } = await client.rpc('delete_my_exercise', { p_exercise_id: exerciseId });
+  if (error) throw error;
+}
+
+export async function saveMyWorkoutPlan(userId: string, draft: WorkoutPlanDraft): Promise<WorkoutPlan> {
+  const client = await getSupabaseClientForUser(userId);
+  const { data, error } = await client.rpc('save_my_workout_plan', {
+    p_plan_id: draft.id ?? null, p_name: draft.name, p_description: draft.description ?? null,
+    p_level: draft.level ?? null, p_estimated_duration_minutes: draft.estimatedDurationMinutes ?? null,
+    p_steps: draft.steps.map((step) => ({ exercise_id: step.exerciseId, target_sets: step.targetSets, target_reps_min: step.targetRepsMin ?? null, target_reps_max: step.targetRepsMax ?? null, target_duration_seconds: step.targetDurationSeconds ?? null, target_distance_m: step.targetDistanceM ?? null, target_weight_kg: step.targetWeightKg ?? null, rest_seconds: step.restSeconds, notes: step.notes ?? null })),
+  });
+  if (error) throw error;
+  return toPlan(data);
+}
+
+export async function duplicateMyWorkoutPlan(userId: string, planId: string): Promise<WorkoutPlan> {
+  const client = await getSupabaseClientForUser(userId);
+  const { data, error } = await client.rpc('duplicate_my_workout_plan', { p_plan_id: planId });
+  if (error) throw error;
+  return toPlan(data);
+}
+
+export async function archiveMyWorkoutPlan(userId: string, planId: string) {
+  const client = await getSupabaseClientForUser(userId);
+  const { error } = await client.rpc('archive_my_workout_plan', { p_plan_id: planId });
+  if (error) throw error;
+}
+
+export async function deleteMyWorkoutPlan(userId: string, planId: string) {
+  const client = await getSupabaseClientForUser(userId);
+  const { error } = await client.rpc('delete_my_workout_plan', { p_plan_id: planId });
+  if (error) throw error;
+}
+
 export async function loadWorkoutPlan(userId: string, planId: string): Promise<WorkoutPlan> {
   const client = await getSupabaseClientForUser(userId);
   const { data, error } = await client.rpc('get_my_workout_plan', { p_plan_id: planId });
   if (error) throw error;
+  return toPlan(data);
+}
+
+function toPlan(data: unknown): WorkoutPlan {
   const value = record(data);
   return {
     id: String(value.id), name: String(value.name ?? 'План'), description: value.description == null ? null : String(value.description),

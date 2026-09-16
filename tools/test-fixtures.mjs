@@ -106,7 +106,7 @@ async function expectRegistry(admin, ids) {
 }
 
 async function removeBaselineData(admin, ids) {
-  const all = [...ids.values()]; const clientId = ids.get('client');
+  const all = [...ids.values()];
   // Only rows whose two participants are test accounts are ever touched.
   const { data: links, error: linksError } = await admin.from('trainer_client_links').select('id').in('trainer_id', all).in('client_id', all);
   assertError(linksError, 'Не удалось прочитать test trainer links');
@@ -116,12 +116,16 @@ async function removeBaselineData(admin, ids) {
     assertError((await admin.from('trainer_client_notes').delete().in('trainer_id', all).in('client_id', all)).error, 'Не удалось очистить test notes');
     assertError((await admin.from('trainer_client_links').delete().in('id', linkIds).in('trainer_id', all).in('client_id', all)).error, 'Не удалось очистить test links');
   }
-  for (const table of ['performed_sets', 'workout_plan_exercises', 'workout_sessions', 'workout_plans', 'exercises', 'meal_items', 'meals']) {
-    assertError((await admin.from(table).delete().eq('user_id', clientId)).error, `Не удалось очистить ${table}`);
+  // Reset every registry-owned persona, not only Test Client. Otherwise a
+  // targeted Empty Client scenario can leave plans behind for the next run.
+  for (const userId of all) {
+    for (const table of ['performed_sets', 'workout_plan_exercises', 'workout_sessions', 'workout_plans', 'exercises', 'meal_items', 'meals']) {
+      assertError((await admin.from(table).delete().eq('user_id', userId)).error, `Не удалось очистить ${table}`);
+    }
+    assertError((await admin.from('products').delete().eq('owner_id', userId)).error, 'Не удалось очистить products');
+    assertError((await admin.from('nutrition_goals').delete().eq('user_id', userId)).error, 'Не удалось очистить nutrition_goals');
+    assertError((await admin.from('nutrition_settings').delete().eq('user_id', userId)).error, 'Не удалось очистить nutrition_settings');
   }
-  assertError((await admin.from('products').delete().eq('owner_id', clientId)).error, 'Не удалось очистить products');
-  assertError((await admin.from('nutrition_goals').delete().eq('user_id', clientId)).error, 'Не удалось очистить nutrition_goals');
-  assertError((await admin.from('nutrition_settings').delete().eq('user_id', clientId)).error, 'Не удалось очистить nutrition_settings');
 }
 
 async function seedProfiles(admin, ids) {
