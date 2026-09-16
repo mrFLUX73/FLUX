@@ -10,7 +10,15 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "lint": "tsc -b --pretty false"
+    "lint": "tsc -b --pretty false",
+    "e2e:prepare": "node tools/test-fixtures.mjs prepare",
+    "e2e:reset": "node tools/test-fixtures.mjs reset",
+    "e2e:smoke": "node tools/run-smoke.mjs",
+    "e2e:smoke:existing": "node tools/run-smoke.mjs --no-reset",
+    "e2e:auth:proof": "node tools/run-smoke.mjs --no-reset --auth-proof",
+    "e2e:auth:poc": "node tools/run-smoke.mjs --no-reset --auth-poc",
+    "e2e:visual:diagnostic": "node tools/run-smoke.mjs --no-reset --visual-diagnostic",
+    "e2e:smoke:current": "node tools/run-smoke.mjs --no-reset --full-smoke"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",
@@ -25,6 +33,7 @@
     "tailwind-merge": "3.6.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
     "@types/qrcode": "^1.5.6",

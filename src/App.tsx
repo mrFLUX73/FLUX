@@ -153,6 +153,10 @@ function localDayKey(date = new Date()) {
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 }
 
+function localIsoDayKey(date = new Date()) {
+  return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
+}
+
 function dateFromDayKey(dayKey: string) {
   const [year, month, day] = dayKey.split('-').map(Number);
   return new Date(year, Number.isFinite(month) ? month : 0, day || 1);
@@ -1839,14 +1843,14 @@ function TrainerChatDrawer({ open, onOpenChange, onBack, backLabel, userId, link
 
 function ClientOverviewDrawer({ open, onOpenChange, userId, link, onOpenChat, onRevoke }: { open: boolean; onOpenChange: (open: boolean) => void; userId: string; link: TrainerLink | null; onOpenChat: () => void; onRevoke: () => void }) {
   const [overview, setOverview] = useState<TrainerClientOverview | null>(null); const [nutrition, setNutrition] = useState<TrainerClientNutrition | null>(null); const [workouts, setWorkouts] = useState<TrainerClientWorkouts | null>(null); const [notes, setNotes] = useState<TrainerClientNote[]>([]); const [loading, setLoading] = useState(false); const [error, setError] = useState(''); const [sectionErrors, setSectionErrors] = useState<{ nutrition: boolean; workouts: boolean; notes: boolean }>({ nutrition: false, workouts: false, notes: false });
-  const [tab, setTab] = useState<'overview' | 'nutrition' | 'workouts' | 'progress'>('overview'); const [day, setDay] = useState(localDayKey()); const [noteBody, setNoteBody] = useState(''); const [editingNoteId, setEditingNoteId] = useState<string | null>(null); const [savingNote, setSavingNote] = useState(false);
+  const [tab, setTab] = useState<'overview' | 'nutrition' | 'workouts' | 'progress'>('overview'); const [day, setDay] = useState(localIsoDayKey()); const [noteBody, setNoteBody] = useState(''); const [editingNoteId, setEditingNoteId] = useState<string | null>(null); const [savingNote, setSavingNote] = useState(false);
   const refresh = useCallback(async (quiet = false) => { if (!link) return; if (!quiet) setLoading(true); setError(''); try { const nextOverview = await loadTrainerClientOverview(userId, link.id); setOverview(nextOverview); } catch { setOverview(null); setError('Не удалось подтвердить доступ к карточке клиента. Проверьте активную связь и попробуйте ещё раз.'); if (!quiet) setLoading(false); return; }
     const [nextNutrition, nextWorkouts, nextNotes] = await Promise.allSettled([loadTrainerClientNutrition(userId, link.id, day), loadTrainerClientWorkouts(userId, link.id), loadTrainerClientNotes(userId, link.id)]);
     if (nextNutrition.status === 'fulfilled') setNutrition(nextNutrition.value); if (nextWorkouts.status === 'fulfilled') setWorkouts(nextWorkouts.value); if (nextNotes.status === 'fulfilled') setNotes(nextNotes.value);
     setSectionErrors({ nutrition: nextNutrition.status === 'rejected', workouts: nextWorkouts.status === 'rejected', notes: nextNotes.status === 'rejected' }); if (!quiet) setLoading(false);
   }, [day, link, userId]);
-  useEffect(() => { if (!open) return; setTab('overview'); setNoteBody(''); setEditingNoteId(null); void refresh(); }, [open, refresh]);
-  useEffect(() => { if (open && tab === 'nutrition') void refresh(true); }, [day, open, refresh, tab]);
+  useEffect(() => { if (!open) return; setTab('overview'); setNoteBody(''); setEditingNoteId(null); }, [open, link?.id]);
+  useEffect(() => { if (open) void refresh(tab === 'nutrition'); }, [open, refresh, tab]);
   const saveNote = async () => { if (!link || !noteBody.trim() || savingNote) return; setSavingNote(true); try { await saveTrainerClientNote(userId, link.id, noteBody, editingNoteId ?? undefined); setNoteBody(''); setEditingNoteId(null); setNotes(await loadTrainerClientNotes(userId, link.id)); } catch { setError('Не удалось сохранить заметку.'); } finally { setSavingNote(false); } };
   const editNote = (note: TrainerClientNote) => { setEditingNoteId(note.id); setNoteBody(note.body); };
   const removeNote = async (note: TrainerClientNote) => { if (!link || !window.confirm('Удалить эту заметку?')) return; try { await deleteTrainerClientNote(userId, link.id, note.id); setNotes((items) => items.filter((item) => item.id !== note.id)); } catch { setError('Не удалось удалить заметку.'); } };

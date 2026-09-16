@@ -11,6 +11,9 @@
 
 # testing
 /coverage
+/test-results/
+/playwright-report/
+/.e2e/auth/
 
 # build output
 /dist/
