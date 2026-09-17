@@ -13,13 +13,12 @@ function run(command, args) {
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
-// This deliberately builds before Playwright starts vite preview. E2E therefore
-// exercises the candidate production bundle, never the Vite development server.
+// Reset remains separate from browser testing. The runner below builds an E2E
+// candidate, proves it in preflight, and only then starts Playwright.
 if (!process.argv.includes('--no-reset')) run('node', ['tools/test-fixtures.mjs', 'reset']);
-run('pnpm', ['build']);
 const authProofOnly = process.argv.includes('--auth-proof');
 const authPocOnly = process.argv.includes('--auth-poc');
 const visualDiagnosticOnly = process.argv.includes('--visual-diagnostic');
 const fullSmokeOnly = process.argv.includes('--full-smoke');
 const targetedRegressionOnly = process.argv.includes('--targeted-regression');
-run('pnpm', ['exec', 'playwright', 'test', ...(authProofOnly ? ['e2e/auth-state.spec.ts'] : authPocOnly ? ['e2e/auth-poc.spec.ts'] : visualDiagnosticOnly ? ['e2e/visual-diagnostic.spec.ts'] : fullSmokeOnly ? ['e2e/full-smoke.spec.ts'] : targetedRegressionOnly ? ['e2e/targeted-regression.spec.ts'] : [])]);
+run('node', ['tools/run-e2e.mjs', ...(authProofOnly ? ['e2e/auth-state.spec.ts'] : authPocOnly ? ['e2e/auth-poc.spec.ts'] : visualDiagnosticOnly ? ['e2e/visual-diagnostic.spec.ts'] : fullSmokeOnly ? ['e2e/full-smoke.spec.ts'] : targetedRegressionOnly ? ['e2e/targeted-regression.spec.ts'] : [])]);

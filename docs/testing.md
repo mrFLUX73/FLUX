@@ -28,7 +28,23 @@ The reset tool generates account passwords locally if missing. It never prints t
 pnpm e2e:smoke
 ```
 
-The command resets only registered test fixtures, builds the production bundle, starts `vite preview` on `127.0.0.1:4179`, then runs the Playwright smoke suite. It never starts the development server. Because production Turnstile correctly rejects headless password grants on localhost, the test runner bootstraps each already-registered synthetic account with a one-time server-side magic-link session. It does not disable CAPTCHA, alter the browser bundle, or expose the service-role key to the page.
+The command resets only registered test fixtures, creates an explicitly marked E2E candidate bundle, verifies it with preflight, then starts the Playwright smoke suite. It never starts the development server. Because production Turnstile correctly rejects headless password grants on localhost, the test runner bootstraps each already-registered synthetic account with a one-time server-side magic-link session. It does not disable CAPTCHA, alter the browser bundle, or expose the service-role key to the page.
+
+For a focused browser test, prefer:
+
+```bash
+pnpm e2e:targeted e2e/workout-engine.spec.ts -g "scenario name"
+```
+
+This command builds a candidate, starts only an identifiable local preview,
+runs `pnpm e2e:preflight`, and starts Playwright only after PASS. Preflight is
+a fast, non-destructive check of environment, test-bundle marker, source
+fingerprint, preview identity, synthetic registry/auth and fixture baseline.
+Run `pnpm e2e:preflight:check` for its local failure-path checks.
+
+Before substantial product work, E2E, migrations or synthetic reset, read the
+[Development Playbook](development-playbook.md). It is the single source of
+truth for classification, safety and targeted-testing rules.
 
 For fixture reset alone:
 

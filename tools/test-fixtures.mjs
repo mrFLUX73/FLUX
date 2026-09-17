@@ -6,15 +6,11 @@ import { createClient } from '@supabase/supabase-js';
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { TEST_PERSONAS, TEST_PURPOSES } from './e2e-contract.mjs';
 
 const envPath = resolve('.env.e2e.local');
-const purposes = ['trainer', 'client', 'empty_client', 'other_trainer'];
-const defaults = {
-  trainer: { login: 'flux-test-trainer', name: 'Артём Ветров', phone: '+79990000011', code: 'TR-TSTTRN01' },
-  client: { login: 'flux-test-client', name: 'Илья Северин', phone: '+79990000012' },
-  empty_client: { login: 'flux-empty-client', name: 'Пустой Тест', phone: '+79990000013' },
-  other_trainer: { login: 'flux-other-trainer', name: 'Олег Каменный', phone: '+79990000014', code: 'TR-OTHTRN01' },
-};
+const purposes = TEST_PURPOSES;
+const defaults = TEST_PERSONAS;
 
 function parseEnv(text) {
   return Object.fromEntries(text.split(/\r?\n/).flatMap((line) => {

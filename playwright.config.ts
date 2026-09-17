@@ -20,7 +20,9 @@ export default defineConfig({
   webServer: {
     command: 'pnpm preview --host 127.0.0.1 --port 4179',
     url: 'http://127.0.0.1:4179',
-    reuseExistingServer: !process.env.CI,
+    // The safe E2E runner owns a preview that preflight has already verified.
+    // Keep ordinary direct Playwright behavior unchanged outside that runner.
+    reuseExistingServer: process.env.FLUX_E2E_MANAGED_PREVIEW === '1' || !process.env.CI,
     timeout: 30_000,
   },
 });

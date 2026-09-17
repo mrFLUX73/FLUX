@@ -31,6 +31,12 @@ pnpm build
 pnpm preview
 ```
 
+## Разработка и E2E
+
+Перед существенными изменениями, browser E2E, миграциями или synthetic reset
+прочитайте [Development Playbook](docs/development-playbook.md). Быстрый
+проверяемый запуск E2E описан в [testing guide](docs/testing.md).
+
 ## Supabase
 
 1. Создайте проект Supabase.
