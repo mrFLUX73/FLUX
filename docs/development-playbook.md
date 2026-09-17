@@ -73,6 +73,9 @@ Do not create a migration, alter RPC or change schema for a UI/state issue
 until the current server contract is proven insufficient. Choose the smallest
 verification set that gives confidence; avoid full smoke runs for local work.
 
+When changing a referential-integrity or ownership invariant, audit every RPC
+that relies on the old invariant before declaring the migration safe.
+
 When a recurring issue is found, ask whether it is a class of errors, whether
 a regression test or preflight can prevent it, and whether this playbook needs
 a short new rule. Do not turn this document into a bug log or changelog.

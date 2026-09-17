@@ -107,11 +107,6 @@ async function removeBaselineData(admin, ids) {
   const { data: links, error: linksError } = await admin.from('trainer_client_links').select('id').in('trainer_id', all).in('client_id', all);
   assertError(linksError, 'Не удалось прочитать test trainer links');
   const linkIds = links.map((link) => link.id);
-  if (linkIds.length) {
-    assertError((await admin.from('trainer_messages').delete().in('link_id', linkIds)).error, 'Не удалось очистить test messages');
-    assertError((await admin.from('trainer_client_notes').delete().in('trainer_id', all).in('client_id', all)).error, 'Не удалось очистить test notes');
-    assertError((await admin.from('trainer_client_links').delete().in('id', linkIds).in('trainer_id', all).in('client_id', all)).error, 'Не удалось очистить test links');
-  }
   // Reset every registry-owned persona, not only Test Client. Otherwise a
   // targeted Empty Client scenario can leave plans behind for the next run.
   for (const userId of all) {
@@ -121,6 +116,13 @@ async function removeBaselineData(admin, ids) {
     assertError((await admin.from('products').delete().eq('owner_id', userId)).error, 'Не удалось очистить products');
     assertError((await admin.from('nutrition_goals').delete().eq('user_id', userId)).error, 'Не удалось очистить nutrition_goals');
     assertError((await admin.from('nutrition_settings').delete().eq('user_id', userId)).error, 'Не удалось очистить nutrition_settings');
+  }
+  // Assigned plans retain their exact link by RESTRICT. Clear only
+  // registry-owned workout data before physically removing synthetic links.
+  if (linkIds.length) {
+    assertError((await admin.from('trainer_messages').delete().in('link_id', linkIds)).error, 'Не удалось очистить test messages');
+    assertError((await admin.from('trainer_client_notes').delete().in('trainer_id', all).in('client_id', all)).error, 'Не удалось очистить test notes');
+    assertError((await admin.from('trainer_client_links').delete().in('id', linkIds).in('trainer_id', all).in('client_id', all)).error, 'Не удалось очистить test links');
   }
 }
 

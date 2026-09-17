@@ -9,6 +9,9 @@ export type WorkoutPlanSummary = {
   exerciseCount: number;
   isActive: boolean;
   updatedAt: string;
+  origin: 'personal' | 'trainer_assigned';
+  trainerId: string | null;
+  trainerName: string | null;
 };
 
 export type WorkoutPlanStep = {
@@ -30,6 +33,8 @@ export type WorkoutPlanStep = {
 };
 
 export type WorkoutPlan = WorkoutPlanSummary & { exercises: WorkoutPlanStep[] };
+
+export type TrainerAssignedPlanSummary = WorkoutPlanSummary;
 
 export type PersonalExercise = {
   id: string;
@@ -100,7 +105,7 @@ function toStep(raw: unknown): WorkoutPlanStep {
   const value = record(raw);
   const measurement = String(value.measurement_type ?? 'reps');
   return {
-    stepId: String(value.step_id), exerciseId: String(value.exercise_id), name: String(value.name ?? 'Упражнение'),
+    stepId: String(value.step_id), exerciseId: value.exercise_id == null ? '' : String(value.exercise_id), name: String(value.name ?? 'Упражнение'),
     instructions: value.instructions == null ? null : String(value.instructions),
     measurementType: measurement === 'duration' || measurement === 'distance' ? measurement : 'reps',
     dayNumber: number(value.day_number), sortOrder: number(value.sort_order), targetSets: number(value.target_sets),
@@ -148,6 +153,9 @@ export async function loadWorkoutPlans(userId: string): Promise<WorkoutPlanSumma
       id: String(value.id), name: String(value.name ?? 'План'), description: value.description == null ? null : String(value.description),
       level: value.level == null ? null : String(value.level), estimatedDurationMinutes: nullableNumber(value.estimated_duration_minutes),
       exerciseCount: number(value.exercise_count), isActive: Boolean(value.is_active), updatedAt: String(value.updated_at),
+      origin: value.plan_origin === 'trainer_assigned' ? 'trainer_assigned' : 'personal',
+      trainerId: value.assigned_by_trainer_id == null ? null : String(value.assigned_by_trainer_id),
+      trainerName: value.trainer_name == null ? null : String(value.trainer_name),
     };
   });
 }
@@ -221,12 +229,66 @@ export async function loadWorkoutPlan(userId: string, planId: string): Promise<W
   return toPlan(data);
 }
 
+export async function loadTrainerAssignedWorkoutPlans(userId: string, linkId: string): Promise<TrainerAssignedPlanSummary[]> {
+  const client = await getSupabaseClientForUser(userId);
+  const { data, error } = await client.rpc('get_trainer_assigned_workout_plans', { p_link_id: linkId });
+  if (error) throw error;
+  return ((data ?? []) as unknown[]).map((raw) => {
+    const value = record(raw);
+    return {
+      id: String(value.id), name: String(value.name ?? 'План'), description: value.description == null ? null : String(value.description),
+      level: value.level == null ? null : String(value.level), estimatedDurationMinutes: nullableNumber(value.estimated_duration_minutes),
+      exerciseCount: number(value.exercise_count), isActive: Boolean(value.is_active), updatedAt: String(value.updated_at),
+      origin: 'trainer_assigned' as const, trainerId: null, trainerName: null,
+    };
+  });
+}
+
+export async function loadTrainerAssignedWorkoutPlan(userId: string, linkId: string, planId: string): Promise<WorkoutPlan> {
+  const client = await getSupabaseClientForUser(userId);
+  const { data, error } = await client.rpc('get_trainer_assigned_workout_plan', { p_link_id: linkId, p_plan_id: planId });
+  if (error) throw error;
+  return toPlan(data);
+}
+
+const toRpcSteps = (steps: WorkoutPlanDraftStep[]) => steps.map((step) => ({
+  exercise_id: step.exerciseId, target_sets: step.targetSets, target_reps_min: step.targetRepsMin ?? null,
+  target_reps_max: step.targetRepsMax ?? null, target_duration_seconds: step.targetDurationSeconds ?? null,
+  target_distance_m: step.targetDistanceM ?? null, target_weight_kg: step.targetWeightKg ?? null,
+  rest_seconds: step.restSeconds, notes: step.notes ?? null,
+}));
+
+export async function saveTrainerAssignedWorkoutPlan(userId: string, linkId: string, draft: WorkoutPlanDraft): Promise<string> {
+  const client = await getSupabaseClientForUser(userId);
+  const { data, error } = await client.rpc('save_trainer_assigned_workout_plan', {
+    p_link_id: linkId, p_plan_id: draft.id ?? null, p_name: draft.name, p_description: draft.description ?? null,
+    p_level: draft.level ?? null, p_estimated_duration_minutes: draft.estimatedDurationMinutes ?? null, p_steps: toRpcSteps(draft.steps),
+  });
+  if (error || !data) throw error ?? new Error('Не удалось сохранить план');
+  return String(data);
+}
+
+export async function archiveTrainerAssignedWorkoutPlan(userId: string, linkId: string, planId: string) {
+  const client = await getSupabaseClientForUser(userId);
+  const { error } = await client.rpc('archive_trainer_assigned_workout_plan', { p_link_id: linkId, p_plan_id: planId });
+  if (error) throw error;
+}
+
+export async function deleteTrainerAssignedWorkoutPlan(userId: string, linkId: string, planId: string) {
+  const client = await getSupabaseClientForUser(userId);
+  const { error } = await client.rpc('delete_trainer_assigned_workout_plan', { p_link_id: linkId, p_plan_id: planId });
+  if (error) throw error;
+}
+
 function toPlan(data: unknown): WorkoutPlan {
   const value = record(data);
   return {
     id: String(value.id), name: String(value.name ?? 'План'), description: value.description == null ? null : String(value.description),
     level: value.level == null ? null : String(value.level), estimatedDurationMinutes: nullableNumber(value.estimated_duration_minutes),
     exerciseCount: Array.isArray(value.exercises) ? value.exercises.length : 0, isActive: Boolean(value.is_active), updatedAt: '',
+    origin: value.plan_origin === 'trainer_assigned' ? 'trainer_assigned' : 'personal',
+    trainerId: value.assigned_by_trainer_id == null ? null : String(value.assigned_by_trainer_id),
+    trainerName: value.trainer_name == null ? null : String(value.trainer_name),
     exercises: Array.isArray(value.exercises) ? value.exercises.map(toStep) : [],
   };
 }
