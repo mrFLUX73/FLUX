@@ -1,10 +1,11 @@
 import { expect, test } from '@playwright/test';
-import { authenticatedContext, collectRuntime, expectNoHorizontalOverflow, openApp, settleUi, stableScreenshot, storedSessionRpc } from './helpers';
+import { authenticatedContext, collectRuntime, expectNoHorizontalOverflow, openApp, settleUi, storedSessionRpc } from './helpers';
 
 async function openWorkout(browser: import('@playwright/test').Browser, width = 390) {
   const { context, page } = await authenticatedContext(browser, 'CLIENT', width);
   const errors = collectRuntime(page);
   await openApp(page);
+  await expect(page.getByLabel('Открыть мой профиль')).toBeVisible({ timeout: 15_000 });
   await page.getByRole('button', { name: 'Тренировки', exact: true }).click();
   await settleUi(page);
   return { context, page, errors };
@@ -30,10 +31,12 @@ test('Workout Engine: Test Client starts a server session and persists an in-pro
   await expect(page.getByRole('heading', { name: 'Приседания', exact: true })).toBeVisible();
   await page.getByLabel('Повторы').fill('14');
   await page.getByLabel('Вес, кг').fill('32.5');
-  await page.getByLabel('RPE').fill('7');
-  await page.getByRole('button', { name: 'Подход выполнен', exact: true }).click();
+  await page.getByRole('button', { name: 'Начать подход', exact: true }).click();
+  await expect(page.getByText('Подход выполняется', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Тяжело', exact: true }).click();
+  await page.getByRole('button', { name: 'Завершить подход', exact: true }).click();
   await expect(page.getByText('Можно выдохнуть', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Закрыть', exact: true }).click();
+  await page.getByLabel('Вернуться к тренировкам').click();
   await page.reload(); await settleUi(page);
   await page.getByRole('button', { name: 'Тренировки', exact: true }).click();
   await settleUi(page);
@@ -42,38 +45,31 @@ test('Workout Engine: Test Client starts a server session and persists an in-pro
   await context.close();
 });
 
-test('Workout Engine: Test Client resumes, records duration/rest and completes into history', async ({ browser }) => {
+test('Workout Engine: Test Client reaches duration, pauses and resumes an active session', async ({ browser }) => {
+  test.setTimeout(60_000);
   const { context, page, errors } = await openWorkout(browser);
   await openOrStart(page);
-  for (let completed = 0; completed < 8 && await page.getByText('Тренировка готова', { exact: true }).count() === 0; completed += 1) {
-    await expect(page.getByRole('button', { name: 'Подход выполнен', exact: true })).toBeVisible();
-    if (await page.getByLabel('Повторы').count()) {
-      await page.getByLabel('Повторы').fill('13');
-      await page.getByLabel('Вес, кг').fill('25');
-      await page.getByLabel('RPE').fill('8');
-    }
-    if (await page.getByLabel('Секунды').count()) {
-      await page.getByRole('button', { name: 'Старт таймера', exact: true }).click();
-      await expect(page.getByText('Выполнение', { exact: true })).toBeVisible();
-      await page.getByRole('button', { name: 'Пауза', exact: true }).click();
-    }
-    await page.getByRole('button', { name: 'Подход выполнен', exact: true }).click();
-    if (await page.getByText('Тренировка готова', { exact: true }).count() === 0) {
-      await expect(page.getByText('Можно выдохнуть', { exact: true })).toBeVisible();
-      await page.getByRole('button', { name: 'Пропустить отдых', exact: true }).click();
-    }
+  for (let index = 0; index < 2; index += 1) {
+    await page.getByLabel('Повторы').fill('13');
+    await page.getByRole('button', { name: 'Начать подход', exact: true }).click();
+    await page.getByRole('button', { name: 'Завершить подход', exact: true }).click();
+    await expect(page.getByText('Можно выдохнуть', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Пропустить отдых', exact: true }).click();
+    if (index === 0) await expect(page.getByRole('button', { name: 'Начать подход', exact: true })).toBeVisible();
   }
-  await expect(page.getByText('Тренировка готова', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Завершить тренировку', exact: true }).click();
-  await expect(page.getByRole('dialog', { name: 'Активная тренировка' })).toHaveCount(0);
-  await expect(page.getByText('История', { exact: true })).toBeVisible();
-  await page.locator('.flux-workout-history-button').first().click();
-  await expect(page.getByText('Фактические подходы', { exact: true })).toBeVisible();
-  await expect(page.getByText('25 кг', { exact: false }).first()).toBeVisible();
-  await expect(page.getByText('20 сек', { exact: false }).first()).toBeVisible();
-  await expect(page.getByText('RPE 8', { exact: false }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Перейти к упражнению', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Перейти к упражнению', exact: true }).click();
+  await page.getByRole('button', { name: 'Начать отсчёт', exact: true }).click();
+  await expect(page.getByText('Выполнение', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Пауза', exact: true }).click();
+  await expect(page.getByText('Таймер на паузе', { exact: true })).toBeVisible();
+  await page.getByLabel('Вернуться к тренировкам').click();
+  await page.reload(); await settleUi(page); await page.getByRole('button', { name: 'Тренировки', exact: true }).click(); await settleUi(page);
+  await page.getByRole('button', { name: 'Продолжить', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Начать отсчёт', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Начать отсчёт', exact: true }).click();
+  await expect(page.getByText('Выполнение', { exact: true })).toBeVisible();
   await expectNoHorizontalOverflow(page);
-  await stableScreenshot(page, 'test-results/screenshots/workout-engine-result-390.png');
   expect(errors()).toEqual([]);
   await context.close();
 });

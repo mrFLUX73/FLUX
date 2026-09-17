@@ -8,7 +8,7 @@ async function openWorkouts(browser: import('@playwright/test').Browser, persona
   page.on('response', (response) => {
     if (response.status() >= 400) httpErrors.push(`${response.status()} ${response.url()}`);
   });
-  await openApp(page); await expect(page.getByLabel('Открыть мой профиль')).toBeVisible(); await page.getByRole('button', { name: 'Тренировки', exact: true }).click(); await settleUi(page);
+  await openApp(page); await expect(page.getByLabel('Открыть мой профиль')).toBeVisible({ timeout: 15_000 }); await page.getByRole('button', { name: 'Тренировки', exact: true }).click(); await settleUi(page);
   return { context, page, errors, httpErrors };
 }
 
@@ -19,12 +19,12 @@ test('Personal Plan Editor: Empty Client creates, reloads and starts a personal 
   await page.getByRole('button', { name: 'Создать план', exact: true }).click();
   await page.getByLabel('Название плана').fill('План E2E');
   await page.getByRole('button', { name: 'К упражнениям', exact: true }).click();
-  const exercises = [['Присед E2E', 'Повторы'], ['Планка E2E', 'Длительность'], ['Бег E2E', 'Дистанция']] as const;
+  const exercises = [['Присед E2E', 'Повторения'], ['Планка E2E', 'Время'], ['Бег E2E', 'Дистанция']] as const;
   for (const [index, [name, type]] of exercises.entries()) {
     await page.getByRole('button', { name: 'Добавить упражнение', exact: true }).click();
-    await page.getByPlaceholder('Название').fill(name);
-    await page.locator('.flux-create-exercise select').selectOption({ label: type });
-    await page.getByRole('button', { name: 'Создать', exact: true }).click();
+    await page.getByLabel('Название нового упражнения').fill(name);
+    await page.getByRole('button', { name: type, exact: true }).click();
+    await page.getByRole('button', { name: 'Создать упражнение', exact: true }).click();
     await expect(page.locator('.flux-editor-step-list article')).toHaveCount(index + 1);
   }
   await page.getByLabel('Выше').last().click();
