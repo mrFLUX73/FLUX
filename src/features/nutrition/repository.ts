@@ -325,10 +325,15 @@ function persistLocalEntriesForDay(scope: NutritionStorageScope, dayKey: string,
 export function persistUpdatedLocalEntry(scope: NutritionStorageScope, entry: MealEntry) {
   try {
     const current = readLocalDiary(scope);
-    if (!current.entries.some((candidate) => candidate.entryId === entry.entryId)) return false;
+    const existingEntry = current.entries.some((candidate) => candidate.entryId === entry.entryId);
     persistLocalDiary({
       ...current,
-      entries: current.entries.map((candidate) => candidate.entryId === entry.entryId ? entry : candidate),
+      // Remote history can be visible before a local cache refresh has written
+      // it. Repair that cache on edit without marking an existing server row as
+      // a pending addition.
+      entries: existingEntry
+        ? current.entries.map((candidate) => candidate.entryId === entry.entryId ? entry : candidate)
+        : [...current.entries, entry],
     });
     return true;
   } catch {

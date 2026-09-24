@@ -1,5 +1,5 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
-import { collectRuntime, expectNoHorizontalOverflow, openApp, settleUi, stableScreenshot, statePath } from './helpers';
+import { collectRuntime, expectNoHorizontalOverflow, openApp, settleUi, signedInPage, stableScreenshot, statePath } from './helpers';
 
 const baseUrl = process.env.FLUX_E2E_BASE_URL ?? 'http://127.0.0.1:4179';
 const clientName = 'Илья Северин';
@@ -20,6 +20,19 @@ async function pageFor(browser: import('@playwright/test').Browser, persona: 'CL
 
 function overlaps(first: { x: number; y: number; width: number; height: number }, second: { x: number; y: number; width: number; height: number }) {
   return first.x < second.x + second.width && first.x + first.width > second.x && first.y < second.y + second.height && first.y + first.height > second.y;
+}
+
+function localIsoDay(daysAgo = 0) {
+  const date = new Date();
+  date.setDate(date.getDate() - daysAgo);
+  return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
+}
+
+async function waitForHistoricalNutrition(page: Page) {
+  // The selection render precedes its effect. Let the existing loader enter
+  // its loading state before treating the restored list as stable.
+  await page.waitForTimeout(50);
+  await expect(page.locator('.flux-meal-list .flux-section-heading h2')).toHaveText('Приёмы пищи');
 }
 
 test('targeted: trainer nutrition uses ISO date and keeps Nutrition open', async ({ browser }) => {
@@ -110,5 +123,148 @@ test('targeted: Today slogan stays available at mobile widths', async ({ browser
       expect(errors()).toEqual([]);
       await context.close();
     }
+  }
+});
+
+test('targeted: Nutrition saves add and repeat in the selected local day', async ({ browser }) => {
+  const { context, page } = await signedInPage(browser, 'CLIENT');
+  const errors = collectRuntime(page);
+  await openApp(page); await settleUi(page);
+  const today = localIsoDay();
+  const yesterday = localIsoDay(1);
+  const fixtureDay = '2026-09-14';
+  const dayAfterFixture = '2026-09-15';
+  const picker = page.getByLabel('Выбрать дату питания');
+
+  await page.getByRole('button', { name: 'Питание', exact: true }).click();
+  const todayEggCount = await page.locator('.flux-meal-row').filter({ hasText: 'Яйцо куриное' }).count();
+  await expect(picker).toHaveValue(today);
+  await expect(page.getByLabel('Показать следующий день')).toBeDisabled();
+  await page.getByRole('button', { name: 'Что вы съели?' }).click();
+  await page.locator('.flux-product-row').filter({ hasText: 'Яйцо куриное' }).first().click();
+  await page.getByRole('button', { name: /Добавить в / }).click();
+  await expect(page.locator('.flux-drawer')).toHaveCount(0);
+  const todayEggRows = page.locator('.flux-meal-row').filter({ hasText: 'Яйцо куриное' });
+  await expect(todayEggRows).toHaveCount(todayEggCount + 1);
+  await todayEggRows.last().getByLabel('Удалить Яйцо куриное').click();
+  await expect(todayEggRows).toHaveCount(todayEggCount);
+  await page.getByLabel('Показать предыдущий день').click();
+  await expect(picker).toHaveValue(yesterday);
+  await page.getByLabel('Показать следующий день').click();
+  await expect(picker).toHaveValue(today);
+  await picker.fill(fixtureDay);
+  await expect(picker).toHaveValue(fixtureDay);
+  await picker.fill(localIsoDay(-1));
+  await expect(picker).toHaveValue(fixtureDay);
+  await waitForHistoricalNutrition(page);
+
+  await page.getByRole('button', { name: 'Что вы съели?' }).click();
+  await page.locator('.flux-product-row').filter({ hasText: 'Яйцо куриное' }).first().click();
+  await page.getByRole('button', { name: /Добавить в / }).click();
+  await expect(page.locator('.flux-drawer')).toHaveCount(0);
+  const eggRows = page.locator('.flux-meal-row').filter({ hasText: 'Яйцо куриное' });
+  await expect(eggRows).toHaveCount(1);
+
+  await page.reload(); await openApp(page); await settleUi(page);
+  await page.getByRole('button', { name: 'Питание', exact: true }).click();
+  await page.getByLabel('Выбрать дату питания').fill(fixtureDay);
+  await waitForHistoricalNutrition(page);
+  await expect(eggRows).toHaveCount(1);
+
+  await eggRows.getByLabel('Изменить Яйцо куриное').click();
+  const editDrawer = page.getByRole('dialog');
+  await editDrawer.getByLabel('Количество, г').fill('120');
+  await editDrawer.getByRole('button', { name: 'Перекус', exact: true }).click();
+  await editDrawer.getByRole('button', { name: 'Сохранить изменения', exact: true }).click();
+  await expect(eggRows).toContainText('120 г');
+
+  await page.getByLabel('Повторить предыдущий перекус').click();
+  const repeatDrawer = page.getByRole('dialog');
+  await repeatDrawer.locator('.flux-repeat-history-row').filter({ hasText: 'Яйцо куриное' }).click();
+  await repeatDrawer.getByRole('button', { name: 'Повторить приём пищи', exact: true }).click();
+  await expect(page.locator('.flux-drawer')).toHaveCount(0);
+  await expect(eggRows).toHaveCount(2);
+
+  await page.getByLabel('Выбрать дату питания').fill(today);
+  await expect(eggRows).toHaveCount(todayEggCount);
+  await page.getByLabel('Выбрать дату питания').fill(fixtureDay);
+  await waitForHistoricalNutrition(page);
+  await expect(eggRows).toHaveCount(2);
+  while (await eggRows.count()) {
+    const before = await eggRows.count();
+    await eggRows.first().getByLabel('Удалить Яйцо куриное').click();
+    await expect(eggRows).toHaveCount(before - 1);
+  }
+
+  await page.route('**/functions/v1/product-search', async (route) => {
+    const body = JSON.parse(route.request().postData() ?? '{}') as { mode?: string };
+    if (body.mode === 'name-search') {
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ status: 'found', candidates: [{ source: 'nutriapix', name: 'E2E Nutriapix вчера', brand: 'FLUX test', slug: 'e2e-nutrition-yesterday' }] }) });
+      return;
+    }
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ status: 'found', product: { id: 'nutriapix:e2e-nutrition-yesterday', name: 'E2E Nutriapix вчера', brand: 'FLUX test', amount: 100, unit: 'г', servingSizeG: 100, kcal: 90, protein: 3, fat: 2, carbs: 14, icon: 'curd', source: 'nutriapix', externalFoodId: '1234567890123456789012345', externalBrandId: 'e2e-brand', externalServingId: 'e2e-serving' } }) });
+  });
+  await page.getByRole('button', { name: 'Что вы съели?' }).click();
+  await page.getByLabel('Найти продукт, бренд или штрихкод').fill('nutri');
+  await page.locator('.flux-product-row').filter({ hasText: 'E2E Nutriapix вчера' }).click();
+  const externalAddResponse = page.waitForResponse((response) => response.url().includes('/rpc/add_external_meal_item'));
+  await page.getByRole('button', { name: /Добавить в / }).click();
+  expect((await externalAddResponse).status()).toBe(200);
+  await expect(page.locator('.flux-drawer')).toHaveCount(0);
+  const externalRows = page.locator('.flux-meal-row').filter({ hasText: 'E2E Nutriapix вчера' });
+  await expect(externalRows).toHaveCount(1);
+
+  await page.reload(); await openApp(page); await settleUi(page);
+  await page.getByRole('button', { name: 'Питание', exact: true }).click();
+  await page.getByLabel('Выбрать дату питания').fill(fixtureDay);
+  await waitForHistoricalNutrition(page);
+  await expect(externalRows).toHaveCount(1);
+  await page.getByLabel('Выбрать дату питания').fill(today);
+  await expect(externalRows).toHaveCount(0);
+  await page.getByLabel('Выбрать дату питания').fill(fixtureDay);
+  await waitForHistoricalNutrition(page);
+  await externalRows.getByLabel('Удалить E2E Nutriapix вчера').click();
+  await expect(externalRows).toHaveCount(0);
+
+  await page.locator('.flux-content').evaluate((node) => {
+    const touch = (type: string, x: number, y: number) => {
+      const point = new Touch({ identifier: 1, target: node, clientX: x, clientY: y });
+      node.dispatchEvent(new TouchEvent(type, { bubbles: true, cancelable: true, touches: type === 'touchend' ? [] : [point], changedTouches: [point] }));
+    };
+    touch('touchstart', 240, 300); touch('touchmove', 160, 304); touch('touchend', 160, 304);
+  });
+  await expect(page.getByLabel('Выбрать дату питания')).toHaveValue(dayAfterFixture);
+  await page.locator('.flux-content').evaluate((node) => {
+    const touch = (type: string, x: number, y: number) => {
+      const point = new Touch({ identifier: 1, target: node, clientX: x, clientY: y });
+      node.dispatchEvent(new TouchEvent(type, { bubbles: true, cancelable: true, touches: type === 'touchend' ? [] : [point], changedTouches: [point] }));
+    };
+    touch('touchstart', 160, 304); touch('touchmove', 240, 304); touch('touchend', 240, 304);
+  });
+  await expect(page.getByLabel('Выбрать дату питания')).toHaveValue(fixtureDay);
+  await page.locator('.flux-content').evaluate((node) => {
+    const touch = (type: string, x: number, y: number) => {
+      const point = new Touch({ identifier: 1, target: node, clientX: x, clientY: y });
+      node.dispatchEvent(new TouchEvent(type, { bubbles: true, cancelable: true, touches: type === 'touchend' ? [] : [point], changedTouches: [point] }));
+    };
+    touch('touchstart', 180, 220); touch('touchmove', 182, 330); touch('touchend', 182, 330);
+  });
+  await expect(page.getByLabel('Выбрать дату питания')).toHaveValue(fixtureDay);
+  expect(errors()).toEqual([]);
+  await context.close();
+});
+
+test('targeted: Nutrition date navigation fits from 320 to 430', async ({ browser }) => {
+  for (const width of [320, 375, 390, 430]) {
+    const { context, page, errors } = await pageFor(browser, 'EMPTY_CLIENT', width);
+    await page.getByRole('button', { name: 'Питание', exact: true }).click();
+    await expect(page.locator('.flux-food-day-nav')).toBeVisible();
+    await expect(page.getByLabel('Выбрать дату питания')).toBeVisible();
+    await expect(page.getByLabel('Показать предыдущий день')).toBeVisible();
+    await expect(page.getByLabel('Показать следующий день')).toBeDisabled();
+    await expectNoHorizontalOverflow(page);
+    await stableScreenshot(page, `test-results/screenshots/targeted-nutrition-date-nav-${width}.png`);
+    expect(errors().filter((error) => !error.includes('status of 400'))).toEqual([]);
+    await context.close();
   }
 });
