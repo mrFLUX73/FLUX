@@ -29,9 +29,10 @@ function localIsoDay(daysAgo = 0) {
 }
 
 async function waitForHistoricalNutrition(page: Page) {
-  // The selection render precedes its effect. Let the existing loader enter
-  // its loading state before treating the restored list as stable.
+  // The selection render precedes its effect. Wait for the existing loader to
+  // replace stale content before treating the selected day as stable.
   await page.waitForTimeout(50);
+  await expect(page.locator('.flux-food-diary-content')).not.toHaveClass(/is-loading/);
   await expect(page.locator('.flux-meal-list .flux-section-heading h2')).toHaveText('Приёмы пищи');
 }
 
@@ -250,6 +251,68 @@ test('targeted: Nutrition saves add and repeat in the selected local day', async
     touch('touchstart', 180, 220); touch('touchmove', 182, 330); touch('touchend', 182, 330);
   });
   await expect(page.getByLabel('Выбрать дату питания')).toHaveValue(fixtureDay);
+  expect(errors()).toEqual([]);
+  await context.close();
+});
+
+test('targeted: Nutrition keeps stale content stable until the selected day is ready', async ({ browser }) => {
+  const { context, page } = await signedInPage(browser, 'CLIENT', 320);
+  const errors = collectRuntime(page);
+  await openApp(page); await settleUi(page);
+  const picker = page.getByLabel('Выбрать дату питания');
+  const dayWithEntries = localIsoDay(1);
+  const emptyDay = localIsoDay(2);
+  const intermediateDay = localIsoDay(3);
+  const oatmealRows = page.locator('.flux-meal-row').filter({ hasText: 'Овсянка' });
+  const diaryContent = page.locator('.flux-food-diary-content');
+  let delayRequests = false;
+  let releaseRequests = () => undefined;
+  let pendingRequests = Promise.resolve();
+  const holdMealRequests = () => {
+    delayRequests = true;
+    pendingRequests = new Promise<void>((resolve) => { releaseRequests = resolve; });
+  };
+  await page.route('**/rest/v1/meals*', async (route) => {
+    if (delayRequests) await pendingRequests;
+    await route.continue();
+  });
+
+  await page.getByRole('button', { name: 'Питание', exact: true }).click();
+  await picker.fill(dayWithEntries);
+  await waitForHistoricalNutrition(page);
+  await expect(oatmealRows).toHaveCount(1);
+
+  holdMealRequests();
+  await picker.fill(emptyDay);
+  await expect(picker).toHaveValue(emptyDay);
+  await expect(page.getByLabel('Загружаем выбранный день')).toBeVisible();
+  await expect(diaryContent).toHaveClass(/is-loading/);
+  await expect(page.getByRole('heading', { name: 'Приёмы пищи', exact: true })).toBeVisible();
+  await expect(page.getByText('Загружаем день…', { exact: true })).toHaveCount(0);
+  await expect(oatmealRows).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Что вы съели?' })).toBeDisabled();
+  await stableScreenshot(page, 'test-results/screenshots/targeted-nutrition-stale-transition-loading-320.png');
+  releaseRequests();
+  delayRequests = false;
+  await waitForHistoricalNutrition(page);
+  await expect(oatmealRows).toHaveCount(0);
+  await expect(page.getByText('Дневник пока пуст', { exact: true })).toBeVisible();
+
+  await picker.fill(dayWithEntries);
+  await waitForHistoricalNutrition(page);
+  await expect(oatmealRows).toHaveCount(1);
+
+  holdMealRequests();
+  await picker.fill(intermediateDay);
+  await picker.fill(dayWithEntries);
+  await expect(picker).toHaveValue(dayWithEntries);
+  await expect(oatmealRows).toHaveCount(1);
+  releaseRequests();
+  delayRequests = false;
+  await waitForHistoricalNutrition(page);
+  await expect(oatmealRows).toHaveCount(1);
+  await expectNoHorizontalOverflow(page);
+  await stableScreenshot(page, 'test-results/screenshots/targeted-nutrition-stale-transition-320.png');
   expect(errors()).toEqual([]);
   await context.close();
 });

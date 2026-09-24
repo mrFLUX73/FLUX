@@ -644,8 +644,12 @@ button:active { transform: scale(.97); }
 .flux-food-day-nav > button svg { width: 17px; height: 17px; }
 .flux-food-day-nav > button:disabled { opacity: .32; }
 .flux-food-day-picker { min-width: 0; min-height: 42px; position: relative; border-radius: 14px; background: var(--flux-card); box-shadow: inset 0 0 0 1px var(--flux-border-soft); color: var(--flux-ink); display: grid; place-items: center; cursor: pointer; }
-.flux-food-day-picker > span { min-width: 0; max-width: 100%; padding: 0 10px; overflow: hidden; font-size: 11px; font-weight: 500; text-align: center; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
+.flux-food-day-label { min-width: 0; max-width: 100%; padding: 0 10px; overflow: hidden; font-size: 11px; font-weight: 500; text-align: center; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
+.flux-food-day-loading { width: 15px; height: 15px; position: absolute; right: 10px; color: var(--flux-primary); display: grid; place-items: center; pointer-events: none; }
+.flux-food-day-loading svg { width: 13px; height: 13px; }
 .flux-food-day-picker > input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; border: 0; opacity: 0; cursor: pointer; }
+.flux-food-diary-content { transition: opacity .16s ease; }
+.flux-food-diary-content.is-loading { opacity: .7; }
 .flux-food-calendar { margin: -4px 0 15px; padding: 12px 10px 10px; border: 1px solid var(--flux-border-soft); border-radius: 20px; background: var(--flux-card); }
 .flux-food-calendar > header { display: grid; grid-template-columns: 58px minmax(0, 1fr) 58px; align-items: center; gap: 6px; }
 .flux-food-calendar > header strong { color: var(--flux-ink); font-size: 10px; font-weight: 500; text-align: center; }

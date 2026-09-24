@@ -1575,7 +1575,8 @@ function FoodScreen({
       <section className="flux-food-day-nav" aria-label="Выбранный день питания">
         <button type="button" onClick={() => onMoveDay(-1)} aria-label="Показать предыдущий день"><ArrowLeft /></button>
         <label className="flux-food-day-picker">
-          <span>{nutritionDayLabel(selectedDay)}</span>
+          <span className="flux-food-day-label">{nutritionDayLabel(selectedDay)}</span>
+          {historyLoading && <span className="flux-food-day-loading" role="status" aria-label="Загружаем выбранный день"><LoaderCircle className="is-spinning" /></span>}
           <input
             type="date"
             aria-label="Выбрать дату питания"
@@ -1605,11 +1606,12 @@ function FoodScreen({
             ? <><Cloud /> Сохранено в профиле</>
             : <><WifiOff /> {isAuthenticated ? 'Сохранено на устройстве' : 'Гостевой дневник на устройстве'}</>}
       </p>
-      <button className="flux-food-search" type="button" onClick={() => onAdd()}><Search /><span>Что вы съели?</span></button>
-      <div className="flux-calorie-line"><span>{total.toLocaleString('ru-RU')} из {target.toLocaleString('ru-RU')} ккал</span><strong>{Math.round((total / target) * 100)}%</strong></div><Progress value={(total / target) * 100} />
-      <section className="flux-meal-list">
-        <div className="flux-section-heading"><h2>{historyLoading ? 'Загружаем день…' : 'Приёмы пищи'}</h2></div>
-        {!historyLoading && entries.length === 0 && <div className="flux-diary-empty"><Sprout /><strong>Дневник пока пуст</strong><span>{isToday ? 'Добавьте первый продукт — баланс пересчитается сразу.' : 'В этот день пока нет записей.'}</span></div>}
+      <div className={`flux-food-diary-content${historyLoading ? ' is-loading' : ''}`} aria-busy={historyLoading}>
+        <button className="flux-food-search" type="button" onClick={() => onAdd()} disabled={historyLoading}><Search /><span>Что вы съели?</span></button>
+        <div className="flux-calorie-line"><span>{total.toLocaleString('ru-RU')} из {target.toLocaleString('ru-RU')} ккал</span><strong>{Math.round((total / target) * 100)}%</strong></div><Progress value={(total / target) * 100} />
+        <section className="flux-meal-list">
+          <div className="flux-section-heading"><h2>Приёмы пищи</h2></div>
+          {!historyLoading && entries.length === 0 && <div className="flux-diary-empty"><Sprout /><strong>Дневник пока пуст</strong><span>{isToday ? 'Добавьте первый продукт — баланс пересчитается сразу.' : 'В этот день пока нет записей.'}</span></div>}
         {MEAL_KINDS.map((meal) => {
           const mealEntries = entries.filter((entry) => entry.meal === meal);
           const mealCalories = mealEntries.reduce((sum, entry) => sum + entry.kcal, 0);
@@ -1618,10 +1620,10 @@ function FoodScreen({
               <header>
                 <div><strong>{meal}</strong><span>{mealCalories ? `${mealCalories} ккал` : 'Пока пусто'}</span></div>
                 <div className="flux-meal-actions">
-                  <button type="button" onClick={() => onRepeat(meal)} disabled={repeatLoadingMeal !== null} aria-label={`Повторить предыдущий ${mealInSentence(meal)}`}>
+                  <button type="button" onClick={() => onRepeat(meal)} disabled={historyLoading || repeatLoadingMeal !== null} aria-label={`Повторить предыдущий ${mealInSentence(meal)}`}>
                     {repeatLoadingMeal === meal ? <LoaderCircle className="is-spinning" /> : <Clock3 />}
                   </button>
-                  <button type="button" onClick={() => onAdd(meal)} aria-label={`Добавить в ${mealInSentence(meal)}`}><Plus /></button>
+                  <button type="button" onClick={() => onAdd(meal)} disabled={historyLoading} aria-label={`Добавить в ${mealInSentence(meal)}`}><Plus /></button>
                 </div>
               </header>
               {mealEntries.map((entry) => (
@@ -1629,15 +1631,16 @@ function FoodScreen({
                   <span>{entry.time}</span>
                   <p><strong>{entry.name}</strong><small>{entry.amount} {entry.unit} · {entry.brand}</small></p>
                   <b>{entry.kcal}</b>
-                  <button type="button" className="flux-edit-entry" onClick={() => onEdit(entry)} aria-label={`Изменить ${entry.name}`}><Pencil /></button>
-                  <button type="button" className="flux-remove-entry" onClick={() => onRemove(entry)} aria-label={`Удалить ${entry.name}`}><Trash2 /></button>
+                  <button type="button" className="flux-edit-entry" onClick={() => onEdit(entry)} disabled={historyLoading} aria-label={`Изменить ${entry.name}`}><Pencil /></button>
+                  <button type="button" className="flux-remove-entry" onClick={() => onRemove(entry)} disabled={historyLoading} aria-label={`Удалить ${entry.name}`}><Trash2 /></button>
                 </div>
               ))}
             </article>
           );
         })}
-      </section>
-      <Button className="flux-main-button" size="lg" onClick={() => onAdd()}><Plus /> Добавить продукт</Button>
+        </section>
+        <Button className="flux-main-button" size="lg" onClick={() => onAdd()} disabled={historyLoading}><Plus /> Добавить продукт</Button>
+      </div>
     </>
   );
 }
@@ -2290,7 +2293,7 @@ export default function App() {
       if (!active || generation !== nutritionGeneration.current || !isSameNutritionScope(scope, nutritionScopeRef.current)) return;
       setNutritionMode(result.mode);
       if (result.products.length) setCatalog(result.products);
-      if (editRevision === nutritionEditRevision.current) {
+      if (editRevision === nutritionEditRevision.current && selectedNutritionDayRef.current === localDayKey()) {
         setDiary({ scope, entries: result.entries, hydrated: true });
       }
       setNutritionConnecting(false);
@@ -2382,33 +2385,36 @@ export default function App() {
     if (!sessionResolved) return;
     if (selectedNutritionDay === todayKey) {
       const scope = nutritionScopeRef.current;
-      setDiary((current) => isSameNutritionScope(current.scope, scope)
-        ? { scope, entries: loadLocalEntriesForToday(scope), hydrated: true }
-        : current);
       const editRevision = nutritionEditRevision.current;
       let active = true;
+      setHistoryLoading(true);
       void loadNutritionEntriesForDay(scope, todayKey, catalog).then((result) => {
         if (!active || !isSameNutritionScope(scope, nutritionScopeRef.current)) return;
         setNutritionMode(result.mode);
         if (editRevision === nutritionEditRevision.current && selectedNutritionDayRef.current === todayKey) {
           setDiary({ scope, entries: result.entries, hydrated: true });
         }
-      });
+      }).catch(() => {
+        if (!active || selectedNutritionDayRef.current !== todayKey) return;
+        setNutritionMode('local');
+        setDiary({ scope, entries: loadLocalEntriesForToday(scope), hydrated: true });
+      }).finally(() => { if (active) setHistoryLoading(false); });
       return () => { active = false; };
     }
     let active = true;
     setHistoryLoading(true);
     const scope = nutritionScopeRef.current;
     const editRevision = nutritionEditRevision.current;
-    setDiary((current) => isSameNutritionScope(current.scope, scope)
-      ? { scope, entries: loadLocalEntriesForDay(scope, selectedNutritionDay), hydrated: true }
-      : current);
     void loadNutritionEntriesForDay(scope, selectedNutritionDay, catalog).then((result) => {
       if (!active || !isSameNutritionScope(scope, nutritionScopeRef.current)) return;
       setNutritionMode(result.mode);
       if (editRevision === nutritionEditRevision.current && selectedNutritionDayRef.current === selectedNutritionDay) {
         setDiary({ scope, entries: result.entries, hydrated: true });
       }
+    }).catch(() => {
+      if (!active || selectedNutritionDayRef.current !== selectedNutritionDay) return;
+      setNutritionMode('local');
+      setDiary({ scope, entries: loadLocalEntriesForDay(scope, selectedNutritionDay), hydrated: true });
     }).finally(() => { if (active) setHistoryLoading(false); });
     return () => { active = false; };
   }, [catalog, selectedNutritionDay, sessionResolved]);
@@ -2723,7 +2729,7 @@ export default function App() {
       }
       setNutritionMode(result.mode);
       if (result.products.length) setCatalog(result.products);
-      if (editRevision === nutritionEditRevision.current) {
+      if (editRevision === nutritionEditRevision.current && selectedNutritionDayRef.current === localDayKey()) {
         setDiary({ scope, entries: result.entries, hydrated: true });
       }
       if (result.mode !== 'supabase') throw new Error(result.message ?? 'Не удалось подключить синхронизацию');
