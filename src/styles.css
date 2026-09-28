@@ -743,14 +743,15 @@ button:active { transform: scale(.97); }
 .flux-meal-group > header > .flux-meal-actions { display: flex; align-items: center; gap: 6px; }
 .flux-meal-actions button:first-child { background: var(--flux-soft-2); color: var(--flux-muted); }
 .flux-meal-actions button:disabled { cursor: wait; opacity: .55; }
-.flux-meal-row { min-height: 66px; display: grid; grid-template-columns: 38px minmax(0, 1fr) 36px 30px 30px; gap: 5px; align-items: center; border-top: 1px solid var(--flux-divider); }
+.flux-meal-row { min-height: 66px; display: grid; grid-template-columns: 38px minmax(0, 1fr) max-content 30px 30px; gap: 5px; align-items: center; border-top: 1px solid var(--flux-divider); }
 .flux-meal-row.is-history { grid-template-columns: 38px minmax(0, 1fr) 42px; }
 .flux-meal-row > span { color: var(--flux-muted); font-size: 9px; }
 .flux-meal-row p { min-width: 0; margin: 0; }
 .flux-meal-row strong, .flux-meal-row small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .flux-meal-row strong { font-size: 12px; font-weight: 500; }
 .flux-meal-row small { margin-top: 3px; color: var(--flux-muted); font-size: 9px; }
-.flux-meal-row b { font-size: 11px; font-weight: 500; text-align: right; }
+.flux-meal-row b { font-size: 11px; font-weight: 500; text-align: right; white-space: nowrap; }
+.flux-meal-row b small { display: inline; margin: 0; color: inherit; font-size: inherit; }
 .flux-edit-entry, .flux-remove-entry { width: 30px; height: 30px; border: 0; border-radius: 10px; background: transparent; color: var(--flux-muted); display: grid; place-items: center; }
 .flux-edit-entry:hover { background: var(--flux-soft); color: var(--flux-primary); }
 .flux-remove-entry:hover { background: #f5eee9; color: #9b5f4a; }
@@ -1281,6 +1282,7 @@ button:active { transform: scale(.97); }
 .flux-product-row > span:nth-child(2) strong { font-size: 12px; font-weight: 500; }
 .flux-product-row > span:nth-child(2) small { margin-top: 3px; overflow: hidden; color: var(--flux-muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .flux-product-row > span:nth-child(2) em { display: block; margin-top: 6px; color: var(--flux-primary); font-size: 9px; font-style: normal; }
+.flux-product-row > span:nth-child(2) .flux-product-macro-preview { margin-top: 4px; color: var(--flux-muted); font-size: 8.5px; white-space: nowrap; }
 .flux-product-row > span:nth-child(3) { text-align: right; }
 .flux-product-row > span:nth-child(3) strong { font-size: 11px; font-weight: 500; }
 .flux-product-row > span:nth-child(3) small { color: var(--flux-muted); font-size: 8px; }
@@ -1368,15 +1370,15 @@ button:active { transform: scale(.97); }
 .flux-portion-caption span:last-child { color: var(--flux-primary); }
 .flux-portion-stepper { display: grid; grid-template-columns: 48px 1fr 48px; gap: 15px; align-items: center; margin-top: 10px; }
 .flux-portion-stepper [data-slot='button'] { width: 48px; height: 48px; border-radius: 16px; }
-.flux-portion-stepper > label { min-width: 0; display: flex; align-items: baseline; justify-content: center; gap: 6px; }
-.flux-portion-input { width: 95px; padding: 0; border: 0; outline: none; background: transparent; color: var(--flux-ink); font: inherit; font-size: 35px; font-weight: 500; letter-spacing: -.04em; text-align: right; appearance: textfield; }
+.flux-portion-stepper > label { min-width: 0; display: flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
+.flux-portion-input { flex: 0 0 95px; width: 95px; min-width: 0; padding: 0; border: 0; outline: none; background: transparent; color: var(--flux-ink); font: inherit; font-size: 35px; font-weight: 500; letter-spacing: -.04em; text-align: right; appearance: textfield; }
 .flux-portion-input::-webkit-inner-spin-button, .flux-portion-input::-webkit-outer-spin-button { margin: 0; appearance: none; }
 
 /* iOS Safari zooms the whole page when a form field's text is under 16px. */
 @media (hover: none) and (pointer: coarse) {
   input, textarea, select { font-size: 16px !important; }
 }
-.flux-portion-stepper > label > span { color: var(--flux-muted); font-size: 13px; }
+.flux-portion-stepper > label > span { flex: 0 0 auto; color: var(--flux-muted); font-size: 13px; white-space: nowrap; }
 .flux-portion-presets { display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 7px; margin-top: 15px; }
 .flux-portion-presets button { min-height: 40px; padding: 0 5px; border: 1px solid var(--flux-border); border-radius: 14px; background: var(--flux-card); color: var(--flux-muted); font-size: 9px; }
 .flux-portion-presets button.is-active { border-color: transparent; background: var(--flux-soft); color: var(--flux-primary); }

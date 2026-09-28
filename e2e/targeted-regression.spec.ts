@@ -44,7 +44,7 @@ test('targeted: trainer nutrition uses ISO date and keeps Nutrition open', async
   await settleUi(client.page);
   for (const [name, grams, kcal] of nutritionOnSeptember14) {
     const row = client.page.locator('.flux-meal-row').filter({ hasText: name });
-    await expect(row).toContainText(grams); await expect(row).toContainText(kcal.replace(' ккал', ''));
+    await expect(row).toContainText(grams); await expect(row).toContainText(kcal);
   }
   await expect(client.page.locator('.flux-meal-row')).toHaveCount(4);
   await client.context.close();
@@ -155,6 +155,7 @@ test('targeted: Nutrition saves add and repeat in the selected local day', async
   const localResult = page.locator('.flux-product-row').filter({ hasText: 'Яйцо куриное' }).first();
   await expect(localResult).toContainText('ккал');
   await expect(localResult).toContainText('за ');
+  await expect(localResult.locator('.flux-product-macro-preview')).toContainText(/^Б .+ · Ж .+ · У .+$/);
   await localResult.click();
   await page.getByRole('button', { name: /Добавить в / }).click();
   await expect(page.locator('.flux-drawer')).toHaveCount(0);
@@ -250,13 +251,16 @@ test('targeted: Nutrition saves add and repeat in the selected local day', async
   await expect(offResult).toContainText('120');
   await expect(offResult).toContainText('ккал');
   await expect(offResult).toContainText('за 100 г');
+  await expect(offResult.locator('.flux-product-macro-preview')).toHaveText('Б 4 · Ж 3 · У 18');
   const fatSecretResult = page.locator('.flux-product-row').filter({ hasText: 'E2E FatSecret' });
   await expect(fatSecretResult).toContainText('95');
   await expect(fatSecretResult).toContainText('ккал');
   await expect(fatSecretResult).toContainText('за 250 мл');
+  await expect(fatSecretResult.locator('.flux-product-macro-preview')).toHaveText('Б 2 · Ж 1 · У 16');
   const nutriapixResult = page.locator('.flux-product-row').filter({ hasText: 'E2E Nutriapix вчера' });
   await expect(nutriapixResult).toContainText('Nutriapix');
   await expect(nutriapixResult).not.toContainText('ккал');
+  await expect(nutriapixResult.locator('.flux-product-macro-preview')).toHaveCount(0);
   await nutriapixResult.click();
   const externalAddResponse = page.waitForResponse((response) => response.url().includes('/rpc/add_external_meal_item'));
   await page.getByRole('button', { name: /Добавить в / }).click();
@@ -377,10 +381,61 @@ test('targeted: Nutrition date navigation fits from 320 to 430', async ({ browse
     await expect(page.getByLabel('Показать предыдущий день')).toBeVisible();
     await expect(page.getByLabel('Показать следующий день')).toBeDisabled();
     await page.getByRole('button', { name: 'Что вы съели?' }).click();
-    await expect(page.locator('.flux-product-row').first()).toBeVisible();
+    const product = page.locator('.flux-product-row').first();
+    await expect(product).toBeVisible();
+    await expect(product.locator('.flux-product-macro-preview')).toContainText(/^Б .+ · Ж .+ · У .+$/);
+    await product.click();
+    const stepper = page.locator('.flux-portion-stepper');
+    const [inputBox, unitBox, stepperBox] = await Promise.all([
+      stepper.locator('.flux-portion-input').boundingBox(),
+      stepper.locator('label > span').boundingBox(),
+      stepper.boundingBox(),
+    ]);
+    expect(inputBox).not.toBeNull(); expect(unitBox).not.toBeNull(); expect(stepperBox).not.toBeNull();
+    expect(unitBox!.x).toBeGreaterThan(inputBox!.x + inputBox!.width - 1);
+    expect(Math.abs((inputBox!.y + inputBox!.height / 2) - (unitBox!.y + unitBox!.height / 2))).toBeLessThanOrEqual(2);
+    expect(inputBox!.x).toBeGreaterThanOrEqual(stepperBox!.x);
+    expect(unitBox!.x + unitBox!.width).toBeLessThanOrEqual(stepperBox!.x + stepperBox!.width + 1);
+    await page.getByRole('button', { name: /Добавить в / }).click();
+    await expect(page.locator('.flux-meal-row').first().locator('b')).toContainText(/\d+ ккал/);
     await expectNoHorizontalOverflow(page);
     await stableScreenshot(page, `test-results/screenshots/targeted-nutrition-date-nav-${width}.png`);
     expect(errors().filter((error) => !error.includes('status of 400'))).toEqual([]);
     await context.close();
   }
+});
+
+test('targeted: Nutrition search previews only source-provided macros', async ({ browser }) => {
+  const { context, page } = await signedInPage(browser, 'CLIENT', 390);
+  const errors = collectRuntime(page);
+  await openApp(page); await settleUi(page);
+  await page.route('**/functions/v1/product-search', async (route) => {
+    const body = JSON.parse(route.request().postData() ?? '{}') as { mode?: string };
+    if (body.mode !== 'name-search') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ status: 'not_found' }) });
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ status: 'found', candidates: [
+      { source: 'nutriapix', name: 'E2E Nutriapix preview', brand: 'FLUX test', slug: 'e2e-preview' },
+      { source: 'open_food_facts', name: 'E2E Open Food Facts preview', brand: 'OFF test', product: { id: 'open-food-facts:preview', name: 'E2E Open Food Facts preview', brand: 'OFF test', amount: 100, unit: 'г', servingSizeG: 100, kcal: 364, protein: 12.1, fat: 6.2, carbs: 61.4, icon: 'wheat' } },
+      { source: 'fatsecret', name: 'E2E FatSecret preview', brand: 'FatSecret test', product: { id: 'fatsecret:preview', name: 'E2E FatSecret preview', brand: 'FatSecret test', amount: 250, unit: 'мл', servingSizeG: 250, kcal: 95, protein: 2, fat: 1, carbs: 16, icon: 'coffee' } },
+    ] }) });
+  });
+  await page.route('**/cgi/search.pl*', async (route) => {
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ products: [] }) });
+  });
+
+  await page.getByRole('button', { name: 'Питание', exact: true }).click();
+  await page.getByRole('button', { name: 'Что вы съели?' }).click();
+  await page.getByLabel('Найти продукт, бренд или штрихкод').fill('E2E macro preview');
+
+  const off = page.locator('.flux-product-row').filter({ hasText: 'E2E Open Food Facts preview' });
+  await expect(off).toContainText('364');
+  await expect(off).toContainText('ккал');
+  await expect(off).toContainText('за 100 г');
+  await expect(off.locator('.flux-product-macro-preview')).toHaveText('Б 12,1 · Ж 6,2 · У 61,4');
+  const fatSecret = page.locator('.flux-product-row').filter({ hasText: 'E2E FatSecret preview' });
+  await expect(fatSecret.locator('.flux-product-macro-preview')).toHaveText('Б 2 · Ж 1 · У 16');
+  const nutriapix = page.locator('.flux-product-row').filter({ hasText: 'E2E Nutriapix preview' });
+  await expect(nutriapix.locator('.flux-product-macro-preview')).toHaveCount(0);
+  await expectNoHorizontalOverflow(page);
+  expect(errors().filter((error) => !error.includes('status of 400'))).toEqual([]);
+  await context.close();
 });

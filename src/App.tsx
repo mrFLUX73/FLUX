@@ -290,6 +290,10 @@ function productServingBasis(product: Product) {
   return `за ${product.amount} ${product.unit}`;
 }
 
+function productMacroPreview(product: Product) {
+  return `Б ${formatMacro(product.protein)} · Ж ${formatMacro(product.fat)} · У ${formatMacro(product.carbs)}`;
+}
+
 function MorphNumber({ value, className = '' }: { value: string | number; className?: string }) {
   const text = String(value);
   const previousValue = useRef(text);
@@ -1004,7 +1008,7 @@ function QuickAddDrawer({
                   <div key={product.id} className={isBarcodeMatch ? 'flux-product-match' : undefined}>
                     <button type="button" className={`flux-product-row ${isBarcodeMatch ? 'is-barcode-match' : ''}`} onClick={() => choose(product)}>
                       <span className="flux-food-icon"><ProductIcon type={product.icon} /></span>
-                      <span><strong>{product.name}</strong><small>{product.brand} · {isBarcodeMatch ? `${product.amount} ${product.unit}` : `${productLookupSource(product) ?? 'FLUX'} · ${productServingBasis(product)}`}</small>{isBarcodeMatch && <em>{kcalPer100} ккал · за 100 {product.unit === 'мл' ? 'мл' : 'г'}</em>}</span>
+                      <span><strong>{product.name}</strong><small>{product.brand} · {isBarcodeMatch ? `${product.amount} ${product.unit}` : `${productLookupSource(product) ?? 'FLUX'} · ${productServingBasis(product)}`}</small>{isBarcodeMatch && <em>{kcalPer100} ккал · за 100 {product.unit === 'мл' ? 'мл' : 'г'}</em>}<em className="flux-product-macro-preview">{productMacroPreview(product)}</em></span>
                       {!isBarcodeMatch && <span><strong>{product.kcal}</strong><small>ккал</small></span>}
                       <ChevronRight aria-hidden="true" />
                     </button>
@@ -1018,7 +1022,7 @@ function QuickAddDrawer({
                 const product = candidate.source === 'nutriapix' ? null : candidate.product;
                 return <button type="button" className="flux-product-row" key={candidate.source === 'nutriapix' ? candidate.slug : candidate.product.id} onClick={() => { void chooseSearchCandidate(candidate); }} disabled={candidate.source === 'nutriapix' && Boolean(selectingCandidate)}>
                   <span className="flux-food-icon"><ProductIcon type={product?.icon ?? 'curd'} /></span>
-                  <span><strong>{candidate.name}</strong><small>{candidate.brand} · {source}{product ? ` · ${productServingBasis(product)}` : ''}</small></span>
+                  <span><strong>{candidate.name}</strong><small>{candidate.brand} · {source}{product ? ` · ${productServingBasis(product)}` : ''}</small>{product && <em className="flux-product-macro-preview">{productMacroPreview(product)}</em>}</span>
                   {product && <span><strong>{product.kcal}</strong><small>ккал</small></span>}
                   {candidate.source === 'nutriapix' && selectingCandidate === candidate.slug ? <LoaderCircle className="is-spinning" /> : <ChevronRight aria-hidden="true" />}
                 </button>;
@@ -1645,7 +1649,7 @@ function FoodScreen({
                 <div className="flux-meal-row" key={entry.entryId}>
                   <span>{entry.time}</span>
                   <p><strong>{entry.name}</strong><small>{entry.amount} {entry.unit} · {entry.brand}</small></p>
-                  <b>{entry.kcal}</b>
+                  <b>{entry.kcal} <small>ккал</small></b>
                   <button type="button" className="flux-edit-entry" onClick={() => onEdit(entry)} disabled={historyLoading} aria-label={`Изменить ${entry.name}`}><Pencil /></button>
                   <button type="button" className="flux-remove-entry" onClick={() => onRemove(entry)} disabled={historyLoading} aria-label={`Удалить ${entry.name}`}><Trash2 /></button>
                 </div>
