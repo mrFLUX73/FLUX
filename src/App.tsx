@@ -123,6 +123,14 @@ import {
 
 type Tab = 'today' | 'food' | 'workouts' | 'progress' | 'clients' | 'admin';
 type ScannerState = 'idle' | 'requesting' | 'scanning' | 'error';
+type PendingMealDeletion = {
+  entry: MealEntry;
+  scope: NutritionStorageScope;
+  sourceDay: string;
+  timer: number;
+  toastId: string | null;
+  deleteRemoteAfterExpiry: boolean;
+};
 type ManualProductDraft = {
   name: string;
   brand: string;
@@ -276,6 +284,10 @@ function productLookupSource(product: Product) {
   if (product.id.startsWith('fatsecret:')) return 'FatSecret';
   if (product.id.startsWith('manual-barcode:')) return 'вручную';
   return null;
+}
+
+function productServingBasis(product: Product) {
+  return `за ${product.amount} ${product.unit}`;
 }
 
 function MorphNumber({ value, className = '' }: { value: string | number; className?: string }) {
@@ -992,7 +1004,7 @@ function QuickAddDrawer({
                   <div key={product.id} className={isBarcodeMatch ? 'flux-product-match' : undefined}>
                     <button type="button" className={`flux-product-row ${isBarcodeMatch ? 'is-barcode-match' : ''}`} onClick={() => choose(product)}>
                       <span className="flux-food-icon"><ProductIcon type={product.icon} /></span>
-                      <span><strong>{product.name}</strong><small>{product.brand} · {isBarcodeMatch ? product.amount : 'обычно ' + product.amount} {product.unit}</small>{isBarcodeMatch && <em>{kcalPer100} ккал на 100 {product.unit === 'мл' ? 'мл' : 'г'}</em>}</span>
+                      <span><strong>{product.name}</strong><small>{product.brand} · {isBarcodeMatch ? `${product.amount} ${product.unit}` : `${productLookupSource(product) ?? 'FLUX'} · ${productServingBasis(product)}`}</small>{isBarcodeMatch && <em>{kcalPer100} ккал · за 100 {product.unit === 'мл' ? 'мл' : 'г'}</em>}</span>
                       {!isBarcodeMatch && <span><strong>{product.kcal}</strong><small>ккал</small></span>}
                       <ChevronRight aria-hidden="true" />
                     </button>
@@ -1001,13 +1013,16 @@ function QuickAddDrawer({
                 );
               })}
               {!isBarcodeQuery && nameLookupState === 'loading' && <div className="flux-lookup-state"><LoaderCircle className="is-spinning" /><span>Ищем в базах продуктов…</span></div>}
-              {!isBarcodeQuery && nameCandidates.map((candidate) => (
-                <button type="button" className="flux-product-row" key={candidate.source === 'nutriapix' ? candidate.slug : candidate.product.id} onClick={() => { void chooseSearchCandidate(candidate); }} disabled={candidate.source === 'nutriapix' && Boolean(selectingCandidate)}>
-                  <span className="flux-food-icon"><ProductIcon type="curd" /></span>
-                  <span><strong>{candidate.name}</strong><small>{candidate.brand} · {candidate.source === 'nutriapix' ? 'Nutriapix' : candidate.source === 'fatsecret' ? 'FatSecret' : 'Open Food Facts'}</small></span>
+              {!isBarcodeQuery && nameCandidates.map((candidate) => {
+                const source = candidate.source === 'nutriapix' ? 'Nutriapix' : candidate.source === 'fatsecret' ? 'FatSecret' : 'Open Food Facts';
+                const product = candidate.source === 'nutriapix' ? null : candidate.product;
+                return <button type="button" className="flux-product-row" key={candidate.source === 'nutriapix' ? candidate.slug : candidate.product.id} onClick={() => { void chooseSearchCandidate(candidate); }} disabled={candidate.source === 'nutriapix' && Boolean(selectingCandidate)}>
+                  <span className="flux-food-icon"><ProductIcon type={product?.icon ?? 'curd'} /></span>
+                  <span><strong>{candidate.name}</strong><small>{candidate.brand} · {source}{product ? ` · ${productServingBasis(product)}` : ''}</small></span>
+                  {product && <span><strong>{product.kcal}</strong><small>ккал</small></span>}
                   {candidate.source === 'nutriapix' && selectingCandidate === candidate.slug ? <LoaderCircle className="is-spinning" /> : <ChevronRight aria-hidden="true" />}
-                </button>
-              ))}
+                </button>;
+              })}
               {!isBarcodeQuery && nameLookupState === 'error' && <div className="flux-lookup-state is-error"><span>{nameLookupMessage}</span></div>}
               {filtered.length === 0 && nameCandidates.length === 0 && lookupState !== 'loading' && nameLookupState !== 'loading' && (
                 <div className="flux-empty">
@@ -1449,7 +1464,7 @@ function TodayScreen({
           <div className="flux-ring" style={{ '--flux-progress': `${ringProgress * 3.6}deg` } as CSSProperties}><span><b>{progress}%</b><small>от цели</small></span></div>
         </div>
         <div className="flux-calorie-progress"><div><span>{consumed.toLocaleString('ru-RU')} / {target.toLocaleString('ru-RU')} ккал</span><b>{progress}%</b></div><Progress value={ringProgress} aria-label={`${consumed} из ${target} килокалорий`} /></div>
-        <div className="flux-macro-grid">{macros.map((macro) => <div key={macro.label}><span>{macro.label}</span><strong>{macro.value} / {macro.target} г</strong><Progress value={(macro.value / macro.target) * 100} aria-label={`${macro.label}: ${macro.value} из ${macro.target} грамм`} /></div>)}</div>
+        <div className="flux-macro-grid">{macros.map((macro) => <div key={macro.label}><span>{macro.label}</span><strong>{formatMacro(macro.value)} / {formatMacro(macro.target)} г</strong><Progress value={(macro.value / macro.target) * 100} aria-label={`${macro.label}: ${formatMacro(macro.value)} из ${formatMacro(macro.target)} грамм`} /></div>)}</div>
       </button>
       <section className="flux-today-rhythm" aria-label="Ритм дня">
         <div className="flux-section-heading"><h2>Ритм дня</h2><span>Спокойно, по шагам</span></div>
@@ -1955,7 +1970,10 @@ export default function App() {
   const [selectedNutritionDay, setSelectedNutritionDay] = useState(() => localDayKey());
   const selectedNutritionDayRef = useRef(selectedNutritionDay);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const pendingMealDeletions = useRef(new Map<string, PendingMealDeletion>());
+  const [pendingMealDeletionIds, setPendingMealDeletionIds] = useState<Set<string>>(() => new Set());
   const entries = diary.entries;
+  const visibleEntries = useMemo(() => entries.filter((entry) => !pendingMealDeletionIds.has(entry.entryId)), [entries, pendingMealDeletionIds]);
   const nutritionScopeRef = useRef<NutritionStorageScope>(startupScope);
   const nutritionGeneration = useRef(0);
   const nutritionEditRevision = useRef(0);
@@ -2252,6 +2270,59 @@ export default function App() {
     });
   }
 
+  function syncPendingMealDeletionIds() {
+    setPendingMealDeletionIds(new Set(pendingMealDeletions.current.keys()));
+  }
+
+  function undoPendingMealDeletion(entryId: string) {
+    const pending = pendingMealDeletions.current.get(entryId);
+    if (!pending) return;
+    window.clearTimeout(pending.timer);
+    pendingMealDeletions.current.delete(entryId);
+    syncPendingMealDeletionIds();
+    if (pending.toastId) toast.close(pending.toastId);
+  }
+
+  async function finalizePendingMealDeletion(entryId: string) {
+    const pending = pendingMealDeletions.current.get(entryId);
+    if (!pending) return;
+    pendingMealDeletions.current.delete(entryId);
+    syncPendingMealDeletionIds();
+    if (pending.toastId) toast.close(pending.toastId);
+
+    // A deferred guest/account switch is intentionally cancelled rather than
+    // applying a deletion under a different active session.
+    if (!isSameNutritionScope(pending.scope, nutritionScopeRef.current)) return;
+
+    const shouldQueueRemoteDeletion = isSupabaseConfigured && pending.scope.kind === 'user';
+    if (shouldQueueRemoteDeletion && !queueRemoteMealDeletion(pending.scope, pending.entry)) {
+      toast.add({ title: 'Не удалось удалить запись', description: 'Локальное хранилище недоступно. Попробуйте ещё раз.', type: 'error' });
+      return;
+    }
+
+    const removedFromStorage = removeLocalEntryFromStorage(pending.scope, pending.entry.entryId);
+    if (!shouldQueueRemoteDeletion && !removedFromStorage) {
+      toast.add({ title: 'Не удалось удалить запись', description: 'Локальное хранилище недоступно. Попробуйте ещё раз.', type: 'error' });
+      return;
+    }
+
+    nutritionEditRevision.current += 1;
+    setEntries((current) => current.filter((candidate) => candidate.entryId !== pending.entry.entryId));
+    if (pending.scope.kind === 'guest') setGuestDiaryEntryCount(countGuestDiaryEntries());
+    if (pending.deleteRemoteAfterExpiry) {
+      try {
+        await deleteRemoteMealEntry(pending.scope, pending.entry);
+      } catch {
+        setNutritionMode('local');
+        toast.add({ title: 'Удалено на устройстве', description: 'Синхронизируем удаление, когда Supabase снова станет доступен.', type: 'info' });
+      }
+    }
+  }
+
+  useEffect(() => () => {
+    for (const pending of pendingMealDeletions.current.values()) window.clearTimeout(pending.timer);
+  }, []);
+
   useEffect(() => {
     let active = true;
     let unsubscribe: (() => void) | undefined;
@@ -2451,7 +2522,7 @@ export default function App() {
     if (diary.hydrated && selectedNutritionDay === localDayKey()) persistLocalEntriesForToday(diary.scope, diary.entries);
   }, [diary, selectedNutritionDay]);
 
-  const totals = useMemo(() => entries.reduce((sum, entry) => ({ kcal: sum.kcal + entry.kcal, protein: sum.protein + entry.protein, fat: sum.fat + entry.fat, carbs: sum.carbs + entry.carbs }), { kcal: 0, protein: 0, fat: 0, carbs: 0 }), [entries]);
+  const totals = useMemo(() => visibleEntries.reduce((sum, entry) => ({ kcal: sum.kcal + entry.kcal, protein: sum.protein + entry.protein, fat: sum.fat + entry.fat, carbs: sum.carbs + entry.carbs }), { kcal: 0, protein: 0, fat: 0, carbs: 0 }), [visibleEntries]);
   const weekActivity = useMemo(() => {
     const today = new Date();
     const mondayOffset = (today.getDay() + 6) % 7;
@@ -2461,7 +2532,7 @@ export default function App() {
       const date = new Date(monday);
       date.setDate(monday.getDate() + index);
       const key = localDayKey(date);
-      const dayEntries = key === localDayKey() ? entries : loadLocalEntriesForDay(diary.scope, key);
+      const dayEntries = key === localDayKey() ? visibleEntries : loadLocalEntriesForDay(diary.scope, key);
       return {
         key,
         day: date.getDate(),
@@ -2469,7 +2540,7 @@ export default function App() {
         hasFood: dayEntries.length > 0,
       };
     });
-  }, [diary.scope, entries]);
+  }, [diary.scope, visibleEntries]);
 
   // Turnstile protects registration and sign-in only. A signed-in user must be
   // able to refresh their existing diary regardless of that widget's state.
@@ -3115,33 +3186,30 @@ export default function App() {
     });
   }
 
-  async function removeEntry(entry: MealEntry) {
+  function removeEntry(entry: MealEntry) {
+    if (pendingMealDeletions.current.has(entry.entryId)) return;
     const scope = diary.scope;
-    const shouldQueueRemoteDeletion = isSupabaseConfigured && scope.kind === 'user';
-    if (shouldQueueRemoteDeletion && !queueRemoteMealDeletion(scope, entry)) {
-      toast.add({ title: 'Не удалось удалить запись', description: 'Локальное хранилище недоступно. Попробуйте ещё раз.', type: 'error' });
-      return;
-    }
-
-    const removedFromStorage = removeLocalEntryFromStorage(scope, entry.entryId);
-    if (!shouldQueueRemoteDeletion && !removedFromStorage) {
-      toast.add({ title: 'Не удалось удалить запись', description: 'Локальное хранилище недоступно. Попробуйте ещё раз.', type: 'error' });
-      return;
-    }
-
-    nutritionEditRevision.current += 1;
-    setEntries((current) => current.filter((candidate) => candidate.entryId !== entry.entryId));
-    if (scope.kind === 'guest') setGuestDiaryEntryCount(countGuestDiaryEntries());
-    if (nutritionMode === 'supabase') {
-      try {
-        await deleteRemoteMealEntry(scope, entry);
-      } catch {
-        setNutritionMode('local');
-        toast.add({ title: 'Удалено на устройстве', description: 'Синхронизируем удаление, когда Supabase снова станет доступен.', type: 'info' });
-        return;
-      }
-    }
-    toast.add({ title: 'Запись удалена', description: `${entry.name} · ${entry.kcal} ккал`, type: 'info' });
+    const pending: PendingMealDeletion = {
+      entry,
+      scope,
+      sourceDay: selectedNutritionDay,
+      timer: 0,
+      toastId: null,
+      deleteRemoteAfterExpiry: nutritionMode === 'supabase',
+    };
+    pending.timer = window.setTimeout(() => { void finalizePendingMealDeletion(entry.entryId); }, 10_000);
+    pendingMealDeletions.current.set(entry.entryId, pending);
+    syncPendingMealDeletionIds();
+    pending.toastId = toast.add({
+      title: 'Запись удалена',
+      description: `${entry.name} · ${entry.kcal} ккал`,
+      type: 'info',
+      timeout: 10_000,
+      actionProps: {
+        children: 'Отменить',
+        onClick: () => undoPendingMealDeletion(entry.entryId),
+      },
+    });
   }
 
   const navItems: { id: Tab; label: string; icon: typeof House }[] = [
@@ -3189,9 +3257,9 @@ export default function App() {
               onTouchEnd={endFoodPull}
               onTouchCancel={cancelFoodPull}
             >
-              {tab === 'today' && <TodayScreen totals={totals} target={calorieTarget} macroTargets={macroTargets} entries={entries} weekActivity={weekActivity} workoutSessions={workoutSessions} onEditBalance={openDailyBalance} />}
+              {tab === 'today' && <TodayScreen totals={totals} target={calorieTarget} macroTargets={macroTargets} entries={visibleEntries} weekActivity={weekActivity} workoutSessions={workoutSessions} onEditBalance={openDailyBalance} />}
               {tab === 'today' && account && trainerLinks.find((link) => link.clientId === account.id && link.status === 'active') && (() => { const link = trainerLinks.find((candidate) => candidate.clientId === account.id && candidate.status === 'active')!; return <button type="button" className="flux-my-trainer-card" onClick={() => openTrainerChat(link, 'today')}><span className="flux-rhythm-icon"><MessageCircle /></span><span><small>Ваш тренер</small><strong>{link.trainerName}</strong><em>Открыть сообщения</em></span><ChevronRight /></button>; })()}
-              {tab === 'food' && <FoodScreen entries={entries} target={calorieTarget} selectedDay={selectedNutritionDay} onSelectDay={setSelectedNutritionDay} onMoveDay={moveNutritionDay} historyLoading={historyLoading} mode={nutritionMode} isConnecting={nutritionConnecting} isAuthenticated={Boolean(account)} onAdd={(meal) => openFood(meal ?? currentMeal())} onEdit={setEditingEntry} onRemove={removeEntry} onRepeat={openPreviousMeal} repeatLoadingMeal={repeatLoadingMeal} />}
+              {tab === 'food' && <FoodScreen entries={visibleEntries} target={calorieTarget} selectedDay={selectedNutritionDay} onSelectDay={setSelectedNutritionDay} onMoveDay={moveNutritionDay} historyLoading={historyLoading} mode={nutritionMode} isConnecting={nutritionConnecting} isAuthenticated={Boolean(account)} onAdd={(meal) => openFood(meal ?? currentMeal())} onEdit={setEditingEntry} onRemove={removeEntry} onRepeat={openPreviousMeal} repeatLoadingMeal={repeatLoadingMeal} />}
               {tab === 'workouts' && <WorkoutEngineScreen userId={account?.id ?? null} />}
               {tab === 'progress' && <ProgressScreen />}
               {tab === 'clients' && account?.role === 'trainer' && <TrainerClientsScreen links={trainerLinks.filter((link) => link.trainerId === account.id)} loading={trainerHubLoading} onRespond={(link, accept) => { void respondToClient(link, accept); }} onOpenClient={setClientOverviewLink} onOpenChat={(link) => openTrainerChat(link, 'clients')} onInvite={() => setTrainerInviteOpen(true)} onRevoke={setTrainerRevokeLink} />}

@@ -128,6 +128,7 @@ test('targeted: Today slogan stays available at mobile widths', async ({ browser
 });
 
 test('targeted: Nutrition saves add and repeat in the selected local day', async ({ browser }) => {
+  test.setTimeout(75_000);
   const { context, page } = await signedInPage(browser, 'CLIENT');
   const errors = collectRuntime(page);
   await openApp(page); await settleUi(page);
@@ -139,20 +140,46 @@ test('targeted: Nutrition saves add and repeat in the selected local day', async
 
   await page.getByRole('button', { name: 'Питание', exact: true }).click();
   const todayEggCount = await page.locator('.flux-meal-row').filter({ hasText: 'Яйцо куриное' }).count();
+  const macroTexts = await page.locator('.flux-macro-grid strong').allTextContents();
+  expect(macroTexts.every((text) => !/\d[,.]\d{2,}/.test(text))).toBe(true);
+  const macroLabels = await page.locator('.flux-macro-grid [aria-label]').evaluateAll((nodes) => nodes.map((node) => node.getAttribute('aria-label') ?? ''));
+  expect(macroLabels.every((text) => !/\d[,.]\d{2,}/.test(text))).toBe(true);
   await expect(picker).toHaveValue(today);
   await expect(page.getByLabel('Показать следующий день')).toBeDisabled();
+  let remoteDeleteCalls = 0;
+  await page.route('**/rest/v1/rpc/delete_meal_item', async (route) => {
+    remoteDeleteCalls += 1;
+    await route.continue();
+  });
   await page.getByRole('button', { name: 'Что вы съели?' }).click();
-  await page.locator('.flux-product-row').filter({ hasText: 'Яйцо куриное' }).first().click();
+  const localResult = page.locator('.flux-product-row').filter({ hasText: 'Яйцо куриное' }).first();
+  await expect(localResult).toContainText('ккал');
+  await expect(localResult).toContainText('за ');
+  await localResult.click();
   await page.getByRole('button', { name: /Добавить в / }).click();
   await expect(page.locator('.flux-drawer')).toHaveCount(0);
   const todayEggRows = page.locator('.flux-meal-row').filter({ hasText: 'Яйцо куриное' });
   await expect(todayEggRows).toHaveCount(todayEggCount + 1);
   await todayEggRows.last().getByLabel('Удалить Яйцо куриное').click();
   await expect(todayEggRows).toHaveCount(todayEggCount);
+  await expect(page.getByRole('button', { name: 'Отменить', exact: true })).toBeVisible();
+  expect(remoteDeleteCalls).toBe(0);
   await page.getByLabel('Показать предыдущий день').click();
   await expect(picker).toHaveValue(yesterday);
   await page.getByLabel('Показать следующий день').click();
   await expect(picker).toHaveValue(today);
+  await expect(todayEggRows).toHaveCount(todayEggCount);
+  await page.getByRole('button', { name: 'Отменить', exact: true }).click();
+  await expect(todayEggRows).toHaveCount(todayEggCount + 1);
+  expect(remoteDeleteCalls).toBe(0);
+  await todayEggRows.last().getByLabel('Удалить Яйцо куриное').click();
+  await expect(todayEggRows).toHaveCount(todayEggCount);
+  await page.waitForTimeout(9_000);
+  expect(remoteDeleteCalls).toBe(0);
+  await expect.poll(() => remoteDeleteCalls, { timeout: 12_000 }).toBe(1);
+  await page.reload(); await openApp(page); await settleUi(page);
+  await page.getByRole('button', { name: 'Питание', exact: true }).click();
+  await expect(todayEggRows).toHaveCount(todayEggCount);
   await picker.fill(fixtureDay);
   await expect(picker).toHaveValue(fixtureDay);
   await picker.fill(localIsoDay(-1));
@@ -191,23 +218,46 @@ test('targeted: Nutrition saves add and repeat in the selected local day', async
   await page.getByLabel('Выбрать дату питания').fill(fixtureDay);
   await waitForHistoricalNutrition(page);
   await expect(eggRows).toHaveCount(2);
-  while (await eggRows.count()) {
-    const before = await eggRows.count();
-    await eggRows.first().getByLabel('Удалить Яйцо куриное').click();
-    await expect(eggRows).toHaveCount(before - 1);
-  }
+  await eggRows.first().getByLabel('Удалить Яйцо куриное').click();
+  await expect(eggRows).toHaveCount(1);
+  await eggRows.first().getByLabel('Удалить Яйцо куриное').click();
+  await expect(eggRows).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Отменить', exact: true })).toHaveCount(2);
+  await page.getByRole('button', { name: 'Отменить', exact: true }).first().click();
+  await expect(eggRows).toHaveCount(1);
+  await eggRows.first().getByLabel('Удалить Яйцо куриное').click();
+  await expect(eggRows).toHaveCount(0);
+  await expect.poll(() => remoteDeleteCalls, { timeout: 12_000 }).toBe(3);
 
   await page.route('**/functions/v1/product-search', async (route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as { mode?: string };
     if (body.mode === 'name-search') {
-      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ status: 'found', candidates: [{ source: 'nutriapix', name: 'E2E Nutriapix вчера', brand: 'FLUX test', slug: 'e2e-nutrition-yesterday' }] }) });
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ status: 'found', candidates: [
+        { source: 'nutriapix', name: 'E2E Nutriapix вчера', brand: 'FLUX test', slug: 'e2e-nutrition-yesterday' },
+        { source: 'open_food_facts', name: 'E2E Open Food Facts', brand: 'OFF test', product: { id: 'open-food-facts:e2e', name: 'E2E Open Food Facts', brand: 'OFF test', amount: 100, unit: 'г', servingSizeG: 100, kcal: 120, protein: 4, fat: 3, carbs: 18, icon: 'curd' } },
+        { source: 'fatsecret', name: 'E2E FatSecret', brand: 'FatSecret test', product: { id: 'fatsecret:e2e', name: 'E2E FatSecret', brand: 'FatSecret test', amount: 250, unit: 'мл', servingSizeG: 250, kcal: 95, protein: 2, fat: 1, carbs: 16, icon: 'coffee' } },
+      ] }) });
       return;
     }
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ status: 'found', product: { id: 'nutriapix:e2e-nutrition-yesterday', name: 'E2E Nutriapix вчера', brand: 'FLUX test', amount: 100, unit: 'г', servingSizeG: 100, kcal: 90, protein: 3, fat: 2, carbs: 14, icon: 'curd', source: 'nutriapix', externalFoodId: '1234567890123456789012345', externalBrandId: 'e2e-brand', externalServingId: 'e2e-serving' } }) });
   });
+  await page.route('**/cgi/search.pl*', async (route) => {
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ products: [] }) });
+  });
   await page.getByRole('button', { name: 'Что вы съели?' }).click();
   await page.getByLabel('Найти продукт, бренд или штрихкод').fill('nutri');
-  await page.locator('.flux-product-row').filter({ hasText: 'E2E Nutriapix вчера' }).click();
+  const offResult = page.locator('.flux-product-row').filter({ hasText: 'E2E Open Food Facts' });
+  await expect(offResult).toContainText('120');
+  await expect(offResult).toContainText('ккал');
+  await expect(offResult).toContainText('за 100 г');
+  const fatSecretResult = page.locator('.flux-product-row').filter({ hasText: 'E2E FatSecret' });
+  await expect(fatSecretResult).toContainText('95');
+  await expect(fatSecretResult).toContainText('ккал');
+  await expect(fatSecretResult).toContainText('за 250 мл');
+  const nutriapixResult = page.locator('.flux-product-row').filter({ hasText: 'E2E Nutriapix вчера' });
+  await expect(nutriapixResult).toContainText('Nutriapix');
+  await expect(nutriapixResult).not.toContainText('ккал');
+  await nutriapixResult.click();
   const externalAddResponse = page.waitForResponse((response) => response.url().includes('/rpc/add_external_meal_item'));
   await page.getByRole('button', { name: /Добавить в / }).click();
   expect((await externalAddResponse).status()).toBe(200);
@@ -226,6 +276,7 @@ test('targeted: Nutrition saves add and repeat in the selected local day', async
   await waitForHistoricalNutrition(page);
   await externalRows.getByLabel('Удалить E2E Nutriapix вчера').click();
   await expect(externalRows).toHaveCount(0);
+  await expect.poll(() => remoteDeleteCalls, { timeout: 12_000 }).toBe(4);
 
   await page.locator('.flux-content').evaluate((node) => {
     const touch = (type: string, x: number, y: number) => {
@@ -325,6 +376,8 @@ test('targeted: Nutrition date navigation fits from 320 to 430', async ({ browse
     await expect(page.getByLabel('Выбрать дату питания')).toBeVisible();
     await expect(page.getByLabel('Показать предыдущий день')).toBeVisible();
     await expect(page.getByLabel('Показать следующий день')).toBeDisabled();
+    await page.getByRole('button', { name: 'Что вы съели?' }).click();
+    await expect(page.locator('.flux-product-row').first()).toBeVisible();
     await expectNoHorizontalOverflow(page);
     await stableScreenshot(page, `test-results/screenshots/targeted-nutrition-date-nav-${width}.png`);
     expect(errors().filter((error) => !error.includes('status of 400'))).toEqual([]);
