@@ -22,6 +22,25 @@ function overlaps(first: { x: number; y: number; width: number; height: number }
   return first.x < second.x + second.width && first.x + first.width > second.x && first.y < second.y + second.height && first.y + first.height > second.y;
 }
 
+async function expectPortionValueLayout(page: Page, unit: 'г' | 'мл' | 'шт', value: string) {
+  const input = page.getByLabel(`Количество, ${unit}`);
+  await input.fill(value);
+  await expect(input).toHaveValue(value);
+  const group = page.locator('.flux-portion-value');
+  const [inputBox, unitBox, stepperBox, groupFits] = await Promise.all([
+    input.boundingBox(),
+    group.locator('span').boundingBox(),
+    page.locator('.flux-portion-stepper').boundingBox(),
+    group.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
+  ]);
+  expect(inputBox).not.toBeNull(); expect(unitBox).not.toBeNull(); expect(stepperBox).not.toBeNull();
+  expect(unitBox!.x).toBeGreaterThan(inputBox!.x + inputBox!.width - 1);
+  expect(Math.abs((inputBox!.y + inputBox!.height / 2) - (unitBox!.y + unitBox!.height / 2))).toBeLessThanOrEqual(2);
+  expect(inputBox!.x).toBeGreaterThanOrEqual(stepperBox!.x);
+  expect(unitBox!.x + unitBox!.width).toBeLessThanOrEqual(stepperBox!.x + stepperBox!.width + 1);
+  expect(groupFits).toBe(true);
+}
+
 function localIsoDay(daysAgo = 0) {
   const date = new Date();
   date.setDate(date.getDate() - daysAgo);
@@ -383,19 +402,17 @@ test('targeted: Nutrition date navigation fits from 320 to 430', async ({ browse
     await page.getByRole('button', { name: 'Что вы съели?' }).click();
     const product = page.locator('.flux-product-row').first();
     await expect(product).toBeVisible();
-    await expect(product.locator('.flux-product-macro-preview')).toContainText(/^Б .+ · Ж .+ · У .+$/);
+    const macroPreview = product.locator('.flux-product-macro-preview');
+    await expect(macroPreview).toContainText(/^Белки .+ · Жиры .+ · Углеводы .+$/);
+    expect(await macroPreview.evaluate((node) => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
     await product.click();
-    const stepper = page.locator('.flux-portion-stepper');
-    const [inputBox, unitBox, stepperBox] = await Promise.all([
-      stepper.locator('.flux-portion-input').boundingBox(),
-      stepper.locator('label > span').boundingBox(),
-      stepper.boundingBox(),
-    ]);
-    expect(inputBox).not.toBeNull(); expect(unitBox).not.toBeNull(); expect(stepperBox).not.toBeNull();
-    expect(unitBox!.x).toBeGreaterThan(inputBox!.x + inputBox!.width - 1);
-    expect(Math.abs((inputBox!.y + inputBox!.height / 2) - (unitBox!.y + unitBox!.height / 2))).toBeLessThanOrEqual(2);
-    expect(inputBox!.x).toBeGreaterThanOrEqual(stepperBox!.x);
-    expect(unitBox!.x + unitBox!.width).toBeLessThanOrEqual(stepperBox!.x + stepperBox!.width + 1);
+    await expectPortionValueLayout(page, 'г', '1000.5');
+    await page.getByRole('button', { name: 'Назад к продуктам', exact: true }).click();
+    await page.locator('.flux-product-row').filter({ hasText: 'Капучино' }).first().click();
+    await expectPortionValueLayout(page, 'мл', '250.5');
+    await page.getByRole('button', { name: 'Назад к продуктам', exact: true }).click();
+    await page.locator('.flux-product-row').filter({ hasText: 'Яйца' }).first().click();
+    await expectPortionValueLayout(page, 'шт', '3');
     await page.getByRole('button', { name: /Добавить в / }).click();
     await expect(page.locator('.flux-meal-row').first().locator('b')).toContainText(/\d+ ккал/);
     await expectNoHorizontalOverflow(page);
@@ -430,9 +447,9 @@ test('targeted: Nutrition search previews only source-provided macros', async ({
   await expect(off).toContainText('364');
   await expect(off).toContainText('ккал');
   await expect(off).toContainText('за 100 г');
-  await expect(off.locator('.flux-product-macro-preview')).toHaveText('Б 12,1 · Ж 6,2 · У 61,4');
+  await expect(off.locator('.flux-product-macro-preview')).toHaveText('Белки 12,1 · Жиры 6,2 · Углеводы 61,4');
   const fatSecret = page.locator('.flux-product-row').filter({ hasText: 'E2E FatSecret preview' });
-  await expect(fatSecret.locator('.flux-product-macro-preview')).toHaveText('Б 2 · Ж 1 · У 16');
+  await expect(fatSecret.locator('.flux-product-macro-preview')).toHaveText('Белки 2 · Жиры 1 · Углеводы 16');
   const nutriapix = page.locator('.flux-product-row').filter({ hasText: 'E2E Nutriapix preview' });
   await expect(nutriapix.locator('.flux-product-macro-preview')).toHaveCount(0);
   await expectNoHorizontalOverflow(page);

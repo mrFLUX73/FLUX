@@ -291,7 +291,7 @@ function productServingBasis(product: Product) {
 }
 
 function productMacroPreview(product: Product) {
-  return `Б ${formatMacro(product.protein)} · Ж ${formatMacro(product.fat)} · У ${formatMacro(product.carbs)}`;
+  return `Белки ${formatMacro(product.protein)} · Жиры ${formatMacro(product.fat)} · Углеводы ${formatMacro(product.carbs)}`;
 }
 
 function MorphNumber({ value, className = '' }: { value: string | number; className?: string }) {
@@ -929,7 +929,7 @@ function QuickAddDrawer({
             <div className="flux-portion-caption"><span>Количество</span><span>{selected.barcode ? 'Упаковка' : 'Обычно'}: {selected.amount} {selected.unit}</span></div>
             <div className="flux-portion-stepper">
               <Button variant="secondary" size="icon-lg" onClick={() => setAmount((value) => Math.max(amountMinimum, (Number(value) || selected.amount) - amountStep))} aria-label="Уменьшить количество"><Minus /></Button>
-              <label>
+              <label className="flux-portion-value">
                 <input
                   className="flux-portion-input"
                   type="number"
@@ -1072,7 +1072,7 @@ function RepeatMealAmountDrawer({
         <div className="flux-portion-caption"><span>Количество</span><span>Было: {entry.amount} {entry.unit}</span></div>
         <div className="flux-portion-stepper">
           <Button variant="secondary" size="icon-lg" onClick={() => setAmount((value) => Math.max(0, (Number(value) || entry.amount) - amountStep))} aria-label="Уменьшить количество"><Minus /></Button>
-          <label><input className="flux-portion-input" inputMode="decimal" value={amount} onChange={(event) => {
+          <label className="flux-portion-value"><input className="flux-portion-input" inputMode="decimal" value={amount} onChange={(event) => {
             const raw = event.target.value.trim().replace(',', '.');
             const parsed = Number(raw);
             setAmount(raw === '' || !Number.isFinite(parsed) ? '' : parsed);
@@ -1212,7 +1212,7 @@ function EditMealEntryDrawer({
           <div className="flux-portion-caption"><span>Количество</span><span>Было: {entry.amount} {entry.unit}</span></div>
           <div className="flux-portion-stepper">
             <Button variant="secondary" size="icon-lg" onClick={() => setAmount((value) => Math.max(amountMinimum, (Number(value) || entry.amount) - amountStep))} aria-label="Уменьшить количество"><Minus /></Button>
-            <label><input className="flux-portion-input" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value === '' ? '' : Math.max(0, Number(event.target.value)))} onBlur={() => { if (!numericAmount) setAmount(entry.amount); }} aria-label={`Количество, ${entry.unit}`} /><span>{entry.unit}</span></label>
+            <label className="flux-portion-value"><input className="flux-portion-input" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value === '' ? '' : Math.max(0, Number(event.target.value)))} onBlur={() => { if (!numericAmount) setAmount(entry.amount); }} aria-label={`Количество, ${entry.unit}`} /><span>{entry.unit}</span></label>
             <Button variant="secondary" size="icon-lg" onClick={() => setAmount((value) => (Number(value) || entry.amount) + amountStep)} aria-label="Увеличить количество"><Plus /></Button>
           </div>
           <div className="flux-portion-presets">
