@@ -1630,7 +1630,6 @@ function FoodScreen({
         <div className="flux-calorie-line"><span>{total.toLocaleString('ru-RU')} из {target.toLocaleString('ru-RU')} ккал</span><strong>{Math.round((total / target) * 100)}%</strong></div><Progress value={(total / target) * 100} />
         <section className="flux-meal-list">
           <div className="flux-section-heading"><h2>Приёмы пищи</h2></div>
-          {!historyLoading && entries.length === 0 && <div className="flux-diary-empty"><Sprout /><strong>Дневник пока пуст</strong><span>{isToday ? 'Добавьте первый продукт — баланс пересчитается сразу.' : 'В этот день пока нет записей.'}</span></div>}
         {MEAL_KINDS.map((meal) => {
           const mealEntries = entries.filter((entry) => entry.meal === meal);
           const mealCalories = mealEntries.reduce((sum, entry) => sum + entry.kcal, 0);

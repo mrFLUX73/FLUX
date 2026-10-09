@@ -407,7 +407,8 @@ test('targeted: Nutrition keeps stale content stable until the selected day is r
   delayRequests = false;
   await waitForHistoricalNutrition(page);
   await expect(oatmealRows).toHaveCount(0);
-  await expect(page.getByText('Дневник пока пуст', { exact: true })).toBeVisible();
+  await expect(page.getByText('Дневник пока пуст', { exact: true })).toHaveCount(0);
+  await expect(page.locator('.flux-meal-list > .flux-meal-group')).toHaveCount(4);
 
   await picker.fill(dayWithEntries);
   await waitForHistoricalNutrition(page);
