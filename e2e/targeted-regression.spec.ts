@@ -8,8 +8,12 @@ const nutritionOnSeptember14 = [
   ['Куриное филе', '160 г', '264 ккал'], ['Рис', '150 г', '195 ккал'],
 ] as const;
 
-async function pageFor(browser: import('@playwright/test').Browser, persona: 'CLIENT' | 'TRAINER' | 'EMPTY_CLIENT', width = 390): Promise<{ context: BrowserContext; page: Page; errors: () => string[] }> {
-  const context = await browser.newContext({ storageState: statePath(persona), viewport: { width, height: 844 } });
+async function pageFor(browser: import('@playwright/test').Browser, persona: 'CLIENT' | 'TRAINER' | 'EMPTY_CLIENT', width = 390, mobile = false): Promise<{ context: BrowserContext; page: Page; errors: () => string[] }> {
+  const context = await browser.newContext({
+    storageState: statePath(persona),
+    viewport: { width, height: 844 },
+    ...(mobile ? { isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : {}),
+  });
   const page = await context.newPage();
   const errors = collectRuntime(page);
   await page.goto(baseUrl);
@@ -39,6 +43,39 @@ async function expectPortionValueLayout(page: Page, unit: 'г' | 'мл' | 'шт'
   expect(inputBox!.x).toBeGreaterThanOrEqual(stepperBox!.x);
   expect(unitBox!.x + unitBox!.width).toBeLessThanOrEqual(stepperBox!.x + stepperBox!.width + 1);
   expect(groupFits).toBe(true);
+}
+
+async function expectNutrientValuesOnOneLine(page: Page) {
+  const metrics = page.locator('.flux-nutrient-grid > div');
+  await expect(metrics).toHaveCount(4);
+
+  for (const [index, expectedValue] of ['190ккал', '7г', '5г', '29г'].entries()) {
+    const metric = metrics.nth(index);
+    const value = metric.locator('.flux-nutrient-value');
+    await expect(value).toHaveText(expectedValue);
+    const [valueBox, numberBox, unitBox, geometry] = await Promise.all([
+      value.boundingBox(),
+      value.locator('strong').boundingBox(),
+      value.locator('small').boundingBox(),
+      value.evaluate((node) => {
+        const style = getComputedStyle(node);
+        return {
+          display: style.display,
+          flexWrap: style.flexWrap,
+          fits: node.scrollWidth <= node.clientWidth + 1,
+        };
+      }),
+    ]);
+    expect(valueBox).not.toBeNull(); expect(numberBox).not.toBeNull(); expect(unitBox).not.toBeNull();
+    // The value group is a grid item, so the browser blockifies inline-flex
+    // to flex in computed styles. Its no-wrap flex layout is the invariant.
+    expect(geometry.display).toBe('flex');
+    expect(geometry.flexWrap).toBe('nowrap');
+    expect(geometry.fits).toBe(true);
+    expect(unitBox!.x).toBeGreaterThan(numberBox!.x + numberBox!.width - 1);
+    expect(Math.max(numberBox!.y, unitBox!.y)).toBeLessThan(Math.min(numberBox!.y + numberBox!.height, unitBox!.y + unitBox!.height));
+    expect(valueBox!.x).toBeGreaterThanOrEqual(0);
+  }
 }
 
 function localIsoDay(daysAgo = 0) {
@@ -393,7 +430,7 @@ test('targeted: Nutrition keeps stale content stable until the selected day is r
 
 test('targeted: Nutrition date navigation fits from 320 to 430', async ({ browser }) => {
   for (const width of [320, 375, 390, 430]) {
-    const { context, page, errors } = await pageFor(browser, 'EMPTY_CLIENT', width);
+    const { context, page, errors } = await pageFor(browser, 'EMPTY_CLIENT', width, true);
     await page.getByRole('button', { name: 'Питание', exact: true }).click();
     await expect(page.locator('.flux-food-day-nav')).toBeVisible();
     await expect(page.getByLabel('Выбрать дату питания')).toBeVisible();
@@ -406,6 +443,8 @@ test('targeted: Nutrition date navigation fits from 320 to 430', async ({ browse
     await expect(macroPreview).toContainText(/^Белки .+ · Жиры .+ · Углеводы .+$/);
     expect(await macroPreview.evaluate((node) => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
     await product.click();
+    await expectNutrientValuesOnOneLine(page);
+    if (width === 320 || width === 390) await stableScreenshot(page, `test-results/screenshots/targeted-nutrition-product-card-${width}.png`);
     await expectPortionValueLayout(page, 'г', '1000.5');
     await page.getByRole('button', { name: 'Назад к продуктам', exact: true }).click();
     await page.locator('.flux-product-row').filter({ hasText: 'Капучино' }).first().click();

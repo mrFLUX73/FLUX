@@ -955,10 +955,10 @@ function QuickAddDrawer({
               ))}
             </div>
             <div className="flux-nutrient-grid">
-              <div><span>Калории</span><strong><MorphNumber value={Math.round(selected.kcal * scale)} /></strong><small>ккал</small></div>
-              <div><span>Белки</span><strong><MorphNumber value={formatMacro(selected.protein * scale)} /></strong><small>г</small></div>
-              <div><span>Жиры</span><strong><MorphNumber value={formatMacro(selected.fat * scale)} /></strong><small>г</small></div>
-              <div><span>Углеводы</span><strong><MorphNumber value={formatMacro(selected.carbs * scale)} /></strong><small>г</small></div>
+              <div><span>Калории</span><span className="flux-nutrient-value"><strong><MorphNumber value={Math.round(selected.kcal * scale)} /></strong><small>ккал</small></span></div>
+              <div><span>Белки</span><span className="flux-nutrient-value"><strong><MorphNumber value={formatMacro(selected.protein * scale)} /></strong><small>г</small></span></div>
+              <div><span>Жиры</span><span className="flux-nutrient-value"><strong><MorphNumber value={formatMacro(selected.fat * scale)} /></strong><small>г</small></span></div>
+              <div><span>Углеводы</span><span className="flux-nutrient-value"><strong><MorphNumber value={formatMacro(selected.carbs * scale)} /></strong><small>г</small></span></div>
             </div>
             <Button className="flux-main-button" size="lg" disabled={isAdding || numericAmount <= 0} onClick={() => submit(selected, numericAmount)}>
               <span>{isAdding ? 'Сохраняю…' : `Добавить в ${mealInSentence(meal)}`}</span><strong>{Math.round(selected.kcal * scale)} ккал</strong>
@@ -1079,7 +1079,7 @@ function RepeatMealAmountDrawer({
           }} aria-label={`Количество, ${entry.unit}`} /><span>{entry.unit}</span></label>
           <Button variant="secondary" size="icon-lg" onClick={() => setAmount((value) => (Number(value) || entry.amount) + amountStep)} aria-label="Увеличить количество"><Plus /></Button>
         </div>
-        {preview && <div className="flux-nutrient-grid"><div><span>Калории</span><strong><MorphNumber value={preview.kcal} /></strong><small>ккал</small></div><div><span>Белки</span><strong><MorphNumber value={formatMacro(preview.protein)} /></strong><small>г</small></div><div><span>Жиры</span><strong><MorphNumber value={formatMacro(preview.fat)} /></strong><small>г</small></div><div><span>Углеводы</span><strong><MorphNumber value={formatMacro(preview.carbs)} /></strong><small>г</small></div></div>}
+        {preview && <div className="flux-nutrient-grid"><div><span>Калории</span><span className="flux-nutrient-value"><strong><MorphNumber value={preview.kcal} /></strong><small>ккал</small></span></div><div><span>Белки</span><span className="flux-nutrient-value"><strong><MorphNumber value={formatMacro(preview.protein)} /></strong><small>г</small></span></div><div><span>Жиры</span><span className="flux-nutrient-value"><strong><MorphNumber value={formatMacro(preview.fat)} /></strong><small>г</small></span></div><div><span>Углеводы</span><span className="flux-nutrient-value"><strong><MorphNumber value={formatMacro(preview.carbs)} /></strong><small>г</small></span></div></div>}
         {!preview && <p className="flux-repeat-amount-error">Введите количество больше нуля.</p>}
         <Button className="flux-main-button" size="lg" disabled={!preview} onClick={() => onDone(entry.entryId, numericAmount)}><Check /> Готово</Button>
       </div>
@@ -1219,10 +1219,10 @@ function EditMealEntryDrawer({
             {presets.map((preset) => <button type="button" key={preset} className={numericAmount === preset ? 'is-active' : ''} onClick={() => setAmount(preset)}>{preset} {entry.unit}</button>)}
           </div>
           <div className="flux-nutrient-grid">
-            <div><span>Калории</span><strong><MorphNumber value={Math.round(entry.kcal * scale)} /></strong><small>ккал</small></div>
-            <div><span>Белки</span><strong><MorphNumber value={formatMacro(entry.protein * scale)} /></strong><small>г</small></div>
-            <div><span>Жиры</span><strong><MorphNumber value={formatMacro(entry.fat * scale)} /></strong><small>г</small></div>
-            <div><span>Углеводы</span><strong><MorphNumber value={formatMacro(entry.carbs * scale)} /></strong><small>г</small></div>
+            <div><span>Калории</span><span className="flux-nutrient-value"><strong><MorphNumber value={Math.round(entry.kcal * scale)} /></strong><small>ккал</small></span></div>
+            <div><span>Белки</span><span className="flux-nutrient-value"><strong><MorphNumber value={formatMacro(entry.protein * scale)} /></strong><small>г</small></span></div>
+            <div><span>Жиры</span><span className="flux-nutrient-value"><strong><MorphNumber value={formatMacro(entry.fat * scale)} /></strong><small>г</small></span></div>
+            <div><span>Углеводы</span><span className="flux-nutrient-value"><strong><MorphNumber value={formatMacro(entry.carbs * scale)} /></strong><small>г</small></span></div>
           </div>
           <Button className="flux-main-button" size="lg" disabled={saving || numericAmount <= 0} onClick={() => onSave(entry, numericAmount, meal)}>
             {saving ? <LoaderCircle className="is-spinning" /> : <Check />} {saving ? 'Сохраняю…' : 'Сохранить изменения'}
