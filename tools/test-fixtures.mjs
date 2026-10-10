@@ -6,10 +6,10 @@ import { createClient } from '@supabase/supabase-js';
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { TEST_PERSONAS, TEST_PURPOSES } from './e2e-contract.mjs';
+import { TEST_PERSONAS, SEEDED_PERSONA_KEYS } from './e2e-contract.mjs';
 
 const envPath = resolve('.env.e2e.local');
-const purposes = TEST_PURPOSES;
+const purposes = SEEDED_PERSONA_KEYS;
 const defaults = TEST_PERSONAS;
 
 function parseEnv(text) {

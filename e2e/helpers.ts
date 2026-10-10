@@ -2,8 +2,233 @@ import { createClient } from '@supabase/supabase-js';
 import { expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 
-type Persona = 'TRAINER' | 'CLIENT' | 'EMPTY_CLIENT' | 'OTHER_TRAINER';
+type Persona = 'TRAINER' | 'CLIENT' | 'EMPTY_CLIENT' | 'OTHER_TRAINER' | 'WORKOUT_E2E_CLIENT' | 'NUTRITION_E2E_CLIENT';
+
+type WorkoutStepInput = {
+  exerciseId: string;
+  targetSets: number;
+  targetRepsMin: number | null;
+  targetDurationSeconds: number | null;
+  targetDistanceM: number | null;
+  targetWeightKg: number | null;
+  restSeconds: number;
+};
+
+type OwnedPlan = { id: string; name: string };
+type NutritionFixtureProduct = { id: string; name: string; amount: number; kcal: number; protein: number; carbs: number; fat: number };
+
+const workoutFixtureMarker = (token: string) => `[FLUX E2E fixture:${token}]`;
+const nutritionFixtureMarker = (token: string) => `[FLUX E2E nutrition:${token}]`;
+
+// The browser uses normal authenticated RPCs to create the fixture. Cleanup is
+// Node-only because the product deliberately exposes no "delete session"
+// endpoint. Every delete is constrained by the UUIDs returned in this test,
+// the marker stored in the record, and the server-side test_accounts registry.
+export function createWorkoutFixtureScope(page: Page, userId: string, label: string) {
+  const marker = workoutFixtureMarker(randomUUID());
+  const planName = `${marker} ${label}`;
+  const exerciseIds = new Map<string, string>();
+  const plans = new Map<string, OwnedPlan>();
+  const sessions = new Set<string>();
+
+  const registerPlan = (plan: { id: string; name?: string }) => {
+    if (!plan.id) throw new Error('E2E fixture did not return a plan id');
+    plans.set(plan.id, { id: plan.id, name: plan.name ?? planName });
+    return plan.id;
+  };
+
+  const registerExercise = (exercise: { id: string; name: string }) => {
+    if (!exercise.id || !exercise.name.endsWith(` ${marker}`)) {
+      throw new Error('E2E fixture did not return an owned exercise.');
+    }
+    exerciseIds.set(exercise.id, exercise.name);
+    return exercise.id;
+  };
+
+  const registerSession = (session: { id: string; title?: string; plan_id?: string | null }) => {
+    if (!session.id || session.title !== planName || !session.plan_id || !plans.has(session.plan_id)) {
+      throw new Error('FIXTURE STATE BLOCKER: an active workout is not owned by this E2E fixture. No foreign session was changed.');
+    }
+    sessions.add(session.id);
+    return session.id;
+  };
+
+  return {
+    marker,
+    planName,
+    description: marker,
+    exerciseName: (name: string) => `${name} ${marker}`,
+    registerPlan,
+    registerExercise,
+    forgetPlan: (planId: string) => { plans.delete(planId); },
+    registerSession,
+    async assertNoActiveWorkout() {
+      const result = await storedSessionRpc(page, 'get_my_active_workout_session', {});
+      if (result.status !== 200) throw new Error(`E2E fixture precondition check failed (${result.status})`);
+      if (result.data) throw new Error('FIXTURE STATE BLOCKER: synthetic persona already has a non-test-owned active workout. No record was changed.');
+    },
+    async createExercise(name: string, measurementType: 'reps' | 'duration' | 'distance') {
+      const ownedName = `${name} ${marker}`;
+      const result = await storedSessionRpc(page, 'create_my_exercise', {
+        p_name: ownedName,
+        p_measurement_type: measurementType,
+        p_instructions: null,
+        p_category: null,
+      });
+      if (result.status !== 200 || !result.data || typeof result.data !== 'object' || !('id' in result.data)) throw new Error(`E2E fixture exercise creation failed (${result.status})`);
+      const id = (result.data as { id: string }).id;
+      exerciseIds.set(id, ownedName);
+      return { id, name: ownedName };
+    },
+    async savePlan(steps: WorkoutStepInput[]) {
+      const result = await storedSessionRpc(page, 'save_my_workout_plan', {
+        p_plan_id: null,
+        p_name: planName,
+        p_description: marker,
+        p_level: 'beginner',
+        p_estimated_duration_minutes: 20,
+        p_steps: steps.map((step) => ({
+          exercise_id: step.exerciseId,
+          target_sets: step.targetSets,
+          target_reps_min: step.targetRepsMin,
+          target_reps_max: null,
+          target_duration_seconds: step.targetDurationSeconds,
+          target_distance_m: step.targetDistanceM,
+          target_weight_kg: step.targetWeightKg,
+          rest_seconds: step.restSeconds,
+          notes: null,
+        })),
+      });
+      if (result.status !== 200 || !result.data || typeof result.data !== 'object' || !('id' in result.data)) throw new Error(`E2E fixture plan creation failed (${result.status})`);
+      const plan = result.data as { id: string; name?: string };
+      registerPlan(plan);
+      return plan;
+    },
+    async startPlan(planId: string) {
+      const result = await storedSessionRpc(page, 'start_personal_workout', { p_plan_id: planId });
+      if (result.status !== 200 || !result.data || typeof result.data !== 'object' || !('id' in result.data)) throw new Error(`E2E fixture session start failed (${result.status})`);
+      const session = result.data as { id: string; title?: string; plan_id?: string | null };
+      registerSession(session);
+      return session;
+    },
+    async cleanup() {
+      if (!plans.size && !exerciseIds.size && !sessions.size) return;
+      const admin = createClient(environment('VITE_SUPABASE_URL'), environment('SUPABASE_SERVICE_ROLE_KEY'), { auth: { persistSession: false, autoRefreshToken: false } });
+      const { data: registry, error: registryError } = await admin.from('test_accounts').select('user_id').eq('user_id', userId).maybeSingle();
+      if (registryError || !registry) throw new Error('E2E fixture cleanup refused: owner is not registered as synthetic.');
+
+      const planIds = [...plans.keys()];
+      if (planIds.length) {
+        const { data, error } = await admin.from('workout_plans').select('id,user_id,description').in('id', planIds).eq('user_id', userId);
+        if (error || (data ?? []).some((plan) => plan.description !== marker) || (data ?? []).length !== planIds.length) throw new Error('E2E fixture cleanup refused: plan ownership marker does not match.');
+      }
+      const sessionIds = [...sessions];
+      if (sessionIds.length) {
+        const { data, error } = await admin.from('workout_sessions').select('id,user_id,plan_id,title').in('id', sessionIds).eq('user_id', userId);
+        if (error || (data ?? []).length !== sessionIds.length || (data ?? []).some((session) => session.title !== planName || !session.plan_id || !plans.has(session.plan_id))) {
+          throw new Error('E2E fixture cleanup refused: session ownership marker does not match.');
+        }
+        const { error: deleteSessionsError } = await admin.from('workout_sessions').delete().in('id', sessionIds).eq('user_id', userId);
+        if (deleteSessionsError) throw new Error(`E2E fixture session cleanup failed: ${deleteSessionsError.message}`);
+      }
+      if (planIds.length) {
+        const { error } = await admin.from('workout_plans').delete().in('id', planIds).eq('user_id', userId);
+        if (error) throw new Error(`E2E fixture plan cleanup failed: ${error.message}`);
+      }
+      const ownedExerciseIds = [...exerciseIds.keys()];
+      if (ownedExerciseIds.length) {
+        const { data, error } = await admin.from('exercises').select('id,user_id,name').in('id', ownedExerciseIds).eq('user_id', userId);
+        if (error || (data ?? []).length !== ownedExerciseIds.length || (data ?? []).some((exercise) => exercise.name !== exerciseIds.get(exercise.id))) {
+          throw new Error('E2E fixture cleanup refused: exercise ownership marker does not match.');
+        }
+        const { error: deleteExercisesError } = await admin.from('exercises').delete().in('id', ownedExerciseIds).eq('user_id', userId);
+        if (deleteExercisesError) throw new Error(`E2E fixture exercise cleanup failed: ${deleteExercisesError.message}`);
+      }
+    },
+  };
+}
+
+// Nutrition fixtures use an owned catalog product whose UUID marker is copied
+// into every item created through the normal UI. That gives both the test and
+// interrupted-run hygiene an auditable ownership boundary without touching a
+// shared product or a pre-seeded diary row.
+export function createNutritionFixtureScope(userId: string, label: string) {
+  const marker = nutritionFixtureMarker(randomUUID());
+  const products = new Map<string, NutritionFixtureProduct>();
+
+  const admin = () => createClient(environment('VITE_SUPABASE_URL'), environment('SUPABASE_SERVICE_ROLE_KEY'), { auth: { persistSession: false, autoRefreshToken: false } });
+  const verifySyntheticOwner = async () => {
+    const { data, error } = await admin().from('test_accounts').select('user_id').eq('user_id', userId).maybeSingle();
+    if (error || !data) throw new Error('E2E nutrition fixture refused: owner is not registered as synthetic.');
+  };
+
+  return {
+    marker,
+    productName: (name: string) => `${name} ${marker}`,
+    async createProduct(name: string, values: { amount?: number; kcal?: number; protein?: number; carbs?: number; fat?: number } = {}) {
+      await verifySyntheticOwner();
+      const product: NutritionFixtureProduct = {
+        id: randomUUID(), name: `${name} ${marker}`,
+        amount: values.amount ?? 100, kcal: values.kcal ?? 100, protein: values.protein ?? 10, carbs: values.carbs ?? 10, fat: values.fat ?? 5,
+      };
+      const { error } = await admin().from('products').insert({
+        id: product.id, owner_id: userId, name: product.name, brand: 'FLUX E2E', category: 'E2E',
+        serving_size_g: product.amount, serving_unit: 'g', default_serving_quantity: product.amount,
+        energy_kcal_per_100g: product.kcal, protein_g_per_100g: product.protein,
+        carbohydrates_g_per_100g: product.carbs, fat_g_per_100g: product.fat, fiber_g_per_100g: 0,
+      });
+      if (error) throw new Error(`E2E nutrition fixture product creation failed: ${error.message}`);
+      products.set(product.id, product);
+      return product;
+    },
+    async seedEntry(product: NutritionFixtureProduct, input: { meal: 'breakfast' | 'lunch' | 'dinner' | 'snack'; eatenAt: string; quantity: number }) {
+      if (!products.has(product.id)) throw new Error('E2E nutrition fixture refused: product is not owned by this scope.');
+      await verifySyntheticOwner();
+      const mealId = randomUUID(); const itemId = randomUUID(); const factor = input.quantity / product.amount;
+      const instance = admin();
+      const { error: mealError } = await instance.from('meals').insert({ id: mealId, user_id: userId, meal_type: input.meal, eaten_at: input.eatenAt, note: marker });
+      if (mealError) throw new Error(`E2E nutrition fixture meal creation failed: ${mealError.message}`);
+      const { error: itemError } = await instance.from('meal_items').insert({
+        id: itemId, meal_id: mealId, user_id: userId, product_id: product.id, product_name: product.name,
+        portion_quantity: input.quantity, portion_unit: 'g', amount_g: input.quantity,
+        energy_kcal: product.kcal * factor, protein_g: product.protein * factor,
+        carbohydrates_g: product.carbs * factor, fat_g: product.fat * factor, fiber_g: 0,
+      });
+      if (itemError) throw new Error(`E2E nutrition fixture item creation failed: ${itemError.message}`);
+      return { mealId, itemId };
+    },
+    async cleanup() {
+      await verifySyntheticOwner();
+      const instance = admin(); const productIds = [...products.keys()];
+      if (!productIds.length) return;
+      const { data: verifiedProducts, error: productError } = await instance.from('products').select('id,owner_id,name').in('id', productIds).eq('owner_id', userId);
+      if (productError || (verifiedProducts ?? []).length !== productIds.length || (verifiedProducts ?? []).some((product) => product.name !== products.get(product.id)?.name || !product.name.endsWith(` ${marker}`))) throw new Error('E2E nutrition fixture cleanup refused: product ownership marker does not match.');
+      const { data: productItems, error: itemError } = await instance.from('meal_items').select('id,user_id,meal_id,product_id,product_name').in('product_id', productIds).eq('user_id', userId);
+      const { data: externalItems, error: externalItemError } = await instance.from('meal_items').select('id,user_id,meal_id,product_id,product_name,external_source').eq('user_id', userId).is('product_id', null).like('product_name', `% ${marker}`);
+      if (itemError || externalItemError || (productItems ?? []).some((item) => item.product_name !== products.get(item.product_id)?.name) || (externalItems ?? []).some((item) => item.external_source !== 'nutriapix' || !item.product_name.endsWith(` ${marker}`))) throw new Error('E2E nutrition fixture cleanup refused: item ownership marker does not match.');
+      const items = [...(productItems ?? []), ...(externalItems ?? [])];
+      const itemIds = items.map((item) => item.id); const mealIds = [...new Set(items.map((item) => item.meal_id))];
+      if (mealIds.length) {
+        const { data: allMealItems, error: allMealItemsError } = await instance.from('meal_items').select('id,user_id,meal_id,product_id').in('meal_id', mealIds).eq('user_id', userId);
+        if (allMealItemsError || (allMealItems ?? []).length !== itemIds.length || (allMealItems ?? []).some((item) => !itemIds.includes(item.id) || (item.product_id !== null && !productIds.includes(item.product_id)))) throw new Error('E2E nutrition fixture cleanup refused: a meal contains a non-owned item.');
+      }
+      if (itemIds.length) {
+        const { error } = await instance.from('meal_items').delete().in('id', itemIds).eq('user_id', userId);
+        if (error) throw new Error(`E2E nutrition fixture item cleanup failed: ${error.message}`);
+      }
+      if (mealIds.length) {
+        const { error } = await instance.from('meals').delete().in('id', mealIds).eq('user_id', userId);
+        if (error) throw new Error(`E2E nutrition fixture meal cleanup failed: ${error.message}`);
+      }
+      const { data: remainingItems, error: remainingItemsError } = await instance.from('meal_items').select('id').in('product_id', productIds).eq('user_id', userId);
+      if (remainingItemsError || (remainingItems ?? []).length) throw new Error('E2E nutrition fixture cleanup refused: owned product still has meal items.');
+      const { error: deleteProductsError } = await instance.from('products').delete().in('id', productIds).eq('owner_id', userId);
+      if (deleteProductsError) throw new Error(`E2E nutrition fixture product cleanup failed: ${deleteProductsError.message}`);
+    },
+  };
+}
 
 function environment(name: string) {
   const value = process.env[name];
@@ -61,13 +286,13 @@ const authBootstrapDocument = `<!doctype html><html><body>
 </body></html>`;
 
 export function statePath(persona: Persona) {
-  const file = { CLIENT: 'client', TRAINER: 'trainer', EMPTY_CLIENT: 'empty-client', OTHER_TRAINER: 'other-trainer' }[persona];
+  const file = { CLIENT: 'client', TRAINER: 'trainer', EMPTY_CLIENT: 'empty-client', OTHER_TRAINER: 'other-trainer', WORKOUT_E2E_CLIENT: 'workout-e2e-client', NUTRITION_E2E_CLIENT: 'nutrition-e2e-client' }[persona];
   return path.join('.e2e', 'auth', `${file}.json`);
 }
 
-export async function authenticatedContext(browser: Browser, persona: Persona, width = 390): Promise<{ context: BrowserContext; page: Page; userId: string }> {
+export async function authenticatedContext(browser: Browser, persona: Persona, width = 390, options: { mobile?: boolean } = {}): Promise<{ context: BrowserContext; page: Page; userId: string }> {
   const session = await fixtureSession(persona);
-  const context = await browser.newContext({ viewport: { width, height: 844 } });
+  const context = await browser.newContext({ viewport: { width, height: 844 }, ...(options.mobile ? { isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : {}) });
   const page = await context.newPage();
   const localSdk = await readFile(path.join(process.cwd(), 'node_modules/@supabase/supabase-js/dist/umd/supabase.js'), 'utf8');
   await page.route(`**${localSupabaseScriptPath}`, (route) => route.fulfill({ contentType: 'application/javascript', body: localSdk }));

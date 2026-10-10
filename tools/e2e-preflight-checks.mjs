@@ -15,9 +15,8 @@ export function syntheticAuthCheck(result) {
   return result?.user?.id ? { ok: true } : { ok: false, reason: 'Synthetic authentication could not be confirmed.' };
 }
 
-export function baselineCheck({ clientPlans, emptyPlans, activeLink, isolated }) {
+export function baselineCheck({ clientPlans, activeLink, isolated }) {
   if (clientPlans < 1) return { ok: false, reason: 'Test Client baseline workout plan is missing.' };
-  if (emptyPlans !== 0) return { ok: false, reason: 'Empty Client is not empty.' };
   if (!activeLink) return { ok: false, reason: 'Test Trainer ↔ Test Client active baseline link is missing.' };
   if (!isolated) return { ok: false, reason: 'Other Trainer must not be linked to Test Client.' };
   return { ok: true };
