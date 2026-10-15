@@ -16,6 +16,20 @@ type WorkoutStepInput = {
   restSeconds: number;
 };
 
+type WorkoutV3PlannedSetInput = {
+  targetRepsMin?: number | null;
+  targetRepsMax?: number | null;
+  targetDurationSeconds?: number | null;
+  targetDistanceM?: number | null;
+  targetWeightKg?: number | null;
+  restSeconds?: number | null;
+};
+
+type WorkoutV3StepInput = {
+  exerciseId: string;
+  plannedSets: WorkoutV3PlannedSetInput[];
+};
+
 type OwnedPlan = { id: string; name: string };
 type NutritionFixtureProduct = { id: string; name: string; amount: number; kcal: number; protein: number; carbs: number; fat: number };
 
@@ -26,7 +40,7 @@ const nutritionFixtureMarker = (token: string) => `[FLUX E2E nutrition:${token}]
 // Node-only because the product deliberately exposes no "delete session"
 // endpoint. Every delete is constrained by the UUIDs returned in this test,
 // the marker stored in the record, and the server-side test_accounts registry.
-export function createWorkoutFixtureScope(page: Page, userId: string, label: string) {
+export function createWorkoutFixtureScope(page: Page, userId: string, label: string, ownerPersona: Persona = 'WORKOUT_E2E_CLIENT') {
   const marker = workoutFixtureMarker(randomUUID());
   const planName = `${marker} ${label}`;
   const exerciseIds = new Map<string, string>();
@@ -106,9 +120,45 @@ export function createWorkoutFixtureScope(page: Page, userId: string, label: str
       registerPlan(plan);
       return plan;
     },
+    async savePlanV3(steps: WorkoutV3StepInput[]) {
+      const result = await storedSessionRpc(page, 'save_my_workout_plan_v3', {
+        p_plan_id: null,
+        p_name: planName,
+        p_description: marker,
+        p_level: 'beginner',
+        p_estimated_duration_minutes: 20,
+        p_steps: steps.map((step) => ({
+          step_id: null,
+          exercise_source_kind: 'personal',
+          exercise_source_id: step.exerciseId,
+          day_number: 1,
+          notes: null,
+          planned_sets: step.plannedSets.map((plannedSet) => ({
+            set_id: null,
+            target_reps_min: plannedSet.targetRepsMin ?? null,
+            target_reps_max: plannedSet.targetRepsMax ?? null,
+            target_duration_seconds: plannedSet.targetDurationSeconds ?? null,
+            target_distance_m: plannedSet.targetDistanceM ?? null,
+            target_weight_kg: plannedSet.targetWeightKg ?? null,
+            rest_seconds: plannedSet.restSeconds ?? null,
+          })),
+        })),
+      });
+      if (result.status !== 200 || !result.data || typeof result.data !== 'object' || !('id' in result.data)) throw new Error(`E2E V3 fixture plan creation failed (${result.status})`);
+      const plan = result.data as { id: string; name?: string };
+      registerPlan(plan);
+      return plan;
+    },
     async startPlan(planId: string) {
       const result = await storedSessionRpc(page, 'start_personal_workout', { p_plan_id: planId });
       if (result.status !== 200 || !result.data || typeof result.data !== 'object' || !('id' in result.data)) throw new Error(`E2E fixture session start failed (${result.status})`);
+      const session = result.data as { id: string; title?: string; plan_id?: string | null };
+      registerSession(session);
+      return session;
+    },
+    async startPlanV3(planId: string) {
+      const result = await storedSessionRpc(page, 'start_personal_workout_v3', { p_plan_id: planId });
+      if (result.status !== 200 || !result.data || typeof result.data !== 'object' || !('id' in result.data)) throw new Error(`E2E V3 fixture session start failed (${result.status})`);
       const session = result.data as { id: string; title?: string; plan_id?: string | null };
       registerSession(session);
       return session;
@@ -121,8 +171,8 @@ export function createWorkoutFixtureScope(page: Page, userId: string, label: str
 
       const planIds = [...plans.keys()];
       if (planIds.length) {
-        const { data, error } = await admin.from('workout_plans').select('id,user_id,description').in('id', planIds).eq('user_id', userId);
-        if (error || (data ?? []).some((plan) => plan.description !== marker) || (data ?? []).length !== planIds.length) throw new Error('E2E fixture cleanup refused: plan ownership marker does not match.');
+        const { data, error } = await admin.from('workout_plans').select('id,user_id,description,plan_origin').in('id', planIds).eq('user_id', userId);
+        if (error || (data ?? []).some((plan) => plan.description !== marker || plan.plan_origin !== 'personal') || (data ?? []).length !== planIds.length) throw new Error('E2E fixture cleanup refused: plan ownership marker does not match.');
       }
       const sessionIds = [...sessions];
       if (sessionIds.length) {
@@ -132,10 +182,30 @@ export function createWorkoutFixtureScope(page: Page, userId: string, label: str
         }
         const { error: deleteSessionsError } = await admin.from('workout_sessions').delete().in('id', sessionIds).eq('user_id', userId);
         if (deleteSessionsError) throw new Error(`E2E fixture session cleanup failed: ${deleteSessionsError.message}`);
+
+        // Do not call the guarded V3 plan deletion until the exact active
+        // sessions and their server-owned dependents are observably gone.
+        // This makes cleanup fail closed instead of racing a still-live browser
+        // session against the owner-facing V3 delete RPC.
+        const [{ data: remainingSessions, error: remainingSessionsError }, { data: remainingSets, error: remainingSetsError }, { data: remainingCheckpoints, error: remainingCheckpointsError }] = await Promise.all([
+          admin.from('workout_sessions').select('id').in('id', sessionIds).eq('user_id', userId),
+          admin.from('performed_sets').select('id').in('workout_session_id', sessionIds).eq('user_id', userId),
+          admin.from('workout_execution_checkpoints').select('workout_session_id').in('workout_session_id', sessionIds).eq('user_id', userId),
+        ]);
+        if (remainingSessionsError || remainingSetsError || remainingCheckpointsError || (remainingSessions ?? []).length || (remainingSets ?? []).length || (remainingCheckpoints ?? []).length) {
+          throw new Error('E2E fixture session cleanup did not remove every exact session dependency.');
+        }
       }
       if (planIds.length) {
-        const { error } = await admin.from('workout_plans').delete().in('id', planIds).eq('user_id', userId);
-        if (error) throw new Error(`E2E fixture plan cleanup failed: ${error.message}`);
+        // Use the owner-facing V3 delete RPC. Its server-issued capability is
+        // the only valid way to cascade through materialised V3 plan steps.
+        const ownerClient = await ownerFixtureRpcClient(ownerPersona, userId);
+        for (const planId of planIds) {
+          const { error } = await ownerClient.rpc('delete_my_workout_plan_v3', { p_plan_id: planId });
+          if (error) throw new Error(`E2E fixture V3 plan cleanup failed: ${error.message}`);
+        }
+        const { data: remainingPlans, error: remainingPlansError } = await admin.from('workout_plans').select('id').in('id', planIds).eq('user_id', userId);
+        if (remainingPlansError || (remainingPlans ?? []).length) throw new Error('E2E fixture V3 plan cleanup did not remove every exact plan.');
       }
       const ownedExerciseIds = [...exerciseIds.keys()];
       if (ownedExerciseIds.length) {
@@ -145,7 +215,12 @@ export function createWorkoutFixtureScope(page: Page, userId: string, label: str
         }
         const { error: deleteExercisesError } = await admin.from('exercises').delete().in('id', ownedExerciseIds).eq('user_id', userId);
         if (deleteExercisesError) throw new Error(`E2E fixture exercise cleanup failed: ${deleteExercisesError.message}`);
+        const { data: remainingExercises, error: remainingExercisesError } = await admin.from('exercises').select('id').in('id', ownedExerciseIds).eq('user_id', userId);
+        if (remainingExercisesError || (remainingExercises ?? []).length) throw new Error('E2E fixture exercise cleanup did not remove every exact exercise.');
       }
+      sessions.clear();
+      plans.clear();
+      exerciseIds.clear();
     },
   };
 }
@@ -236,6 +311,16 @@ function environment(name: string) {
   return value;
 }
 
+export async function cleanupOwnedSyntheticWorkoutSession(userId: string, sessionId: string, expectedTitle: string) {
+  const admin = createClient(environment('VITE_SUPABASE_URL'), environment('SUPABASE_SERVICE_ROLE_KEY'), { auth: { persistSession: false, autoRefreshToken: false } });
+  const { data: registry, error: registryError } = await admin.from('test_accounts').select('user_id').eq('user_id', userId).maybeSingle();
+  if (registryError || !registry) throw new Error('E2E session cleanup refused: owner is not registered as synthetic.');
+  const { data: session, error: sessionError } = await admin.from('workout_sessions').select('id,user_id,title').eq('id', sessionId).eq('user_id', userId).maybeSingle();
+  if (sessionError || !session || session.title !== expectedTitle) throw new Error('E2E session cleanup refused: exact ownership marker does not match.');
+  const { error: deleteError } = await admin.from('workout_sessions').delete().eq('id', sessionId).eq('user_id', userId);
+  if (deleteError) throw new Error(`E2E session cleanup failed: ${deleteError.message}`);
+}
+
 export function credentials(persona: Persona) {
   return { login: environment(`TEST_${persona}_LOGIN`), password: environment(`TEST_${persona}_PASSWORD`) };
 }
@@ -260,6 +345,34 @@ export async function fixtureSession(persona: Persona) {
   const { data, error } = await client.auth.verifyOtp({ type: 'magiclink', token_hash: link.properties.hashed_token });
   if (error || !data.session) throw new Error(`Fixture session verification failed for ${persona}: ${error?.message ?? 'missing session'}`);
   return data.session;
+}
+
+// The UI page can still be settling while its fixture is being cleaned up.
+// Use a separate Node-only authenticated client for the protected V3 plan
+// deletion, exactly as interrupted-fixture hygiene does. The client is pinned
+// to a named synthetic persona and its server-returned identity must match the
+// scope owner before any RPC can run.
+const cleanupOwnerSessions = new Map<Persona, Promise<Awaited<ReturnType<typeof fixtureSession>>>>();
+
+async function ownerFixtureRpcClient(persona: Persona, expectedUserId: string) {
+  let sessionPromise = cleanupOwnerSessions.get(persona);
+  if (!sessionPromise) {
+    sessionPromise = fixtureSession(persona);
+    cleanupOwnerSessions.set(persona, sessionPromise);
+  }
+  let session;
+  try {
+    session = await sessionPromise;
+  } catch (error) {
+    cleanupOwnerSessions.delete(persona);
+    throw error;
+  }
+  if (session.user.id !== expectedUserId) throw new Error('E2E fixture cleanup refused: synthetic owner session identity does not match.');
+
+  const client = createClient(environment('VITE_SUPABASE_URL'), environment('VITE_SUPABASE_PUBLISHABLE_KEY'), { auth: { persistSession: false, autoRefreshToken: false } });
+  const { error } = await client.auth.setSession({ access_token: session.access_token, refresh_token: session.refresh_token });
+  if (error) throw new Error(`E2E fixture cleanup owner session setup failed: ${error.message}`);
+  return client;
 }
 
 const authBootstrapPath = '/__flux_e2e_auth_bootstrap__.html';

@@ -50,6 +50,7 @@ if (environment.ok && results.every(Boolean)) {
   const admin = createClient(values.VITE_SUPABASE_URL, values.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
   const publicClient = createClient(values.VITE_SUPABASE_URL, values.VITE_SUPABASE_PUBLISHABLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
   const ids = {};
+  const ownerClients = new Map();
   try {
     const { data: registry, error } = await admin.from('test_accounts').select('user_id,purpose');
     if (error) throw error;
@@ -67,12 +68,16 @@ if (environment.ok && results.every(Boolean)) {
   }
   if (results.every(Boolean)) {
     try {
-      for (const persona of Object.values(TEST_PERSONAS)) {
+      for (const [key, persona] of Object.entries(TEST_PERSONAS)) {
         const login = values[`TEST_${persona.env}_LOGIN`];
         const { data: link, error: linkError } = await admin.auth.admin.generateLink({ type: 'magiclink', email: `${login}@flux.local` });
         if (linkError || !link.properties.hashed_token) throw linkError;
         const { data, error } = await publicClient.auth.verifyOtp({ type: 'magiclink', token_hash: link.properties.hashed_token });
-        if (error || !syntheticAuthCheck(data).ok) throw error ?? new Error('synthetic auth');
+        if (error || !syntheticAuthCheck(data).ok || !data.session) throw error ?? new Error('synthetic auth');
+        const ownerClient = createClient(values.VITE_SUPABASE_URL, values.VITE_SUPABASE_PUBLISHABLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+        const { error: sessionError } = await ownerClient.auth.setSession({ access_token: data.session.access_token, refresh_token: data.session.refresh_token });
+        if (sessionError || !ids[key]) throw sessionError ?? new Error('synthetic owner session');
+        ownerClients.set(ids[key], ownerClient);
       }
       report('synthetic auth', { ok: true });
     } catch {
@@ -81,7 +86,7 @@ if (environment.ok && results.every(Boolean)) {
   } else safeFailure('synthetic auth', 'Skipped because synthetic registry is invalid.');
   if (results.every(Boolean)) {
     try {
-      const cleaned = await cleanInterruptedWorkoutFixtures(admin, Object.values(ids));
+      const cleaned = await cleanInterruptedWorkoutFixtures(admin, Object.values(ids), ownerClients);
       const nutrition = await cleanInterruptedNutritionFixtures(admin, Object.values(ids));
       report('test-owned fixture hygiene', { ok: true, reason: `Removed only marked fixtures: ${cleaned.plans} workout plans, ${cleaned.sessions} sessions, ${cleaned.exercises} exercises, ${nutrition.products} nutrition products, ${nutrition.meals} meals, ${nutrition.items} items.` });
     } catch {
