@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { restTimerProgress, workTimerProgress } from '../src/features/workouts/circularTimer';
 import { elapsedDurationSeconds, pauseDurationClock, remainingRestSeconds, restProgressDegrees, startDurationClock } from '../src/features/workouts/timer';
 
 test('Workout timer math: duration counts forward, excludes pauses, and resumes', () => {
@@ -17,6 +18,17 @@ test('Workout timer math: planned duration never caps actual elapsed time', () =
   const running = startDurationClock({ accumulatedSeconds: 0, startedAtMs: null }, 0);
   const plannedSeconds = 30;
   expect(elapsedDurationSeconds(running, 45_000)).toBeGreaterThan(plannedSeconds);
+});
+
+test('Circular timer progress: work fills at the planned duration and rest drains to zero', () => {
+  expect(workTimerProgress(0, 30)).toBe(0);
+  expect(workTimerProgress(15, 30)).toBe(0.5);
+  expect(workTimerProgress(45, 30)).toBe(1);
+  expect(workTimerProgress(12, null)).toBe(0);
+
+  expect(restTimerProgress(30, 60)).toBe(0.5);
+  expect(restTimerProgress(0, 60)).toBe(0);
+  expect(restTimerProgress(30, 0)).toBe(0);
 });
 
 test('Workout timer math: rest progress reflects the live deadline and handles zero rest', () => {

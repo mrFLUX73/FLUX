@@ -361,7 +361,7 @@ test('Workout Engine V3: duration saves actual time, rest progress and RPE indep
     expect(active.status).toBe(200);
     fixture.registerSession(active.data as { id: string; title?: string; plan_id?: string | null });
 
-    await expect(page.getByRole('timer', { name: /Фактическая длительность 00:00/ })).toBeVisible();
+    await expect(page.getByRole('timer', { name: /Таймер подхода: 00:00/ })).toBeVisible();
     await page.getByRole('button', { name: 'Начать отсчёт', exact: true }).click();
     await page.waitForTimeout(1_200);
     await page.getByRole('button', { name: 'Пауза', exact: true }).click();
@@ -375,12 +375,12 @@ test('Workout Engine V3: duration saves actual time, rest progress and RPE indep
     await page.getByRole('button', { name: 'Тяжело', exact: true }).click();
     await page.getByRole('button', { name: 'Завершить подход', exact: true }).click();
 
-    const restTimer = page.locator('.flux-rest-timer');
+    const restTimer = page.locator('.flux-circular-timer[data-mode="rest"]');
     await expect(restTimer).toBeVisible();
-    const initialProgress = await restTimer.evaluate((element) => (element as HTMLElement).style.getPropertyValue('--rest-progress'));
+    const initialProgress = await restTimer.getAttribute('data-progress');
     await page.waitForTimeout(1_100);
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
-    await expect.poll(() => restTimer.evaluate((element) => (element as HTMLElement).style.getPropertyValue('--rest-progress'))).not.toBe(initialProgress);
+    await expect.poll(() => restTimer.getAttribute('data-progress')).not.toBe(initialProgress);
     await page.getByRole('button', { name: 'Пропустить отдых', exact: true }).click();
 
     await page.getByRole('button', { name: 'Начать отсчёт', exact: true }).click();
@@ -650,9 +650,9 @@ async function verifyWorkoutResponsive(browser: import('@playwright/test').Brows
       await expect(page.getByLabel('Вес, кг')).toHaveValue('40');
       await page.getByRole('button', { name: 'Начать подход', exact: true }).click();
       await page.getByRole('button', { name: 'Завершить подход', exact: true }).click();
-      const restTimer = page.locator('.flux-rest-timer');
+      const restTimer = page.locator('.flux-circular-timer[data-mode="rest"]');
       await expect(restTimer).toBeVisible();
-      await expect(restTimer.locator('.flux-morph-number')).toHaveCSS('font-size', /^(5[6-9]|6[0-4])px$/);
+      await expect(restTimer.locator('.flux-circular-timer-value')).toHaveCSS('font-size', /^(?:3[8-9]|4\d)(?:\.\d+)?px$/);
       await expect(page.getByRole('button', { name: 'Пропустить отдых', exact: true })).toBeVisible();
       await expectNoHorizontalOverflow(page);
       expect(errors()).toEqual([]);
@@ -684,15 +684,15 @@ test('Workout Engine V3 duration timer: 320–430 px has no overflow', async ({ 
       const active = await storedSessionRpc(page, 'get_my_active_workout_session_v3', {});
       expect(active.status).toBe(200);
       fixture.registerSession(active.data as { id: string; title?: string; plan_id?: string | null });
-      await expect(page.getByRole('timer', { name: /Фактическая длительность 00:00/ })).toBeVisible();
+      await expect(page.getByRole('timer', { name: /Таймер подхода: 00:00/ })).toBeVisible();
       await expect(page.getByText('План · 00:30', { exact: true })).toBeVisible();
       await expect(page.getByLabel('Фактическая длительность, сек')).not.toBeVisible();
       await expect(page.getByRole('button', { name: 'Изменить время', exact: true })).toBeVisible();
-      await expect(page.getByRole('timer').getByRole('button', { name: 'Начать отсчёт', exact: true })).toBeVisible();
-      await expect(page.getByRole('timer').getByRole('button', { name: 'Сбросить таймер', exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Начать отсчёт', exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Сбросить таймер', exact: true })).toBeVisible();
       await page.getByRole('button', { name: 'Начать отсчёт', exact: true }).click();
       await expect(page.locator('.flux-base-app > .flux-workout-flow')).toBeVisible();
-      await expect(page.getByRole('timer').getByRole('button', { name: 'Завершить подход', exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Завершить подход', exact: true })).toBeVisible();
       await expectNoHorizontalOverflow(page);
       expect(errors()).toEqual([]);
     } finally {

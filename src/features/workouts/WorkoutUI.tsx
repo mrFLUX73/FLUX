@@ -1,4 +1,4 @@
-import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Activity, ArrowLeft, Check, ChevronRight, Dumbbell, LoaderCircle, MoreHorizontal, Pause, Play, Plus, RefreshCw, SkipForward, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -29,7 +29,9 @@ import {
   type WorkoutPlanStep,
 } from './repository';
 import { PersonalPlanEditorV2 } from './PersonalPlanEditorV2';
-import { elapsedDurationSeconds, pauseDurationClock, remainingRestSeconds, restProgressDegrees, startDurationClock, type DurationClock } from './timer';
+import { CircularWorkoutTimer } from './CircularWorkoutTimer';
+import { restTimerProgress, workTimerProgress } from './circularTimer';
+import { elapsedDurationSeconds, pauseDurationClock, remainingRestSeconds, startDurationClock, type DurationClock } from './timer';
 
 const dateLabel = (value: string) => new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long' }).format(new Date(value));
 const timerLabel = (seconds: number) => `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}`;
@@ -409,7 +411,7 @@ function WorkoutEngineFlow({ userId, initialSession, onClose, onFinished }: { us
   const durationValue = durationManuallyEdited ? durationInput : String(durationElapsedSeconds);
   const hasManualDuration = durationManuallyEdited && numberOrNull(durationInput) != null && Number.isFinite(Number(durationInput)) && Number(durationInput) >= 0;
   const durationReachedPlan = step?.measurementType === 'duration' && plannedSet?.targetDurationSeconds != null && durationElapsedSeconds >= plannedSet.targetDurationSeconds;
-  const restProgress = restProgressDegrees(remaining, restTotalSeconds);
+  const restProgress = restTimerProgress(remaining, restTotalSeconds);
   const leave = () => { restEndsAt.current = null; onClose(); };
   const hasSavedSets = completeSets > 0;
   const hasUnsavedDraft = Boolean(step && plannedSet && position && !setFor(session, step.stepId, plannedSet.setNumber) && draftTouched);
@@ -472,7 +474,7 @@ function WorkoutEngineFlow({ userId, initialSession, onClose, onFinished }: { us
       <Progress value={(completeSets / Math.max(totalSets, 1)) * 100} />
       {phase === 'rest' ? <section className="flux-rest-screen">
         <span className="flux-eyebrow">Можно выдохнуть</span><h1>Отдых</h1><p>Следующий: {step.name} · подход {plannedSet.setNumber}</p>
-        <div className="flux-rest-timer" style={{ '--rest-progress': `${restProgress}deg` } as CSSProperties}><span><b>{timerLabel(remaining)}</b><small>секунд</small></span></div>
+        <CircularWorkoutTimer mode="rest" formattedTime={timerLabel(remaining)} progress={restProgress} eyebrow={`Подход ${plannedSet.setNumber} из ${step.plannedSets.length}`} stateLabel="Отдых" />
         <Button className="flux-main-button" size="lg" onClick={finishRest}><SkipForward /> Пропустить отдых</Button>
       </section> : phase === 'next' ? <section className="flux-rest-screen">
         <span className="flux-eyebrow">Следующий шаг</span><h1>{step.name}</h1><p>{plannedTargetLabel(step, plannedSet)} · подход {plannedSet.setNumber} из {step.plannedSets.length}</p>
@@ -483,10 +485,17 @@ function WorkoutEngineFlow({ userId, initialSession, onClose, onFinished }: { us
         <div className="flux-active-copy"><span className="flux-eyebrow">{phase === 'active' ? 'Подход выполняется' : phase === 'paused' ? 'Таймер на паузе' : 'План и факт'}</span><h1>{step.name}</h1><p>{step.instructions ?? step.notes ?? 'Выполняйте в комфортном контролируемом темпе.'}</p></div>
         <div className="flux-planned-target"><span>План</span><strong>{plannedTargetLabel(step, plannedSet)}</strong>{plannedSet.restSeconds != null && <small>отдых {plannedSet.restSeconds} сек</small>}</div>
         {step.measurementType === 'duration' ? <>
-          <div className={`flux-execution-timer ${phase === 'active' ? 'is-running' : ''}`} role="timer" aria-label={`Фактическая длительность ${timerLabel(durationElapsedSeconds)}`}>
-            <span>{phase === 'active' ? 'Выполнение' : phase === 'paused' ? 'Можно продолжить или завершить' : 'Таймер подхода'}</span>
-            <strong className="flux-morph-number">{timerLabel(durationElapsedSeconds)}</strong>
-            <small>План · {timerLabel(plannedSet.targetDurationSeconds ?? 0)}{durationReachedPlan ? ' · цель достигнута' : ''}</small>
+          <div className={`flux-execution-timer ${phase === 'active' ? 'is-running' : ''}`}>
+            <CircularWorkoutTimer
+              mode="work"
+              formattedTime={timerLabel(durationElapsedSeconds)}
+              progress={workTimerProgress(durationElapsedSeconds, plannedSet.targetDurationSeconds)}
+              paused={phase === 'paused'}
+              eyebrow={`Подход ${plannedSet.setNumber} из ${step.plannedSets.length}`}
+              stateLabel={phase === 'active' ? 'Выполнение' : phase === 'paused' ? 'Таймер на паузе' : 'Таймер подхода'}
+              planLabel={`План · ${timerLabel(plannedSet.targetDurationSeconds ?? 0)}`}
+              reachedPlan={durationReachedPlan}
+            />
             <div className="flux-execution-timer-controls">
               {phase === 'active' ? <Button variant="secondary" onClick={pauseDuration}><Pause /> Пауза</Button> : <Button onClick={startDuration}><Play /> {durationElapsedSeconds > 0 ? 'Продолжить отсчёт' : 'Начать отсчёт'}</Button>}
               {primarySetAction}
