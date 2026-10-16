@@ -1415,14 +1415,16 @@ button:active { transform: scale(.97); }
 .flux-motion-field > button { position: absolute; bottom: 13px; min-height: 34px; padding: 0 13px; border: 0; border-radius: 13px; background: color-mix(in srgb, var(--flux-card) 88%, transparent); color: var(--flux-primary); font-size: 9px; }
 .flux-active-copy { margin-top: 18px; }
 .flux-active-copy p { min-height: 31px; margin: 7px 0 0; color: var(--flux-muted); font-size: 9px; line-height: 1.5; }
-.flux-execution-timer { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: 'status' 'value' 'target' 'controls'; justify-items: center; gap: 5px; margin-top: 16px; padding: 16px; border-radius: 21px; background: var(--flux-soft-2); text-align: center; }
+.flux-execution-timer { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: 'status' 'value' 'target' 'controls' 'actual' 'reset'; justify-items: center; gap: 5px; margin-top: 16px; padding: 16px; border-radius: 21px; background: var(--flux-soft-2); text-align: center; }
 .flux-execution-timer.is-running { background: var(--flux-soft); }
 .flux-execution-timer > span:first-child { grid-area: status; color: var(--flux-primary); font-size: 9px; }
 .flux-execution-timer > .flux-morph-number { grid-area: value; min-width: 104px; font-size: 35px; font-weight: 550; letter-spacing: -.045em; }
 .flux-execution-timer > small { grid-area: target; color: var(--flux-muted); font-size: 8px; }
-.flux-execution-timer-controls { grid-area: controls; display: grid; width: 100%; gap: 4px; margin-top: 7px; }
+.flux-execution-timer-controls { grid-area: controls; display: grid; width: 100%; gap: 8px; margin-top: 7px; }
 .flux-execution-timer-controls [data-slot='button'] { width: 100%; min-height: 44px; border-radius: 13px; }
-.flux-timer-reset { justify-self: center; min-height: 40px; padding: 0 12px; border: 0; border-radius: 12px; background: transparent; color: var(--flux-muted); font: inherit; font-size: 10px; }
+.flux-duration-actual { grid-area: actual; width: 100%; margin-top: 4px; }
+.flux-duration-actual input { min-height: 44px; }
+.flux-timer-reset { grid-area: reset; justify-self: center; min-height: 40px; padding: 0 12px; border: 0; border-radius: 12px; background: transparent; color: var(--flux-muted); font: inherit; font-size: 10px; }
 .flux-timer-reset:disabled { opacity: .45; }
 .flux-timer-reset, .flux-editor-exercise-summary, .flux-editor-step-actions button, .flux-set-delete, .flux-add-set { touch-action: manipulation; }
 .flux-timer-reset:focus-visible, .flux-editor-exercise-summary:focus-visible, .flux-editor-step-actions button:focus-visible, .flux-set-delete:focus-visible, .flux-add-set:focus-visible { outline: 3px solid color-mix(in srgb, var(--flux-accent) 72%, white); outline-offset: 2px; }
@@ -1464,6 +1466,8 @@ button:active { transform: scale(.97); }
 .flux-workout-history-button .flux-rhythm-icon { width: 34px; height: 34px; }
 .flux-workout-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
 .flux-workout-fields-single { grid-template-columns: minmax(0, 1fr); }
+.flux-set-execution-card { display: grid; gap: 12px; margin-top: 16px; padding: 14px; border-radius: 18px; background: var(--flux-soft-2); }
+.flux-set-execution-card .flux-workout-fields, .flux-set-execution-card .flux-workout-flow-actions { margin-top: 0; }
 .flux-workout-fields label, .flux-workout-field { display: grid; gap: 6px; color: var(--flux-muted); font-size: 9px; text-align: left; }
 .flux-workout-fields input, .flux-workout-field select { width: 100%; min-height: 42px; padding: 0 12px; border: 1px solid var(--flux-border); border-radius: 13px; background: var(--flux-card); color: var(--flux-ink); font: inherit; font-size: 11px; }
 .flux-planned-target { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px 8px; margin-top: 14px; padding: 10px 12px; border: 1px solid var(--flux-border); border-radius: 14px; background: var(--flux-soft-2); color: var(--flux-muted); font-size: 10px; }

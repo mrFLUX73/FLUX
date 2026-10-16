@@ -1,4 +1,5 @@
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Activity, ArrowLeft, Check, ChevronRight, Dumbbell, LoaderCircle, MoreHorizontal, Pause, Play, Plus, RefreshCw, SkipForward, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
@@ -433,7 +434,13 @@ function WorkoutEngineFlow({ userId, initialSession, onClose, onFinished }: { us
     if (completed) setCompletionOpen(false);
     else if (savedDraft || completionMode !== 'draft' || !hasUnsavedDraft) setCompletionMode('retry');
   };
-  return <section className="flux-workout-flow" role="dialog" aria-modal="true" aria-label="Активная тренировка">
+  const primarySetAction = step?.measurementType !== 'duration' && phase === 'ready'
+    ? <Button className="flux-main-button" size="lg" onClick={() => setPhase('active')}><Play /> Начать подход</Button>
+    : (step?.measurementType !== 'duration' || phase === 'active' || phase === 'paused')
+      ? <Button className="flux-main-button" size="lg" disabled={saving} onClick={() => { void saveSet(); }}>{saving ? <LoaderCircle className="is-spinning" /> : <Check />} Завершить подход</Button>
+      : null;
+  const flowHost = document.querySelector<HTMLElement>('.flux-base-app') ?? document.body;
+  return createPortal(<section className="flux-workout-flow" role="dialog" aria-modal="true" aria-label="Активная тренировка">
     <header className="flux-flow-header">
       <Button variant="secondary" size="icon" onClick={leave} aria-label="Вернуться к тренировкам"><ArrowLeft /></Button>
       <div><span>{phaseLabel}</span><strong>{phase === 'complete' ? 'Тренировка готова' : step?.name ?? session.title}</strong></div>
@@ -466,29 +473,27 @@ function WorkoutEngineFlow({ userId, initialSession, onClose, onFinished }: { us
             <small>План · {timerLabel(plannedSet.targetDurationSeconds ?? 0)}{durationReachedPlan ? ' · цель достигнута' : ''}</small>
             <div className="flux-execution-timer-controls">
               {phase === 'active' ? <Button variant="secondary" onClick={pauseDuration}><Pause /> Пауза</Button> : <Button onClick={startDuration}><Play /> {durationElapsedSeconds > 0 ? 'Продолжить отсчёт' : 'Начать отсчёт'}</Button>}
-              <button type="button" className="flux-timer-reset" disabled={phase === 'active' || (durationElapsedSeconds === 0 && !durationManuallyEdited)} onClick={resetDuration}>Сбросить таймер</button>
+              {primarySetAction}
             </div>
+            <div className="flux-workout-fields flux-workout-fields-single flux-duration-actual"><label>Фактическая длительность, сек<input inputMode="numeric" value={durationValue} onChange={(event) => { setDurationInput(event.target.value); setDurationManuallyEdited(true); setDraftTouched(true); }} /></label></div>
+            <button type="button" className="flux-timer-reset" disabled={phase === 'active' || (durationElapsedSeconds === 0 && !durationManuallyEdited)} onClick={resetDuration}>Сбросить таймер</button>
           </div>
-          <div className="flux-workout-fields flux-workout-fields-single"><label>Фактическая длительность, сек<input inputMode="numeric" value={durationValue} onChange={(event) => { setDurationInput(event.target.value); setDurationManuallyEdited(true); setDraftTouched(true); }} /></label></div>
-        </> : <div className="flux-workout-fields">
+        </> : <section className="flux-set-execution-card"><div className="flux-workout-fields">
           {step.measurementType === 'reps' && <label>Повторы<input inputMode="numeric" value={reps} onChange={(event) => { setReps(event.target.value); setDraftTouched(true); }} /></label>}
           {step.measurementType === 'reps' && <label>Вес, кг <small>необязательно</small><input inputMode="decimal" value={weight} onChange={(event) => { setWeight(event.target.value); setDraftTouched(true); }} /></label>}
           {step.measurementType === 'distance' && <label>Метры<input inputMode="numeric" value={distance} onChange={(event) => { setDistance(event.target.value); setDraftTouched(true); }} /></label>}
           {step.measurementType === 'distance' && <label>Время, сек <small>необязательно</small><input inputMode="numeric" value={durationInput} onChange={(event) => { setDurationInput(event.target.value); setDraftTouched(true); }} /></label>}
-        </div>}
+        </div><div className="flux-workout-flow-actions">{primarySetAction}</div></section>}
         <div className="flux-workout-fields flux-workout-fields-single"><label>Заметка <small>необязательно</small><input value={notes} maxLength={1000} onChange={(event) => { setNotes(event.target.value); setDraftTouched(true); }} /></label></div>
         {(phase === 'active' || phase === 'paused') && feeling}{error && <p className="flux-client-inline-error">{error}</p>}
         {checkpointStatus === 'saving' && <p className="flux-checkpoint-status" role="status">Сохраняем черновик…</p>}
         {checkpointStatus === 'saved' && <p className="flux-checkpoint-status" role="status">Черновик сохранён</p>}
         {checkpointStatus === 'error' && <p className="flux-client-inline-error" role="alert">Черновик не синхронизирован. Проверьте соединение — введённые данные остаются на экране.</p>}
-        <div className="flux-workout-flow-actions">
-          {step.measurementType !== 'duration' && phase === 'ready' ? <Button className="flux-main-button" size="lg" onClick={() => setPhase('active')}><Play /> Начать подход</Button> : (step.measurementType !== 'duration' || phase === 'active' || phase === 'paused') && <Button className="flux-main-button" size="lg" disabled={saving} onClick={() => { void saveSet(); }}>{saving ? <LoaderCircle className="is-spinning" /> : <Check />} Завершить подход</Button>}
-        </div>
       </>}
     </div> : null}
     {exitOpen && <div className="flux-workout-exit-sheet" role="dialog" aria-modal="true" aria-label="Выйти из тренировки"><div><h2>Закончить на этом месте?</h2><p>Сохранённые подходы уже в аккаунте. Незавершённый подход можно продолжить позже.</p><Button className="flux-main-button" size="lg" onClick={() => setExitOpen(false)}>Продолжить тренировку</Button><Button variant="secondary" size="lg" onClick={leave}>Выйти и продолжить позже</Button><button type="button" className="flux-text-danger" disabled={saving} onClick={requestCompletion}>Завершить тренировку</button></div></div>}
     {completionOpen && <div className="flux-workout-completion-sheet" role="dialog" aria-modal="true" aria-labelledby="flux-completion-title"><div><h2 id="flux-completion-title">{completionMode === 'draft' && hasUnsavedDraft ? 'Сохранить результат подхода?' : completionMode === 'empty' ? 'В тренировке нет сохранённых подходов. Завершить её без результатов?' : 'Не удалось завершить тренировку'}</h2>{completionMode === 'draft' && hasUnsavedDraft ? <><p>Перед завершением выберите, что сделать с несохранённым результатом.</p><section className="flux-completion-draft"><strong>{step?.name} · подход {plannedSet?.setNumber}</strong><span>{draftSummary}</span></section><label className="flux-completion-choice"><input type="checkbox" checked={saveDraftBeforeCompletion} onChange={(event) => setSaveDraftBeforeCompletion(event.target.checked)} />Сохранить этот подход перед завершением</label></> : completionMode === 'empty' ? <p>Ни один подход ещё не сохранён. Введённые данные не будут записаны в историю.</p> : <p>Сохранённые результаты остаются в тренировке. Повторите завершение, когда соединение восстановится.</p>}{error && <p className="flux-client-inline-error" role="alert">{error}</p>}{completionMode === 'draft' && hasUnsavedDraft ? <Button className="flux-main-button" size="lg" disabled={saving || !saveDraftBeforeCompletion} onClick={() => { void confirmCompletion(); }}>{saving ? <LoaderCircle className="is-spinning" /> : <Check />} Сохранить выбранные и завершить</Button> : completionMode === 'empty' ? <button type="button" className="flux-text-danger flux-completion-empty-finish" disabled={saving} onClick={() => { void confirmCompletion(); }}>Завершить без результатов</button> : <Button className="flux-main-button" size="lg" disabled={saving} onClick={() => { void confirmCompletion(); }}>{saving ? <LoaderCircle className="is-spinning" /> : <RefreshCw />} Повторить завершение</Button>}{completionMode === 'draft' && hasUnsavedDraft && <button type="button" className="flux-text-danger" disabled={saving} onClick={() => { void confirmCompletion(); }}>Завершить без сохранения</button>}<Button variant="secondary" size="lg" disabled={saving} onClick={() => { setCompletionOpen(false); setError(''); }}>Вернуться к тренировке</Button></div></div>}
-  </section>;
+  </section>, flowHost);
 }
 
 export function WorkoutEngineScreen({ userId }: { userId: string | null }) {
