@@ -308,6 +308,16 @@ function WorkoutEngineFlow({ userId, initialSession, onClose, onFinished }: { us
     setDurationElapsedSeconds(durationClock.current.accumulatedSeconds);
     checkpointGeneration.current += 1; setDraftTouched(true); setPhase('paused');
   };
+  const resetDuration = () => {
+    if (phase === 'active') return;
+    durationClock.current = { accumulatedSeconds: 0, startedAtMs: null };
+    setDurationElapsedSeconds(0);
+    setDurationInput('');
+    setDurationManuallyEdited(false);
+    checkpointGeneration.current += 1;
+    setDraftTouched(true);
+    setPhase('ready');
+  };
   const saveSet = async (): Promise<boolean> => {
     if (!step || !plannedSet || !position || mutationInFlight.current || (step.measurementType === 'duration' && phase === 'ready')) return false;
     const actualDuration = durationManuallyEdited ? numberOrNull(durationInput) : durationElapsedSeconds;
@@ -454,6 +464,10 @@ function WorkoutEngineFlow({ userId, initialSession, onClose, onFinished }: { us
             <span>{phase === 'active' ? 'Выполнение' : phase === 'paused' ? 'Можно продолжить или завершить' : 'Таймер подхода'}</span>
             <strong className="flux-morph-number">{timerLabel(durationElapsedSeconds)}</strong>
             <small>План · {timerLabel(plannedSet.targetDurationSeconds ?? 0)}{durationReachedPlan ? ' · цель достигнута' : ''}</small>
+            <div className="flux-execution-timer-controls">
+              {phase === 'active' ? <Button variant="secondary" onClick={pauseDuration}><Pause /> Пауза</Button> : <Button onClick={startDuration}><Play /> {durationElapsedSeconds > 0 ? 'Продолжить отсчёт' : 'Начать отсчёт'}</Button>}
+              <button type="button" className="flux-timer-reset" disabled={phase === 'active' || (durationElapsedSeconds === 0 && !durationManuallyEdited)} onClick={resetDuration}>Сбросить таймер</button>
+            </div>
           </div>
           <div className="flux-workout-fields flux-workout-fields-single"><label>Фактическая длительность, сек<input inputMode="numeric" value={durationValue} onChange={(event) => { setDurationInput(event.target.value); setDurationManuallyEdited(true); setDraftTouched(true); }} /></label></div>
         </> : <div className="flux-workout-fields">
@@ -468,8 +482,7 @@ function WorkoutEngineFlow({ userId, initialSession, onClose, onFinished }: { us
         {checkpointStatus === 'saved' && <p className="flux-checkpoint-status" role="status">Черновик сохранён</p>}
         {checkpointStatus === 'error' && <p className="flux-client-inline-error" role="alert">Черновик не синхронизирован. Проверьте соединение — введённые данные остаются на экране.</p>}
         <div className="flux-workout-flow-actions">
-          {step.measurementType === 'duration' && (phase === 'active' ? <Button variant="secondary" onClick={pauseDuration}><Pause /> Пауза</Button> : phase === 'ready' || phase === 'paused' ? <Button variant="secondary" onClick={startDuration}><Play /> {durationElapsedSeconds > 0 ? 'Продолжить отсчёт' : 'Начать отсчёт'}</Button> : null)}
-          {step.measurementType !== 'duration' && phase === 'ready' ? <Button className="flux-main-button" size="lg" onClick={() => setPhase('active')}><Play /> Начать подход</Button> : <Button className="flux-main-button" size="lg" disabled={saving || (step.measurementType === 'duration' && phase === 'ready')} onClick={() => { void saveSet(); }}>{saving ? <LoaderCircle className="is-spinning" /> : <Check />} Завершить подход</Button>}
+          {step.measurementType !== 'duration' && phase === 'ready' ? <Button className="flux-main-button" size="lg" onClick={() => setPhase('active')}><Play /> Начать подход</Button> : (step.measurementType !== 'duration' || phase === 'active' || phase === 'paused') && <Button className="flux-main-button" size="lg" disabled={saving} onClick={() => { void saveSet(); }}>{saving ? <LoaderCircle className="is-spinning" /> : <Check />} Завершить подход</Button>}
         </div>
       </>}
     </div> : null}

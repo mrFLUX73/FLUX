@@ -665,6 +665,8 @@ test('Workout Engine V3 duration timer: 320–430 px has no overflow', async ({ 
       await expect(page.getByRole('timer', { name: /Фактическая длительность 00:00/ })).toBeVisible();
       await expect(page.getByText('План · 00:30', { exact: true })).toBeVisible();
       await expect(page.getByLabel('Фактическая длительность, сек')).toHaveValue('0');
+      await expect(page.getByRole('timer').getByRole('button', { name: 'Начать отсчёт', exact: true })).toBeVisible();
+      await expect(page.getByRole('timer').getByRole('button', { name: 'Сбросить таймер', exact: true })).toBeVisible();
       await expectNoHorizontalOverflow(page);
       expect(errors()).toEqual([]);
     } finally {

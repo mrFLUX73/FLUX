@@ -343,6 +343,7 @@ test('Personal Plan Editor: editor fits 320–430 px', async ({ browser }) => {
     await page.route('**/rest/v1/exercise_catalog_equipment*', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify([{ catalog_exercise_id: catalogItem.id, equipment: { name_ru: 'Штанга' } }]) }));
     await page.getByRole('button', { name: 'Создать', exact: true }).click();
     await expect(page.getByRole('dialog', { name: 'Создать план' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Закрыть', exact: true })).toHaveCount(0);
     await expect(page.getByLabel('Название плана')).toBeVisible();
     await expectNoHorizontalOverflow(page);
     await page.getByRole('button', { name: 'К упражнениям', exact: true }).click();
@@ -393,6 +394,7 @@ test('Personal Plan Editor: Visual Set Editor keeps inline targets usable from 3
         await expect(page.getByLabel('Повторы, подход 2')).toHaveValue('8');
         await expect(page.getByLabel('Вес, подход 2')).toHaveValue('25.5');
         await expect(page.getByLabel('Отдых, подход 2')).toHaveValue('45');
+        await expect(page.locator('.flux-set-input-grid')).toHaveCount(2);
         await page.getByLabel('Удалить подход 2').click();
         await page.getByRole('button', { name: 'Отменить', exact: true }).click();
         await expect(page.getByLabel('Повторы, подход 2')).toHaveValue('8');
