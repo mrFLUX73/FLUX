@@ -4,6 +4,7 @@ import path from 'node:path';
 import tailwindcss from '@tailwindcss/postcss';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
+import packageJson from './package.json';
 
 function githubPagesBase() {
   const repository = process.env.GITHUB_REPOSITORY?.split('/')[1];
@@ -29,6 +30,12 @@ function e2eBuildMetadata() {
 
 export default defineConfig({
   base: process.env.GITHUB_ACTIONS ? githubPagesBase() : '/',
+  define: {
+    __FLUX_APP_VERSION__: JSON.stringify(packageJson.version),
+    __FLUX_BUILD_NUMBER__: JSON.stringify(process.env.VITE_BUILD_RUN ?? ''),
+    __FLUX_COMMIT_SHA__: JSON.stringify(process.env.VITE_BUILD_SHA ?? ''),
+    __FLUX_BUILD_DATE__: JSON.stringify(process.env.VITE_BUILD_AT ?? ''),
+  },
   css: { postcss: { plugins: [tailwindcss()] } },
   plugins: [
     react(),

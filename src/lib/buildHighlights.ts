@@ -5,6 +5,17 @@ export type BuildChange = {
 
 export type BuildRelease = {
   number: string;
+  appVersion?: string;
+  publishedAt?: string;
+  title: string;
+  highlights: readonly string[];
+  details: readonly BuildChange[];
+};
+
+export type ReleaseNote = {
+  appVersion: string;
+  number?: string;
+  publishedAt: string;
   title: string;
   highlights: readonly string[];
   details: readonly BuildChange[];
@@ -243,12 +254,43 @@ const releases: Record<string, BuildRelease> = {
 };
 
 const fallbackRelease: BuildRelease = {
-  number: '', title: 'Техническое обновление', highlights: ['FLUX стал стабильнее'],
-  details: [{ title: 'Обновление FLUX', description: 'Мы продолжаем улучшать приложение.' }],
+  number: '', title: 'Описание обновления готовится', highlights: [],
+  details: [{ title: 'Информация об обновлении', description: 'Для этой сборки пока нет опубликованного списка изменений.' }],
+};
+
+const releaseNotes: readonly ReleaseNote[] = [
+  {
+    appVersion: '0.2.0',
+    publishedAt: '2026-10-16T00:00:00Z',
+    title: 'Workout Engine V3',
+    highlights: [
+      'Каждый подход теперь хранит собственные плановые значения',
+      'Таймеры, RPE и прогресс тренировки сохраняются надёжнее',
+      'Управление активным подходом стало удобнее на iPhone',
+    ],
+    details: [
+      { title: 'Индивидуальные подходы', description: 'Для каждого подхода можно использовать отдельные плановые значения, отдых и порядок выполнения.' },
+      { title: 'Продолжение тренировки', description: 'Черновик текущего подхода, таймер и отдых можно безопасно восстановить после возвращения в FLUX.' },
+      { title: 'Фактический результат', description: 'Фактические повторения, вес, время, дистанция и RPE сохраняются отдельно от плана.' },
+      { title: 'Удобство на iPhone', description: 'Управление таймером и завершением подхода собрано ближе друг к другу, а подсказки к упражнениям остаются доступными.' },
+    ],
+  },
+];
+
+const fallbackReleaseNote: ReleaseNote = {
+  appVersion: '',
+  publishedAt: '',
+  title: 'Описание обновления готовится',
+  highlights: [],
+  details: [{ title: 'Информация об обновлении', description: 'Для этой версии пока нет опубликованного списка изменений.' }],
 };
 
 export function getBuildRelease(buildNumber?: string) {
   return buildNumber ? releases[buildNumber] ?? { ...fallbackRelease, number: buildNumber } : fallbackRelease;
+}
+
+export function getReleaseNote(appVersion: string) {
+  return releaseNotes.find((release) => release.appVersion === appVersion) ?? { ...fallbackReleaseNote, appVersion };
 }
 
 export function getKnownBuildReleases() {

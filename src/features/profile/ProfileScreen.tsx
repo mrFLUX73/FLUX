@@ -1,10 +1,11 @@
-import { ArrowLeft, CalendarDays, Camera, Check, ChevronDown, ChevronRight, KeyRound, LogOut, MessageCircle, Pill, UsersRound, X } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Camera, Check, ChevronDown, ChevronRight, Copy, KeyRound, LogOut, MessageCircle, Pill, UsersRound, X } from 'lucide-react';
 import { useState, type CSSProperties } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
-import { getBuildRelease, getKnownBuildReleases } from '../../lib/buildHighlights';
+import { getBuildRelease, getKnownBuildReleases, getReleaseNote } from '../../lib/buildHighlights';
+import { appMetadata, formatBuildDate } from '../../lib/appMetadata';
 import type { FluxAccount } from '../auth/phonePasswordAuth';
 import type { TrainerLink } from '../trainer/repository';
 
@@ -109,10 +110,6 @@ function formatBirthDate(value: string) {
   }).format(date);
 }
 
-const appVersion = import.meta.env.VITE_APP_VERSION ?? '0.1.0';
-const buildRun = import.meta.env.VITE_BUILD_RUN;
-const currentBuildRelease = getBuildRelease(buildRun);
-
 function ProfileField({
   children,
   label,
@@ -193,7 +190,8 @@ export function ProfileScreen({
 }) {
   const [buildInfoOpen, setBuildInfoOpen] = useState(false);
   const [buildInfoView, setBuildInfoView] = useState<'overview' | 'details'>('overview');
-  const [selectedBuildNumber, setSelectedBuildNumber] = useState(buildRun ?? '');
+  const [selectedBuildNumber, setSelectedBuildNumber] = useState<string | null>(null);
+  const [copyStatus, setCopyStatus] = useState('');
   const [trainerCodeInput, setTrainerCodeInput] = useState('');
   const set = <Key extends keyof ProfileDraft>(key: Key, value: ProfileDraft[Key]) => {
     onChange({ ...draft, [key]: value });
@@ -219,13 +217,25 @@ export function ProfileScreen({
     onChange({ ...draft, calculationSex: sex, theme: defaultThemeForSex(sex) });
     onAvatarChange(nextAvatar);
   };
-  const selectedBuild = getBuildRelease(selectedBuildNumber || buildRun);
+  const currentRelease = getReleaseNote(appMetadata.appVersion);
+  const selectedBuild = selectedBuildNumber ? getBuildRelease(selectedBuildNumber) : currentRelease;
   const previousBuilds = getKnownBuildReleases().filter((release) => release.number !== selectedBuild.number);
   const openBuildInfo = () => {
-    setSelectedBuildNumber(buildRun ?? '');
+    setSelectedBuildNumber(null);
     setBuildInfoView('overview');
+    setCopyStatus('');
     setBuildInfoOpen(true);
   };
+  const copyCommit = async () => {
+    if (!appMetadata.commitSha) return;
+    try {
+      await navigator.clipboard.writeText(appMetadata.commitSha);
+      setCopyStatus('Commit скопирован');
+    } catch {
+      setCopyStatus('Не удалось скопировать commit');
+    }
+  };
+  const buildLabel = appMetadata.isPublished ? `Сборка ${appMetadata.buildNumber}` : 'Локальная сборка';
 
   return (
     <section className="flux-profile-flow" aria-label="Профиль пользователя">
@@ -240,7 +250,7 @@ export function ProfileScreen({
             onClick={openBuildInfo}
             type="button"
           >
-            v{appVersion.replace(/\.\d+$/, '')}
+            v{appMetadata.appVersion}
           </button>
         </aside>
       </header>
@@ -394,6 +404,13 @@ export function ProfileScreen({
           </>}
         </ProfileAccordion>
 
+        <ProfileAccordion eyebrow="Приложение" title="FLUX" icon={<CalendarDays aria-hidden="true" />}>
+          <button type="button" className="flux-version-entry" onClick={openBuildInfo}>
+            <span><strong>Версия {appMetadata.appVersion} · {buildLabel}</strong><small>{currentRelease.title}</small></span>
+            <ChevronRight aria-hidden="true" />
+          </button>
+        </ProfileAccordion>
+
         <ProfileAccordion eyebrow="Обратная связь" title="Помочь улучшить FLUX" icon={<MessageCircle aria-hidden="true" />} className="flux-profile-feedback">
           <p className="flux-profile-card-note">{feedbackReplyCount ? `Команда ответила на ${feedbackReplyCount} ${feedbackReplyCount === 1 ? 'обращение' : 'обращения'}.` : 'Ошибка, идея или вопрос — сообщение попадёт в рабочую очередь команды.'}</p>
           <Button type="button" variant="secondary" onClick={onFeedback}>{feedbackReplyCount ? `Есть ответ от FLUX · ${feedbackReplyCount}` : 'Написать команде'}</Button>
@@ -407,18 +424,24 @@ export function ProfileScreen({
         <section className="flux-build-modal" role="dialog" aria-modal="true" aria-label="Что нового в FLUX" onMouseDown={(event) => event.stopPropagation()}>
           <header className="flux-build-modal-header">
             {buildInfoView === 'details' ? <button type="button" className="flux-build-modal-icon" onClick={() => setBuildInfoView('overview')} aria-label="Вернуться к информации о версии"><ArrowLeft /></button> : <span />}
-            <div><small>{buildInfoView === 'details' ? `Сборка ${selectedBuild.number || '—'}` : 'FLUX'}</small><strong>{buildInfoView === 'details' ? `Что нового в #${selectedBuild.number || '—'}` : 'Что нового в FLUX'}</strong></div>
+            <div><small>{buildInfoView === 'details' ? selectedBuild.number ? `Сборка ${selectedBuild.number}` : `Версия ${selectedBuild.appVersion}` : 'FLUX'}</small><strong>{buildInfoView === 'details' ? selectedBuild.title : 'Что нового в FLUX'}</strong></div>
             <button type="button" className="flux-build-modal-icon" onClick={() => setBuildInfoOpen(false)} aria-label="Закрыть"><X /></button>
           </header>
           <div className="flux-build-modal-body">
             {buildInfoView === 'overview' ? <>
               <section className="flux-build-current-card">
-                <div><span>Что изменилось</span><strong>{currentBuildRelease.title}</strong><ul>{currentBuildRelease.highlights.slice(0, 3).map((highlight) => <li key={highlight}>{highlight}</li>)}</ul></div>
-                <aside><small>Сборка</small><b>{buildRun ?? '—'}</b></aside>
+                <div><span>Версия {appMetadata.appVersion}</span><strong>{currentRelease.title}</strong>{currentRelease.highlights.length > 0 && <ul>{currentRelease.highlights.slice(0, 3).map((highlight) => <li key={highlight}>{highlight}</li>)}</ul>}</div>
+                <aside><small>{appMetadata.isPublished ? 'Сборка' : 'Режим'}</small><b>{appMetadata.isPublished ? appMetadata.buildNumber : 'Локально'}</b></aside>
               </section>
-              <button type="button" className="flux-build-full-list" onClick={() => { setSelectedBuildNumber(buildRun ?? ''); setBuildInfoView('details'); }}>Полный список изменений <ChevronRight /></button>
+              <dl className="flux-build-metadata">
+                <div><dt>Версия</dt><dd>{appMetadata.appVersion}</dd></div>
+                <div><dt>Сборка</dt><dd>{buildLabel}</dd></div>
+                {appMetadata.isPublished && <><div><dt>Опубликовано</dt><dd>{formatBuildDate(appMetadata.buildDate)}</dd></div><div><dt>Commit</dt><dd><button type="button" className="flux-build-commit" onClick={() => { void copyCommit(); }} aria-label={`Скопировать commit ${appMetadata.commitSha}`}><code translate="no">{appMetadata.commitSha}</code><Copy aria-hidden="true" /></button></dd></div></>}
+              </dl>
+              <p className="flux-build-copy-status" aria-live="polite">{copyStatus}</p>
+              <button type="button" className="flux-build-full-list" onClick={() => { setSelectedBuildNumber(null); setBuildInfoView('details'); }}>Полный список изменений <ChevronRight /></button>
             </> : <>
-              <p className="flux-build-detail-subtitle">{selectedBuild.title}</p>
+              <p className="flux-build-detail-subtitle">{selectedBuild.publishedAt ? `Опубликовано ${formatBuildDate(selectedBuild.publishedAt)}` : selectedBuild.title}</p>
               <div className="flux-build-detail-list">{selectedBuild.details.map((detail) => <section key={detail.title}><strong>{detail.title}</strong><p>{detail.description}</p></section>)}</div>
               {previousBuilds.length > 0 && <section className="flux-build-history"><span>Предыдущие обновления</span>{previousBuilds.map((release) => <button type="button" key={release.number} onClick={() => setSelectedBuildNumber(release.number)}><i><b>#{release.number}</b><small>{release.title}</small></i><ChevronRight /></button>)}</section>}
             </>}
