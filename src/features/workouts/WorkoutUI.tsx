@@ -143,6 +143,7 @@ function WorkoutEngineFlow({ userId, initialSession, onClose, onFinished }: { us
   const [durationElapsedSeconds, setDurationElapsedSeconds] = useState(0);
   const [durationInput, setDurationInput] = useState('');
   const [durationManuallyEdited, setDurationManuallyEdited] = useState(false);
+  const [durationEditorOpen, setDurationEditorOpen] = useState(false);
   const step = position ? session.planSnapshot[position.exerciseIndex] : null;
   const plannedSet = step && position ? step.plannedSets[position.plannedSetIndex] ?? null : null;
   const [reps, setReps] = useState(''); const [weight, setWeight] = useState(''); const [distance, setDistance] = useState(''); const [notes, setNotes] = useState(''); const [setRpe, setSetRpe] = useState(''); const [overallRpe, setOverallRpe] = useState('');
@@ -150,6 +151,7 @@ function WorkoutEngineFlow({ userId, initialSession, onClose, onFinished }: { us
   const setRpeRef = useRef('');
   const overallRpeRef = useRef('');
   const checkpointRevision = useRef<number | null>(null);
+  const hydratedPosition = useRef<string | null>(null);
   const checkpointGeneration = useRef(0);
   const checkpointTimer = useRef<number | null>(null);
   const checkpointWrite = useRef<Promise<void> | null>(null);
@@ -179,12 +181,18 @@ function WorkoutEngineFlow({ userId, initialSession, onClose, onFinished }: { us
 
   useEffect(() => {
     if (!step || !position || !plannedSet) return;
+    const positionKey = `${step.stepId}:${plannedSet.setNumber}`;
+    if (hydratedPosition.current === positionKey) {
+      hydratedPosition.current = null;
+      return;
+    }
     const saved = setFor(session, step.stepId, plannedSet.setNumber);
     const savedDuration = saved?.durationSeconds ?? null;
     setReps(saved?.reps?.toString() ?? (step.measurementType === 'reps' ? String(plannedSet.targetRepsMin ?? '') : ''));
     setWeight(saved?.weightKg?.toString() ?? (plannedSet.targetWeightKg?.toString() ?? ''));
     setDurationInput(savedDuration?.toString() ?? '');
     setDurationManuallyEdited(savedDuration != null);
+    setDurationEditorOpen(false);
     durationClock.current = { accumulatedSeconds: savedDuration ?? 0, startedAtMs: null };
     setDurationElapsedSeconds(savedDuration ?? 0);
     setDistance(saved?.distanceM?.toString() ?? (step.measurementType === 'distance' ? String(plannedSet.targetDistanceM ?? '') : ''));
@@ -206,13 +214,14 @@ function WorkoutEngineFlow({ userId, initialSession, onClose, onFinished }: { us
         return plannedSetIndex < 0 ? null : { exerciseIndex, plannedSetIndex, setNumber: checkpoint.setNumber };
       })(), null);
       if (!nextPosition) return;
+      hydratedPosition.current = `${checkpoint.sessionStepId}:${checkpoint.setNumber}`;
       checkpointRevision.current = checkpoint.revision;
       clientKey.current = checkpoint.clientSetKey;
       setPosition(nextPosition); setPhase(checkpoint.phase);
       setReps(checkpoint.draftReps?.toString() ?? ''); setWeight(checkpoint.draftWeightKg?.toString() ?? '');
       setDistance(checkpoint.draftDistanceM?.toString() ?? ''); setNotes(checkpoint.draftNotes ?? '');
       setSetRpe(checkpoint.draftRpe?.toString() ?? ''); setRpeRef.current = checkpoint.draftRpe?.toString() ?? '';
-      setDurationInput(checkpoint.draftDurationSeconds?.toString() ?? ''); setDurationManuallyEdited(checkpoint.durationIsManual);
+      setDurationInput(checkpoint.draftDurationSeconds?.toString() ?? ''); setDurationManuallyEdited(checkpoint.durationIsManual); setDurationEditorOpen(checkpoint.durationIsManual);
       durationClock.current = { accumulatedSeconds: checkpoint.durationAccumulatedSeconds, startedAtMs: checkpoint.durationStartedAt ? new Date(checkpoint.durationStartedAt).getTime() : null };
       setDurationElapsedSeconds(elapsedDurationSeconds(durationClock.current, Date.now()));
       restEndsAt.current = checkpoint.restEndsAt ? new Date(checkpoint.restEndsAt).getTime() : null;
@@ -315,13 +324,16 @@ function WorkoutEngineFlow({ userId, initialSession, onClose, onFinished }: { us
     setDurationElapsedSeconds(0);
     setDurationInput('');
     setDurationManuallyEdited(false);
+    setDurationEditorOpen(false);
     checkpointGeneration.current += 1;
     setDraftTouched(true);
     setPhase('ready');
   };
   const saveSet = async (): Promise<boolean> => {
-    if (!step || !plannedSet || !position || mutationInFlight.current || (step.measurementType === 'duration' && phase === 'ready')) return false;
-    const actualDuration = durationManuallyEdited ? numberOrNull(durationInput) : durationElapsedSeconds;
+    const manualDuration = numberOrNull(durationInput);
+    const hasManualDuration = durationManuallyEdited && manualDuration != null && Number.isFinite(manualDuration) && manualDuration >= 0;
+    if (!step || !plannedSet || !position || mutationInFlight.current || (step.measurementType === 'duration' && phase === 'ready' && !hasManualDuration)) return false;
+    const actualDuration = durationManuallyEdited ? manualDuration : elapsedDurationSeconds(durationClock.current, Date.now());
     const payload = { sessionId: session.id, clientSetKey: clientKey.current, stepId: step.stepId, setNumber: plannedSet.setNumber, reps: numberOrNull(reps), weightKg: numberOrNull(weight), durationSeconds: step.measurementType === 'duration' ? actualDuration : numberOrNull(durationInput), distanceM: numberOrNull(distance), rpe: numberOrNull(setRpeRef.current), notes: notes || null };
     mutationInFlight.current = true;
     checkpointWritesBlocked.current = true;
@@ -395,6 +407,7 @@ function WorkoutEngineFlow({ userId, initialSession, onClose, onFinished }: { us
   };
   const feeling = <fieldset className="flux-feeling"><legend>{phase === 'complete' ? 'Какой была тренировка в целом?' : 'Насколько тяжёлым был этот подход?'}</legend><small>Необязательно</small><div>{rpeChoices.map((item) => <button type="button" key={item.value} className={rpeValue === item.value ? 'is-active' : ''} aria-pressed={rpeValue === item.value} onClick={() => selectRpe(item.value)}>{item.label}</button>)}</div></fieldset>;
   const durationValue = durationManuallyEdited ? durationInput : String(durationElapsedSeconds);
+  const hasManualDuration = durationManuallyEdited && numberOrNull(durationInput) != null && Number.isFinite(Number(durationInput)) && Number(durationInput) >= 0;
   const durationReachedPlan = step?.measurementType === 'duration' && plannedSet?.targetDurationSeconds != null && durationElapsedSeconds >= plannedSet.targetDurationSeconds;
   const restProgress = restProgressDegrees(remaining, restTotalSeconds);
   const leave = () => { restEndsAt.current = null; onClose(); };
@@ -438,7 +451,9 @@ function WorkoutEngineFlow({ userId, initialSession, onClose, onFinished }: { us
     ? <Button className="flux-main-button" size="lg" onClick={() => setPhase('active')}><Play /> Начать подход</Button>
     : (step?.measurementType !== 'duration' || phase === 'active' || phase === 'paused')
       ? <Button className="flux-main-button" size="lg" disabled={saving} onClick={() => { void saveSet(); }}>{saving ? <LoaderCircle className="is-spinning" /> : <Check />} Завершить подход</Button>
-      : null;
+      : step?.measurementType === 'duration'
+        ? <Button className="flux-main-button" size="lg" disabled={saving || !hasManualDuration} onClick={() => { void saveSet(); }}>{saving ? <LoaderCircle className="is-spinning" /> : <Check />} Завершить подход</Button>
+        : null;
   const flowHost = document.querySelector<HTMLElement>('.flux-base-app') ?? document.body;
   return createPortal(<section className="flux-workout-flow" role="dialog" aria-modal="true" aria-label="Активная тренировка">
     <header className="flux-flow-header">
@@ -462,6 +477,7 @@ function WorkoutEngineFlow({ userId, initialSession, onClose, onFinished }: { us
       </section> : phase === 'next' ? <section className="flux-rest-screen">
         <span className="flux-eyebrow">Следующий шаг</span><h1>{step.name}</h1><p>{plannedTargetLabel(step, plannedSet)} · подход {plannedSet.setNumber} из {step.plannedSets.length}</p>
         <div className="flux-next-exercise"><Dumbbell /><span><small>Готовы продолжить?</small><strong>Подход начнётся только по вашему нажатию.</strong></span></div>
+        {step.instructions && <p className="flux-next-instructions">{step.instructions}</p>}
         <Button className="flux-main-button" size="lg" onClick={() => setPhase('ready')}><Play /> Перейти к упражнению</Button>
       </section> : <>
         <div className="flux-active-copy"><span className="flux-eyebrow">{phase === 'active' ? 'Подход выполняется' : phase === 'paused' ? 'Таймер на паузе' : 'План и факт'}</span><h1>{step.name}</h1><p>{step.instructions ?? step.notes ?? 'Выполняйте в комфортном контролируемом темпе.'}</p></div>
@@ -475,7 +491,7 @@ function WorkoutEngineFlow({ userId, initialSession, onClose, onFinished }: { us
               {phase === 'active' ? <Button variant="secondary" onClick={pauseDuration}><Pause /> Пауза</Button> : <Button onClick={startDuration}><Play /> {durationElapsedSeconds > 0 ? 'Продолжить отсчёт' : 'Начать отсчёт'}</Button>}
               {primarySetAction}
             </div>
-            <div className="flux-workout-fields flux-workout-fields-single flux-duration-actual"><label>Фактическая длительность, сек<input inputMode="numeric" value={durationValue} onChange={(event) => { setDurationInput(event.target.value); setDurationManuallyEdited(true); setDraftTouched(true); }} /></label></div>
+            {phase !== 'active' && <div className="flux-duration-adjustment"><button type="button" className="flux-duration-adjust-trigger" aria-expanded={durationEditorOpen} aria-controls="flux-duration-manual-adjustment" onClick={() => { if (!durationEditorOpen) setDurationInput(durationManuallyEdited || durationElapsedSeconds > 0 ? durationValue : ''); setDurationEditorOpen((open) => !open); }}>{durationEditorOpen ? 'Готово' : 'Изменить время'}</button>{durationEditorOpen && <div className="flux-workout-fields flux-workout-fields-single flux-duration-actual" id="flux-duration-manual-adjustment"><label>Фактическая длительность, сек<input inputMode="numeric" value={durationInput} onChange={(event) => { setDurationInput(event.target.value); setDurationManuallyEdited(true); setDraftTouched(true); }} /></label></div>}</div>}
             <button type="button" className="flux-timer-reset" disabled={phase === 'active' || (durationElapsedSeconds === 0 && !durationManuallyEdited)} onClick={resetDuration}>Сбросить таймер</button>
           </div>
         </> : <section className="flux-set-execution-card"><div className="flux-workout-fields">

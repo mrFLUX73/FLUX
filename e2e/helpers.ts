@@ -83,12 +83,12 @@ export function createWorkoutFixtureScope(page: Page, userId: string, label: str
       if (result.status !== 200) throw new Error(`E2E fixture precondition check failed (${result.status})`);
       if (result.data) throw new Error('FIXTURE STATE BLOCKER: synthetic persona already has a non-test-owned active workout. No record was changed.');
     },
-    async createExercise(name: string, measurementType: 'reps' | 'duration' | 'distance') {
+    async createExercise(name: string, measurementType: 'reps' | 'duration' | 'distance', instructions: string | null = null) {
       const ownedName = `${name} ${marker}`;
       const result = await storedSessionRpc(page, 'create_my_exercise', {
         p_name: ownedName,
         p_measurement_type: measurementType,
-        p_instructions: null,
+        p_instructions: instructions,
         p_category: null,
       });
       if (result.status !== 200 || !result.data || typeof result.data !== 'object' || !('id' in result.data)) throw new Error(`E2E fixture exercise creation failed (${result.status})`);
