@@ -669,7 +669,7 @@ test('Workout Engine V3 duration timer: 320–430 px has no overflow', async ({ 
       await expect(page.getByRole('timer').getByRole('button', { name: 'Сбросить таймер', exact: true })).toBeVisible();
       await page.getByRole('button', { name: 'Начать отсчёт', exact: true }).click();
       await expect(page.locator('.flux-base-app > .flux-workout-flow')).toBeVisible();
-      await expect(page.locator('.flux-set-execution-card').getByRole('button', { name: 'Завершить подход', exact: true })).toBeVisible();
+      await expect(page.getByRole('timer').getByRole('button', { name: 'Завершить подход', exact: true })).toBeVisible();
       await expectNoHorizontalOverflow(page);
       expect(errors()).toEqual([]);
     } finally {
