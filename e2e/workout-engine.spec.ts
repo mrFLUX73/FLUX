@@ -508,6 +508,54 @@ test('Workout Engine V3: the displayed SVG arc owns running progress and resumes
   }
 });
 
+test('Workout Engine V3: a work timer turns green only after its plan and preserves that state on pause and recovery', async ({ browser }) => {
+  test.setTimeout(90_000);
+  const { context, page, userId, errors } = await openWorkout(browser);
+  const fixture = createWorkoutFixtureScope(page, userId, 'Circular timer plan state');
+  try {
+    await fixture.assertNoActiveWorkout();
+    const duration = await fixture.createExercise('Цель таймера', 'duration');
+    await fixture.savePlanV3([{ exerciseId: duration.id, plannedSets: [{ targetDurationSeconds: 1, restSeconds: 0 }] }]);
+    await openFixturePlan(page, fixture.planName);
+    const active = await storedSessionRpc(page, 'get_my_active_workout_session_v3', {});
+    expect(active.status).toBe(200);
+    fixture.registerSession(active.data as { id: string; title?: string; plan_id?: string | null });
+
+    const timer = page.locator('.flux-circular-timer[data-mode="work"]');
+    const arc = timer.locator('.flux-circular-timer-progress');
+    const stroke = () => arc.evaluate((node) => getComputedStyle(node).stroke);
+    await page.getByRole('button', { name: 'Начать отсчёт', exact: true }).click();
+    await expect(timer).not.toHaveClass(/has-reached-plan/);
+    const beforeTarget = await stroke();
+    await expect(timer).toHaveClass(/has-reached-plan/, { timeout: 5_000 });
+    // The colour transition is intentional; assert the settled visual state,
+    // rather than sampling an in-between composited frame.
+    await page.waitForTimeout(220);
+    const afterTarget = await stroke();
+    expect(afterTarget).not.toBe(beforeTarget);
+
+    await page.getByRole('button', { name: 'Пауза', exact: true }).click();
+    expect(await stroke()).toBe(afterTarget);
+
+    // Let the debounced checkpoint persist the paused, over-plan timer.
+    await page.waitForTimeout(650);
+    await page.getByLabel('Вернуться к тренировкам').click();
+    await page.reload(); await settleUi(page); await page.getByRole('button', { name: 'Тренировки', exact: true }).click(); await settleUi(page);
+    await page.getByRole('button', { name: 'Продолжить', exact: true }).click();
+    await expect(timer).toHaveClass(/has-reached-plan/);
+    await page.waitForTimeout(220);
+    expect(await stroke()).toBe(afterTarget);
+    await page.getByRole('button', { name: 'Продолжить отсчёт', exact: true }).click();
+    await page.waitForTimeout(220);
+    await expect(timer).toHaveClass(/has-reached-plan/);
+    expect(await stroke()).toBe(afterTarget);
+    expect(errors()).toEqual([]);
+  } finally {
+    await fixture.cleanup();
+    await context.close();
+  }
+});
+
 test('Workout Engine saves distance results with an optional minutes-and-seconds duration', async ({ browser }) => {
   test.setTimeout(90_000);
   const { context, page, userId, errors } = await openWorkout(browser);
@@ -851,6 +899,22 @@ test('Workout Engine V3 duration timer: 320–430 px has no overflow', async ({ 
       await page.getByRole('button', { name: 'Начать отсчёт', exact: true }).click();
       await expect(page.locator('.flux-base-app > .flux-workout-flow')).toBeVisible();
       await expect(page.getByRole('button', { name: 'Завершить подход', exact: true })).toBeVisible();
+      const timerCard = page.locator('.flux-execution-timer.is-running');
+      const ring = timerCard.locator('.flux-circular-timer');
+      const controls = timerCard.locator('.flux-execution-timer-controls');
+      const [cardBox, ringBox, controlsBox] = await Promise.all([timerCard.boundingBox(), ring.boundingBox(), controls.boundingBox()]);
+      expect(cardBox).not.toBeNull();
+      expect(ringBox).not.toBeNull();
+      expect(controlsBox).not.toBeNull();
+      // The active card contains no empty grid tracks: controls sit directly
+      // below the ring and the 200px mobile ring still fits in a compact card.
+      expect((controlsBox?.y ?? 0) - ((ringBox?.y ?? 0) + (ringBox?.height ?? 0))).toBeLessThanOrEqual(6.5);
+      const resetBox = await timerCard.locator('.flux-timer-reset').boundingBox();
+      expect(controlsBox?.height).toBeLessThanOrEqual(44.5);
+      // Two 6px gaps and 12px padding on each side are the entire vertical
+      // budget beyond visible content — no empty grid track may remain.
+      const compactHeight = (ringBox?.height ?? 0) + (controlsBox?.height ?? 0) + (resetBox?.height ?? 0) + 36;
+      expect(cardBox?.height).toBeLessThanOrEqual(compactHeight + 0.5);
       await expectNoHorizontalOverflow(page);
       expect(errors()).toEqual([]);
     } finally {
