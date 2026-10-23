@@ -19,6 +19,7 @@ type Props = {
   open: boolean;
   personalExercises: PersonalExercise[];
   selectedSourceKeys: ReadonlySet<string>;
+  addedCount: number;
   onOpenChange: (open: boolean) => void;
   onAdd: (exercise: PickerExercise) => void;
   onCreated: (exercise: PersonalExercise) => void;
@@ -40,7 +41,7 @@ function personalItem(item: PersonalExercise, sourceKind: Props['privateSourceKi
   return { id: item.id, name: item.name, measurementType: item.measurementType, instructions: item.instructions, primaryMuscleGroupName: item.category, equipment: item.equipment ?? [], sourceKind };
 }
 
-export function ExerciseCatalogPicker({ userId, open, personalExercises, selectedSourceKeys, onOpenChange, onAdd, onCreated, privateSourceKind = 'personal' }: Props) {
+export function ExerciseCatalogPicker({ userId, open, personalExercises, selectedSourceKeys, addedCount, onOpenChange, onAdd, onCreated, privateSourceKind = 'personal' }: Props) {
   const [tab, setTab] = useState<'catalog' | 'personal'>('catalog');
   const [query, setQuery] = useState('');
   const [muscleGroup, setMuscleGroup] = useState('');
@@ -211,6 +212,10 @@ export function ExerciseCatalogPicker({ userId, open, personalExercises, selecte
           {tab === 'catalog' && !loading && !error && (offset > 0 || items.length === pageSize) && <nav className="flux-catalog-pagination" aria-label="Страницы каталога"><Button size="sm" variant="secondary" disabled={offset === 0} onClick={() => setOffset((value) => Math.max(0, value - pageSize))}><ChevronLeft aria-hidden="true" /> Назад</Button><span>Страница {Math.floor(offset / pageSize) + 1}</span><Button size="sm" variant="secondary" disabled={items.length < pageSize} onClick={() => setOffset((value) => value + pageSize)}>Далее <ChevronRight aria-hidden="true" /></Button></nav>}
         </>}
       </div>
+      {!createOpen && <footer className="flux-catalog-picker-footer">
+        <Button type="button" className="flux-main-button" size="lg" onClick={() => onOpenChange(false)}>Готово · Добавлено {addedCount}</Button>
+        <p>Вернёт к настройке плана — сам план ещё не сохранён.</p>
+      </footer>}
     </DrawerContent>
   </Drawer>;
 }

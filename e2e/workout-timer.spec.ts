@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { restTimerProgress, workTimerProgress } from '../src/features/workouts/circularTimer';
-import { elapsedDurationSeconds, pauseDurationClock, remainingRestSeconds, restProgressDegrees, startDurationClock } from '../src/features/workouts/timer';
+import { elapsedDurationSeconds, elapsedDurationSecondsPrecise, pauseDurationClock, remainingRestSeconds, remainingRestSecondsPrecise, restProgressDegrees, startDurationClock } from '../src/features/workouts/timer';
+import { minutesSecondsToSeconds, secondsToMinutesSeconds } from '../src/features/workouts/timeInput';
 
 test('Workout timer math: duration counts forward, excludes pauses, and resumes', () => {
   const started = startDurationClock({ accumulatedSeconds: 0, startedAtMs: null }, 1_000);
@@ -31,6 +32,16 @@ test('Circular timer progress: work fills at the planned duration and rest drain
   expect(restTimerProgress(30, 0)).toBe(0);
 });
 
+test('Circular timer visual math stays time-derived between digital seconds', () => {
+  const clock = startDurationClock({ accumulatedSeconds: 0, startedAtMs: null }, 1_000);
+  expect(elapsedDurationSeconds(clock, 1_500)).toBe(0);
+  expect(elapsedDurationSecondsPrecise(clock, 1_500)).toBe(0.5);
+  expect(workTimerProgress(elapsedDurationSecondsPrecise(clock, 1_500), 30)).toBeCloseTo(1 / 60);
+  expect(remainingRestSeconds(10_000, 9_500)).toBe(1);
+  expect(remainingRestSecondsPrecise(10_000, 9_500)).toBe(0.5);
+  expect(restTimerProgress(remainingRestSecondsPrecise(10_000, 9_500), 10)).toBeCloseTo(0.05);
+});
+
 test('Workout timer math: rest progress reflects the live deadline and handles zero rest', () => {
   const endsAt = 10_000;
   const remaining = remainingRestSeconds(endsAt, 5_000);
@@ -47,4 +58,17 @@ test('Workout timer math: a restored running clock includes closed-app time whil
   const restoredPaused = { accumulatedSeconds: 12, startedAtMs: null };
   expect(elapsedDurationSeconds(restoredPaused, 18_900)).toBe(12);
   expect(remainingRestSeconds(30_000, 31_000)).toBe(0);
+});
+
+test('Minutes/seconds input: preserves nullable seconds and supports long durations', () => {
+  expect(secondsToMinutesSeconds(null)).toEqual({ minutes: '', seconds: '' });
+  expect(secondsToMinutesSeconds(30)).toEqual({ minutes: '0', seconds: '30' });
+  expect(secondsToMinutesSeconds(60)).toEqual({ minutes: '1', seconds: '00' });
+  expect(secondsToMinutesSeconds(3600)).toEqual({ minutes: '60', seconds: '00' });
+  expect(secondsToMinutesSeconds(90)).toEqual({ minutes: '1', seconds: '30' });
+
+  expect(minutesSecondsToSeconds('', '')).toEqual({ value: null, error: null });
+  expect(minutesSecondsToSeconds('1', '30')).toEqual({ value: 90, error: null });
+  expect(minutesSecondsToSeconds('60', '00')).toEqual({ value: 3600, error: null });
+  expect(minutesSecondsToSeconds('1', '60')).toEqual({ value: null, error: 'Секунды должны быть от 0 до 59.' });
 });

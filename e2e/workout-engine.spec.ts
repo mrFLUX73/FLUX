@@ -30,6 +30,17 @@ async function openFixturePlan(page: import('@playwright/test').Page, planName: 
   await expect(page.getByRole('dialog', { name: 'Активная тренировка' })).toBeVisible();
 }
 
+async function durationInputSeconds(page: import('@playwright/test').Page) {
+  const minutes = Number(await page.getByLabel('Фактическая длительность: минуты').inputValue() || 0);
+  const seconds = Number(await page.getByLabel('Фактическая длительность: секунды').inputValue() || 0);
+  return minutes * 60 + seconds;
+}
+
+async function fillDurationInput(page: import('@playwright/test').Page, totalSeconds: number) {
+  await page.getByLabel('Фактическая длительность: минуты').fill(String(Math.floor(totalSeconds / 60)));
+  await page.getByLabel('Фактическая длительность: секунды').fill(String(totalSeconds % 60).padStart(2, '0'));
+}
+
 test('Workout Engine: Test Client starts a server session and persists an in-progress set', async ({ browser }) => {
   const { context, page, userId, errors } = await openWorkout(browser);
   const { fixture, repsName } = await prepareEngineFixture(page, userId, 'Engine persistence');
@@ -365,13 +376,13 @@ test('Workout Engine V3: duration saves actual time, rest progress and RPE indep
     await page.getByRole('button', { name: 'Начать отсчёт', exact: true }).click();
     await page.waitForTimeout(1_200);
     await page.getByRole('button', { name: 'Пауза', exact: true }).click();
-    await expect(page.getByLabel('Фактическая длительность, сек')).not.toBeVisible();
+    await expect(page.getByLabel('Фактическая длительность: секунды')).not.toBeVisible();
     await page.getByRole('button', { name: 'Изменить время', exact: true }).click();
-    const firstDuration = Number(await page.getByLabel('Фактическая длительность, сек').inputValue());
+    const firstDuration = await durationInputSeconds(page);
     expect(firstDuration).toBeGreaterThanOrEqual(1);
     expect(firstDuration).toBeLessThan(5);
     await page.waitForTimeout(1_100);
-    await expect(page.getByLabel('Фактическая длительность, сек')).toHaveValue(String(firstDuration));
+    expect(await durationInputSeconds(page)).toBe(firstDuration);
     await page.getByRole('button', { name: 'Тяжело', exact: true }).click();
     await page.getByRole('button', { name: 'Завершить подход', exact: true }).click();
 
@@ -387,22 +398,22 @@ test('Workout Engine V3: duration saves actual time, rest progress and RPE indep
     await page.waitForTimeout(2_100);
     await expect(page.getByText('цель достигнута', { exact: false })).toBeVisible();
     await page.getByRole('button', { name: 'Пауза', exact: true }).click();
-    await expect(page.getByLabel('Фактическая длительность, сек')).not.toBeVisible();
+    await expect(page.getByLabel('Фактическая длительность: секунды')).not.toBeVisible();
     await page.getByRole('button', { name: 'Изменить время', exact: true }).click();
-    const elapsedBeyondPlan = Number(await page.getByLabel('Фактическая длительность, сек').inputValue());
+    const elapsedBeyondPlan = await durationInputSeconds(page);
     expect(elapsedBeyondPlan).toBeGreaterThan(1);
-    await page.getByLabel('Фактическая длительность, сек').fill('7');
+    await fillDurationInput(page, 7);
     await page.waitForTimeout(650);
-    await expect(page.getByLabel('Фактическая длительность, сек')).toHaveValue('7');
+    expect(await durationInputSeconds(page)).toBe(7);
     await page.getByRole('button', { name: 'Завершить подход', exact: true }).click();
-    await expect(page.getByLabel('Фактическая длительность, сек')).not.toBeVisible();
+    await expect(page.getByLabel('Фактическая длительность: секунды')).not.toBeVisible();
     await page.getByRole('button', { name: 'Изменить время', exact: true }).click();
-    await page.getByLabel('Фактическая длительность, сек').fill('4');
+    await fillDurationInput(page, 4);
     await page.waitForTimeout(650);
     await page.getByLabel('Вернуться к тренировкам').click();
     await page.reload(); await settleUi(page); await page.getByRole('button', { name: 'Тренировки', exact: true }).click(); await settleUi(page);
     await page.getByRole('button', { name: 'Продолжить', exact: true }).click();
-    await expect(page.getByLabel('Фактическая длительность, сек')).toHaveValue('4');
+    expect(await durationInputSeconds(page)).toBe(4);
     await page.getByRole('button', { name: 'Завершить подход', exact: true }).click();
     await expect(page.getByText('Тренировка завершена', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Легко', exact: true }).click();
@@ -427,6 +438,45 @@ test('Workout Engine V3: duration saves actual time, rest progress and RPE indep
       expect.objectContaining({ set_number: 3, duration_seconds: 4 }),
     ]));
     await expectNoHorizontalOverflow(page);
+    expect(errors()).toEqual([]);
+  } finally {
+    await fixture.cleanup();
+    await context.close();
+  }
+});
+
+test('Workout Engine saves distance results with an optional minutes-and-seconds duration', async ({ browser }) => {
+  test.setTimeout(90_000);
+  const { context, page, userId, errors } = await openWorkout(browser);
+  const fixture = createWorkoutFixtureScope(page, userId, 'Engine distance duration');
+  try {
+    await fixture.assertNoActiveWorkout();
+    const distance = await fixture.createExercise('V3 интервальный бег', 'distance');
+    await fixture.savePlanV3([{ exerciseId: distance.id, plannedSets: [
+      { targetDistanceM: 400, restSeconds: 0 },
+    ] }]);
+    await openFixturePlan(page, fixture.planName);
+    const active = await storedSessionRpc(page, 'get_my_active_workout_session_v3', {});
+    expect(active.status).toBe(200);
+    fixture.registerSession(active.data as { id: string; title?: string; plan_id?: string | null });
+
+    await page.getByLabel('Метры').fill('500');
+    await page.getByLabel('Время прохождения: минуты').fill('1');
+    await page.getByLabel('Время прохождения: секунды').fill('30');
+    await page.getByRole('button', { name: 'Начать подход', exact: true }).click();
+    await page.getByRole('button', { name: 'Завершить подход', exact: true }).click();
+    await expect(page.getByText('Тренировка завершена', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Сохранить тренировку', exact: true }).click();
+
+    let completed: Awaited<ReturnType<typeof storedSessionRpc>> | null = null;
+    await expect.poll(async () => {
+      const result = await storedSessionRpc(page, 'get_my_workout_session_v3', { p_session_id: (active.data as { id: string }).id });
+      completed = result;
+      return (result.data as { status?: string } | null)?.status ?? null;
+    }).toBe('completed');
+    expect((completed?.data as { sets: Array<{ distance_m: number | null; duration_seconds: number | null }> }).sets).toEqual([
+      expect.objectContaining({ distance_m: 500, duration_seconds: 90 }),
+    ]);
     expect(errors()).toEqual([]);
   } finally {
     await fixture.cleanup();
@@ -563,6 +613,51 @@ test('Workout Engine checkpoint persistence resumes after a failed set save and 
   }
 });
 
+test('Workout Engine shows the green timer confirmation only after the set save succeeds', async ({ browser }) => {
+  test.setTimeout(90_000);
+  const { context, page, userId } = await openWorkout(browser);
+  const fixture = createWorkoutFixtureScope(page, userId, 'Saved-set confirmation');
+  try {
+    await fixture.assertNoActiveWorkout();
+    const duration = await fixture.createExercise('Подтверждение длительности', 'duration');
+    await fixture.savePlanV3([{ exerciseId: duration.id, plannedSets: [
+      { targetDurationSeconds: 30, restSeconds: 15 },
+      { targetDurationSeconds: 30, restSeconds: 0 },
+    ] }]);
+    await openFixturePlan(page, fixture.planName);
+    const active = await storedSessionRpc(page, 'get_my_active_workout_session_v3', {});
+    expect(active.status).toBe(200);
+    fixture.registerSession(active.data as { id: string; title?: string; plan_id?: string | null });
+    await expect(page.getByText('Черновик сохранён', { exact: true })).toBeVisible({ timeout: 5_000 });
+
+    let releaseSetSave: () => void = () => undefined;
+    const setSaveGate = new Promise<void>((resolve) => { releaseSetSave = resolve; });
+    let markSetSaveStarted: () => void = () => undefined;
+    const setSaveStarted = new Promise<void>((resolve) => { markSetSaveStarted = resolve; });
+    await page.route('**/rest/v1/rpc/save_my_performed_set', async (route) => {
+      markSetSaveStarted();
+      await setSaveGate;
+      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'temporary set failure' }) });
+    });
+
+    await page.getByRole('button', { name: 'Изменить время', exact: true }).click();
+    await page.getByLabel('Фактическая длительность: секунды').fill('10');
+    await expect(page.getByRole('button', { name: 'Завершить подход', exact: true })).toBeEnabled();
+    await page.getByRole('button', { name: 'Завершить подход', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Завершить подход', exact: true })).toBeDisabled();
+    await expect(page.locator('.flux-circular-timer.is-completed')).toHaveCount(0);
+    await setSaveStarted;
+    await expect(page.locator('.flux-circular-timer.is-completed')).toHaveCount(0);
+
+    releaseSetSave();
+    await expect(page.getByText('Подход не сохранён. Значения остались на экране — повторите отправку.', { exact: true })).toBeVisible();
+    await expect(page.locator('.flux-circular-timer.is-completed')).toHaveCount(0);
+  } finally {
+    await fixture.cleanup();
+    await context.close();
+  }
+});
+
 test('Workout Engine completion retry preserves overall RPE without recreating a checkpoint', async ({ browser }) => {
   test.setTimeout(90_000);
   const { context, page, userId, errors } = await openWorkout(browser);
@@ -686,7 +781,7 @@ test('Workout Engine V3 duration timer: 320–430 px has no overflow', async ({ 
       fixture.registerSession(active.data as { id: string; title?: string; plan_id?: string | null });
       await expect(page.getByRole('timer', { name: /Таймер подхода: 00:00/ })).toBeVisible();
       await expect(page.getByText('План · 00:30', { exact: true })).toBeVisible();
-      await expect(page.getByLabel('Фактическая длительность, сек')).not.toBeVisible();
+      await expect(page.getByLabel('Фактическая длительность: секунды')).not.toBeVisible();
       await expect(page.getByRole('button', { name: 'Изменить время', exact: true })).toBeVisible();
       await expect(page.getByRole('button', { name: 'Начать отсчёт', exact: true })).toBeVisible();
       await expect(page.getByRole('button', { name: 'Сбросить таймер', exact: true })).toBeVisible();

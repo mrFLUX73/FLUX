@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+import { Check } from 'lucide-react';
 import { normalizeTimerProgress } from './circularTimer';
 
 const RING_RADIUS = 46;
@@ -12,6 +14,8 @@ export type CircularWorkoutTimerProps = {
   stateLabel: string;
   planLabel?: string;
   reachedPlan?: boolean;
+  visualProgress?: (nowMs: number) => number;
+  completed?: boolean;
 };
 
 /**
@@ -26,11 +30,28 @@ export function CircularWorkoutTimer({
   stateLabel,
   planLabel,
   reachedPlan = false,
+  visualProgress,
+  completed = false,
 }: CircularWorkoutTimerProps) {
-  const normalizedProgress = normalizeTimerProgress(progress);
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const [displayProgress, setDisplayProgress] = useState(() => normalizeTimerProgress(progress));
+  useEffect(() => {
+    const query = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const update = () => setReducedMotion(query.matches);
+    update(); query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
+  useEffect(() => {
+    if (!visualProgress || paused || reducedMotion) { setDisplayProgress(normalizeTimerProgress(progress)); return; }
+    let frame = 0;
+    const animate = () => { setDisplayProgress(normalizeTimerProgress(visualProgress(Date.now()))); frame = window.requestAnimationFrame(animate); };
+    frame = window.requestAnimationFrame(animate);
+    return () => window.cancelAnimationFrame(frame);
+  }, [paused, progress, reducedMotion, visualProgress]);
+  const normalizedProgress = displayProgress;
   const offset = RING_CIRCUMFERENCE * (1 - normalizedProgress);
   return <div
-    className={`flux-circular-timer is-${mode}${paused ? ' is-paused' : ''}${reachedPlan ? ' has-reached-plan' : ''}`}
+    className={`flux-circular-timer is-${mode}${paused ? ' is-paused' : ''}${reachedPlan ? ' has-reached-plan' : ''}${completed ? ' is-completed' : ''}`}
     role="timer"
     aria-label={`${stateLabel}: ${formattedTime}`}
     data-mode={mode}
@@ -52,6 +73,7 @@ export function CircularWorkoutTimer({
       <strong className="flux-circular-timer-value">{formattedTime}</strong>
       <span className="flux-circular-timer-state">{stateLabel}</span>
       {planLabel && <small>{planLabel}{reachedPlan ? ' · цель достигнута' : ''}</small>}
+      {completed && <span className="flux-circular-timer-complete" aria-label="Подход завершён"><Check /></span>}
     </div>
   </div>;
 }

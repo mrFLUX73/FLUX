@@ -30,8 +30,9 @@ import {
 } from './repository';
 import { PersonalPlanEditorV2 } from './PersonalPlanEditorV2';
 import { CircularWorkoutTimer } from './CircularWorkoutTimer';
+import { MinutesSecondsInput } from './MinutesSecondsInput';
 import { restTimerProgress, workTimerProgress } from './circularTimer';
-import { elapsedDurationSeconds, pauseDurationClock, remainingRestSeconds, startDurationClock, type DurationClock } from './timer';
+import { elapsedDurationSeconds, elapsedDurationSecondsPrecise, pauseDurationClock, remainingRestSeconds, remainingRestSecondsPrecise, startDurationClock, type DurationClock } from './timer';
 
 const dateLabel = (value: string) => new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long' }).format(new Date(value));
 const timerLabel = (seconds: number) => `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}`;
@@ -146,6 +147,7 @@ function WorkoutEngineFlow({ userId, initialSession, onClose, onFinished }: { us
   const [durationInput, setDurationInput] = useState('');
   const [durationManuallyEdited, setDurationManuallyEdited] = useState(false);
   const [durationEditorOpen, setDurationEditorOpen] = useState(false);
+  const [completionFlash, setCompletionFlash] = useState(false);
   const step = position ? session.planSnapshot[position.exerciseIndex] : null;
   const plannedSet = step && position ? step.plannedSets[position.plannedSetIndex] ?? null : null;
   const [reps, setReps] = useState(''); const [weight, setWeight] = useState(''); const [distance, setDistance] = useState(''); const [notes, setNotes] = useState(''); const [setRpe, setSetRpe] = useState(''); const [overallRpe, setOverallRpe] = useState('');
@@ -348,6 +350,9 @@ function WorkoutEngineFlow({ userId, initialSession, onClose, onFinished }: { us
       // after that cleanup and being rejected as a saved set.
       await checkpointWrite.current?.catch(() => undefined);
       const saved = await savePerformedSet(userId, payload);
+      // A green check is a persistence acknowledgement, never an optimistic
+      // indication that the request merely started.
+      setCompletionFlash(true);
       checkpointRevision.current = null; setCheckpointStatus('idle');
       const next = { ...session, sets: [...session.sets.filter((item) => item.clientSetKey !== saved.clientSetKey), saved] }; const nextPosition = sessionNext(next); setSession(next); setPosition(nextPosition); setDraftTouched(false);
       checkpointWritesBlocked.current = false;
@@ -412,6 +417,9 @@ function WorkoutEngineFlow({ userId, initialSession, onClose, onFinished }: { us
   const hasManualDuration = durationManuallyEdited && numberOrNull(durationInput) != null && Number.isFinite(Number(durationInput)) && Number(durationInput) >= 0;
   const durationReachedPlan = step?.measurementType === 'duration' && plannedSet?.targetDurationSeconds != null && durationElapsedSeconds >= plannedSet.targetDurationSeconds;
   const restProgress = restTimerProgress(remaining, restTotalSeconds);
+  const workVisualProgress = useCallback((now: number) => workTimerProgress(elapsedDurationSecondsPrecise(durationClock.current, now), plannedSet?.targetDurationSeconds), [plannedSet?.targetDurationSeconds]);
+  const restVisualProgress = useCallback((now: number) => restTimerProgress(remainingRestSecondsPrecise(restEndsAt.current ?? now, now), restTotalSeconds), [restTotalSeconds]);
+  useEffect(() => { if (!completionFlash) return; const timeout = window.setTimeout(() => setCompletionFlash(false), 420); return () => window.clearTimeout(timeout); }, [completionFlash]);
   const leave = () => { restEndsAt.current = null; onClose(); };
   const hasSavedSets = completeSets > 0;
   const hasUnsavedDraft = Boolean(step && plannedSet && position && !setFor(session, step.stepId, plannedSet.setNumber) && draftTouched);
@@ -474,7 +482,7 @@ function WorkoutEngineFlow({ userId, initialSession, onClose, onFinished }: { us
       <Progress value={(completeSets / Math.max(totalSets, 1)) * 100} />
       {phase === 'rest' ? <section className="flux-rest-screen">
         <span className="flux-eyebrow">Можно выдохнуть</span><h1>Отдых</h1><p>Следующий: {step.name} · подход {plannedSet.setNumber}</p>
-        <CircularWorkoutTimer mode="rest" formattedTime={timerLabel(remaining)} progress={restProgress} eyebrow={`Подход ${plannedSet.setNumber} из ${step.plannedSets.length}`} stateLabel="Отдых" />
+        <CircularWorkoutTimer mode="rest" formattedTime={timerLabel(remaining)} progress={restProgress} visualProgress={restVisualProgress} completed={completionFlash} eyebrow={`Подход ${plannedSet.setNumber} из ${step.plannedSets.length}`} stateLabel="Отдых" />
         <Button className="flux-main-button" size="lg" onClick={finishRest}><SkipForward /> Пропустить отдых</Button>
       </section> : phase === 'next' ? <section className="flux-rest-screen">
         <span className="flux-eyebrow">Следующий шаг</span><h1>{step.name}</h1><p>{plannedTargetLabel(step, plannedSet)} · подход {plannedSet.setNumber} из {step.plannedSets.length}</p>
@@ -490,7 +498,9 @@ function WorkoutEngineFlow({ userId, initialSession, onClose, onFinished }: { us
               mode="work"
               formattedTime={timerLabel(durationElapsedSeconds)}
               progress={workTimerProgress(durationElapsedSeconds, plannedSet.targetDurationSeconds)}
+              visualProgress={phase === 'active' ? workVisualProgress : undefined}
               paused={phase === 'paused'}
+              completed={completionFlash}
               eyebrow={`Подход ${plannedSet.setNumber} из ${step.plannedSets.length}`}
               stateLabel={phase === 'active' ? 'Выполнение' : phase === 'paused' ? 'Таймер на паузе' : 'Таймер подхода'}
               planLabel={`План · ${timerLabel(plannedSet.targetDurationSeconds ?? 0)}`}
@@ -500,14 +510,14 @@ function WorkoutEngineFlow({ userId, initialSession, onClose, onFinished }: { us
               {phase === 'active' ? <Button variant="secondary" onClick={pauseDuration}><Pause /> Пауза</Button> : <Button onClick={startDuration}><Play /> {durationElapsedSeconds > 0 ? 'Продолжить отсчёт' : 'Начать отсчёт'}</Button>}
               {primarySetAction}
             </div>
-            {phase !== 'active' && <div className="flux-duration-adjustment"><button type="button" className="flux-duration-adjust-trigger" aria-expanded={durationEditorOpen} aria-controls="flux-duration-manual-adjustment" onClick={() => { if (!durationEditorOpen) setDurationInput(durationManuallyEdited || durationElapsedSeconds > 0 ? durationValue : ''); setDurationEditorOpen((open) => !open); }}>{durationEditorOpen ? 'Готово' : 'Изменить время'}</button>{durationEditorOpen && <div className="flux-workout-fields flux-workout-fields-single flux-duration-actual" id="flux-duration-manual-adjustment"><label>Фактическая длительность, сек<input inputMode="numeric" value={durationInput} onChange={(event) => { setDurationInput(event.target.value); setDurationManuallyEdited(true); setDraftTouched(true); }} /></label></div>}</div>}
+            {phase !== 'active' && <div className="flux-duration-adjustment"><button type="button" className="flux-duration-adjust-trigger" aria-expanded={durationEditorOpen} aria-controls="flux-duration-manual-adjustment" onClick={() => { if (!durationEditorOpen) setDurationInput(durationManuallyEdited || durationElapsedSeconds > 0 ? durationValue : ''); setDurationEditorOpen((open) => !open); }}>{durationEditorOpen ? 'Готово' : 'Изменить время'}</button>{durationEditorOpen && <div className="flux-workout-fields flux-workout-fields-single flux-duration-actual" id="flux-duration-manual-adjustment"><MinutesSecondsInput label="Фактическая длительность" value={numberOrNull(durationInput)} onChange={(value) => { setDurationInput(value == null ? '' : String(value)); setDurationManuallyEdited(true); setDraftTouched(true); }} /></div>}</div>}
             <button type="button" className="flux-timer-reset" disabled={phase === 'active' || (durationElapsedSeconds === 0 && !durationManuallyEdited)} onClick={resetDuration}>Сбросить таймер</button>
           </div>
         </> : <section className="flux-set-execution-card"><div className="flux-workout-fields">
           {step.measurementType === 'reps' && <label>Повторы<input inputMode="numeric" value={reps} onChange={(event) => { setReps(event.target.value); setDraftTouched(true); }} /></label>}
           {step.measurementType === 'reps' && <label>Вес, кг <small>необязательно</small><input inputMode="decimal" value={weight} onChange={(event) => { setWeight(event.target.value); setDraftTouched(true); }} /></label>}
           {step.measurementType === 'distance' && <label>Метры<input inputMode="numeric" value={distance} onChange={(event) => { setDistance(event.target.value); setDraftTouched(true); }} /></label>}
-          {step.measurementType === 'distance' && <label>Время, сек <small>необязательно</small><input inputMode="numeric" value={durationInput} onChange={(event) => { setDurationInput(event.target.value); setDraftTouched(true); }} /></label>}
+          {step.measurementType === 'distance' && <MinutesSecondsInput label="Время прохождения" optional value={numberOrNull(durationInput)} onChange={(value) => { setDurationInput(value == null ? '' : String(value)); setDraftTouched(true); }} />}
         </div><div className="flux-workout-flow-actions">{primarySetAction}</div></section>}
         <div className="flux-workout-fields flux-workout-fields-single"><label>Заметка <small>необязательно</small><input value={notes} maxLength={1000} onChange={(event) => { setNotes(event.target.value); setDraftTouched(true); }} /></label></div>
         {(phase === 'active' || phase === 'paused') && feeling}{error && <p className="flux-client-inline-error">{error}</p>}

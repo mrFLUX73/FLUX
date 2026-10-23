@@ -64,7 +64,7 @@ test(`Trainer V3 execution: client-safe snapshot preserves per-set plan and actu
     expect(privateExerciseId).toBeTruthy();
     await picker.getByRole('button', { name: 'Закрыть каталог упражнений' }).click();
     await expect(page.locator('.flux-editor-step-list article')).toHaveCount(2);
-    await page.getByRole('button', { name: 'К проверке', exact: true }).click();
+    await page.getByRole('button', { name: 'Проверить план →', exact: true }).click();
     await page.getByRole('button', { name: 'Сохранить план', exact: true }).click();
     await expect(page.getByRole('dialog', { name: 'Проверка плана' })).toBeHidden();
 
@@ -88,12 +88,14 @@ test(`Trainer V3 execution: client-safe snapshot preserves per-set plan and actu
     await page.getByLabel(`Раскрыть ${privateName}`).click();
     await page.getByLabel('Повторы, подход 1').fill('8');
     await page.getByLabel('Вес, подход 1').fill('40');
-    await page.getByLabel('Отдых, подход 1').fill('25');
+    await page.getByLabel('Отдых: минуты, подход 1').fill('0');
+    await page.getByLabel('Отдых: секунды, подход 1').fill('25');
     await page.getByRole('button', { name: 'Добавить подход', exact: true }).click();
     await page.getByLabel('Повторы, подход 2').fill('12');
     await page.getByLabel('Вес, подход 2').fill('45');
-    await page.getByLabel('Отдых, подход 2').fill('0');
-    await page.getByRole('button', { name: 'К проверке', exact: true }).click();
+    await page.getByLabel('Отдых: минуты, подход 2').fill('0');
+    await page.getByLabel('Отдых: секунды, подход 2').fill('0');
+    await page.getByRole('button', { name: 'Проверить план →', exact: true }).click();
     await page.getByRole('button', { name: 'Сохранить план', exact: true }).click();
     await expect(page.getByRole('dialog', { name: 'Проверка плана' })).toBeHidden();
     const configured = await storedSessionRpc(page, 'get_trainer_assigned_workout_plan_v3', { p_link_id: link.link_id, p_plan_id: planId });
@@ -179,7 +181,7 @@ test(`Trainer V3 execution: client-safe snapshot preserves per-set plan and actu
     await page.getByRole('button', { name: 'К упражнениям', exact: true }).click();
     await page.getByLabel(`Раскрыть ${privateName}`).click();
     await page.getByLabel('Повторы, подход 1').fill('99');
-    await page.getByRole('button', { name: 'К проверке', exact: true }).click();
+    await page.getByRole('button', { name: 'Проверить план →', exact: true }).click();
     await page.getByRole('button', { name: 'Сохранить план', exact: true }).click();
     await expect(page.getByRole('dialog', { name: 'Проверка плана' })).toBeHidden();
     const edited = await storedSessionRpc(page, 'get_trainer_assigned_workout_plan_v3', { p_link_id: link.link_id, p_plan_id: planId });
@@ -261,7 +263,8 @@ test('Trainer Plan Editor V2: Visual Set Editor fits mobile widths', async ({ br
       await page.getByLabel('Раскрыть Жим штанги лёжа').click();
       await page.getByLabel('Повторы, подход 1').fill('8');
       await page.getByLabel('Вес, подход 1').fill('25.5');
-      await page.getByLabel('Отдых, подход 1').fill('45');
+      await page.getByLabel('Отдых: минуты, подход 1').fill('0');
+      await page.getByLabel('Отдых: секунды, подход 1').fill('45');
       await page.getByRole('button', { name: 'Добавить подход', exact: true }).click();
       await expect(page.getByLabel('Вес, подход 2')).toHaveValue('25.5');
       await page.getByLabel('Удалить подход 2').click();

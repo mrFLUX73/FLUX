@@ -36,13 +36,16 @@ test('Personal Plan Editor: Empty Client creates, reloads and starts a personal 
       const row = picker.locator('.flux-catalog-list article').filter({ hasText: exercise.name });
       await row.getByRole('button', { name: 'Добавить', exact: true }).click();
       await expect(page.locator('.flux-editor-step-list article')).toHaveCount(index + 1);
+      await expect(picker.getByRole('button', { name: `Готово · Добавлено ${index + 1}`, exact: true })).toBeVisible();
     }
-    await picker.getByRole('button', { name: 'Закрыть каталог упражнений' }).click();
+    await picker.getByRole('button', { name: 'Готово · Добавлено 3', exact: true }).click();
+    await expect(picker).toBeHidden();
     await page.getByLabel('Выше').last().click();
     await page.getByLabel(`Раскрыть ${exercises[2].name}`).click();
     await page.getByLabel('Дистанция, подход 1').fill('1500');
-    await page.getByLabel('Отдых, подход 1').fill('45');
-    await page.getByRole('button', { name: 'К проверке', exact: true }).click();
+    await page.getByLabel('Отдых: минуты, подход 1').fill('0');
+    await page.getByLabel('Отдых: секунды, подход 1').fill('45');
+    await page.getByRole('button', { name: 'Проверить план →', exact: true }).click();
     await page.getByRole('button', { name: 'Сохранить план', exact: true }).click();
     await expect(page.getByText(fixture.planName, { exact: true }).first()).toBeVisible();
     await expect.poll(async () => {
@@ -219,7 +222,7 @@ test('Personal Plan Editor V2: quick personal creation adds every measurement ty
     expect((foreignLibrary.data as Array<{ name?: string }>).some((item) => item.name?.includes(fixture.marker))).toBe(false);
 
     await picker.getByRole('button', { name: 'Закрыть каталог упражнений' }).click();
-    await page.getByRole('button', { name: 'К проверке', exact: true }).click();
+    await page.getByRole('button', { name: 'Проверить план →', exact: true }).click();
     await page.getByRole('button', { name: 'Сохранить план', exact: true }).click();
     await expect.poll(async () => {
       const result = await storedSessionRpc(page, 'get_my_workout_plans', {});
@@ -285,7 +288,7 @@ test('Personal Plan Editor V2: published catalog exercise saves, starts and keep
     await expect(row).toBeVisible();
     await row.getByRole('button', { name: 'Добавить', exact: true }).click();
     await picker.getByRole('button', { name: 'Закрыть каталог упражнений' }).click();
-    await page.getByRole('button', { name: 'К проверке', exact: true }).click();
+    await page.getByRole('button', { name: 'Проверить план →', exact: true }).click();
     await page.getByRole('button', { name: 'Сохранить план', exact: true }).click();
 
     const plan = await expect.poll(async () => {
@@ -389,11 +392,12 @@ test('Personal Plan Editor: Visual Set Editor keeps inline targets usable from 3
         await page.getByLabel(`Раскрыть ${exercise.name}`).click();
         await page.getByLabel('Повторы, подход 1').fill('8');
         await page.getByLabel('Вес, подход 1').fill('25.5');
-        await page.getByLabel('Отдых, подход 1').fill('45');
+        await page.getByLabel('Отдых: минуты, подход 1').fill('0');
+        await page.getByLabel('Отдых: секунды, подход 1').fill('45');
         await page.getByRole('button', { name: 'Добавить подход', exact: true }).click();
         await expect(page.getByLabel('Повторы, подход 2')).toHaveValue('8');
         await expect(page.getByLabel('Вес, подход 2')).toHaveValue('25.5');
-        await expect(page.getByLabel('Отдых, подход 2')).toHaveValue('45');
+        await expect(page.getByLabel('Отдых: секунды, подход 2')).toHaveValue('45');
         await expect(page.locator('.flux-set-input-grid')).toHaveCount(2);
         await page.getByLabel('Удалить подход 2').click();
         await page.getByRole('button', { name: 'Отменить', exact: true }).click();
