@@ -1454,7 +1454,7 @@ button:active { transform: scale(.97); }
 .flux-circular-timer svg { width: 100%; height: 100%; overflow: visible; }
 .flux-circular-timer-track, .flux-circular-timer-progress { fill: none; stroke-width: 8; transform: rotate(-90deg); transform-origin: 50% 50%; }
 .flux-circular-timer-track { stroke: var(--flux-soft); }
-.flux-circular-timer-progress { stroke: var(--flux-timer-progress); stroke-linecap: round; transition: stroke-dashoffset 260ms linear, stroke 180ms ease; }
+.flux-circular-timer-progress { stroke: var(--flux-timer-progress); stroke-linecap: round; transition: stroke 180ms ease; }
 .flux-circular-timer.is-paused .flux-circular-timer-progress { stroke: var(--flux-muted); }
 .flux-circular-timer.is-completed { --flux-timer-progress: var(--flux-accent); }
 .flux-circular-timer.is-completed .flux-circular-timer-content { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--flux-accent) 68%, var(--flux-border)); }

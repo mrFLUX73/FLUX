@@ -340,7 +340,7 @@ test('Workout Engine: Test Client reaches duration, pauses and resumes an active
     await page.getByRole('button', { name: 'Начать отсчёт', exact: true }).click();
     await expect(page.getByText('Выполнение', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Пауза', exact: true }).click();
-    await expect(page.getByText('Таймер на паузе', { exact: true })).toBeVisible();
+    await expect(page.getByRole('timer', { name: /Таймер на паузе:/ })).toBeVisible();
     await page.getByLabel('Вернуться к тренировкам').click();
     await page.reload(); await settleUi(page); await page.getByRole('button', { name: 'Тренировки', exact: true }).click(); await settleUi(page);
     await page.getByRole('button', { name: 'Продолжить', exact: true }).click();
@@ -438,6 +438,69 @@ test('Workout Engine V3: duration saves actual time, rest progress and RPE indep
       expect.objectContaining({ set_number: 3, duration_seconds: 4 }),
     ]));
     await expectNoHorizontalOverflow(page);
+    expect(errors()).toEqual([]);
+  } finally {
+    await fixture.cleanup();
+    await context.close();
+  }
+});
+
+test('Workout Engine V3: the displayed SVG arc owns running progress and resumes without a CSS dash transition', async ({ browser }) => {
+  test.setTimeout(90_000);
+  const { context, page, userId, errors } = await openWorkout(browser);
+  const fixture = createWorkoutFixtureScope(page, userId, 'Circular timer rendered arc');
+  try {
+    await fixture.assertNoActiveWorkout();
+    const duration = await fixture.createExercise('Плавный таймер', 'duration');
+    await fixture.savePlanV3([{ exerciseId: duration.id, plannedSets: [{ targetDurationSeconds: 30, restSeconds: 10 }] }]);
+    await openFixturePlan(page, fixture.planName);
+    const active = await storedSessionRpc(page, 'get_my_active_workout_session_v3', {});
+    expect(active.status).toBe(200);
+    fixture.registerSession(active.data as { id: string; title?: string; plan_id?: string | null });
+
+    const timer = page.locator('.flux-circular-timer[data-mode="work"]');
+    const arc = timer.locator('.flux-circular-timer-progress');
+    await page.getByRole('button', { name: 'Начать отсчёт', exact: true }).click();
+    await expect(timer).toHaveAttribute('data-progress', /0\.0[0-9]+/);
+
+    const readRenderedOffset = () => arc.evaluate((node) => Number.parseFloat(getComputedStyle(node).strokeDashoffset));
+    const firstOffset = await readRenderedOffset();
+    await page.waitForTimeout(160);
+    const secondOffset = await readRenderedOffset();
+    expect(secondOffset).toBeLessThan(firstOffset);
+
+    // requestAnimationFrame is the single owner of dashoffset while running.
+    // A CSS transition restarts on each SVG presentation-attribute update in
+    // WebKit, leaving the ring visually stuck until the timer is paused.
+    expect(await arc.evaluate((node) => getComputedStyle(node).transitionProperty)).not.toContain('stroke-dashoffset');
+
+    await page.getByRole('button', { name: 'Пауза', exact: true }).click();
+    const pausedOffset = await readRenderedOffset();
+    await page.waitForTimeout(180);
+    expect(await readRenderedOffset()).toBeCloseTo(pausedOffset, 3);
+
+    const resume = page.getByRole('button', { name: /^(?:Начать|Продолжить) отсчёт$/ });
+    await expect(resume).toBeVisible();
+    // The rAF-driven SVG rerenders while the control's label changes. Its
+    // visibility is asserted above; force avoids Playwright's unrelated
+    // stability heuristic consuming the full test timeout.
+    await resume.click({ force: true });
+    await page.waitForTimeout(160);
+    expect(await readRenderedOffset()).toBeLessThan(pausedOffset);
+
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    const reducedMotionOffset = await readRenderedOffset();
+    await page.waitForTimeout(160);
+    expect(await readRenderedOffset()).toBeCloseTo(reducedMotionOffset, 3);
+
+    await page.getByRole('button', { name: 'Пауза', exact: true }).click({ force: true });
+    await page.getByRole('button', { name: 'Завершить подход', exact: true }).click();
+    await expect(page.getByText('Тренировка завершена', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Сохранить тренировку', exact: true }).click();
+    await expect.poll(async () => {
+      const result = await storedSessionRpc(page, 'get_my_active_workout_session_v3', {});
+      return result.data;
+    }).toBeNull();
     expect(errors()).toEqual([]);
   } finally {
     await fixture.cleanup();

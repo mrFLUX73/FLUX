@@ -8,11 +8,11 @@ test('Workout timer math: duration counts forward, excludes pauses, and resumes'
   expect(elapsedDurationSeconds(started, 4_900)).toBe(3);
 
   const paused = pauseDurationClock(started, 4_900);
-  expect(paused).toEqual({ accumulatedSeconds: 3, startedAtMs: null });
+  expect(paused).toEqual({ accumulatedSeconds: 3.9, startedAtMs: null });
   expect(elapsedDurationSeconds(paused, 20_000)).toBe(3);
 
   const resumed = startDurationClock(paused, 20_000);
-  expect(elapsedDurationSeconds(resumed, 23_600)).toBe(6);
+  expect(elapsedDurationSeconds(resumed, 23_600)).toBe(7);
 });
 
 test('Workout timer math: planned duration never caps actual elapsed time', () => {
@@ -23,6 +23,8 @@ test('Workout timer math: planned duration never caps actual elapsed time', () =
 
 test('Circular timer progress: work fills at the planned duration and rest drains to zero', () => {
   expect(workTimerProgress(0, 30)).toBe(0);
+  expect(workTimerProgress(4, 30)).toBeCloseTo(4 / 30);
+  expect(workTimerProgress(12, 30)).toBeCloseTo(12 / 30);
   expect(workTimerProgress(15, 30)).toBe(0.5);
   expect(workTimerProgress(45, 30)).toBe(1);
   expect(workTimerProgress(12, null)).toBe(0);

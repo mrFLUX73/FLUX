@@ -287,7 +287,7 @@ function WorkoutEngineFlow({ userId, initialSession, onClose, onFinished }: { us
           const saved = await saveWorkoutExecutionCheckpoint(userId, {
             workoutSessionId: session.id, sessionStepId: step.stepId, setNumber: plannedSet.setNumber,
             phase,
-            durationAccumulatedSeconds: durationClock.current.accumulatedSeconds,
+            durationAccumulatedSeconds: elapsedDurationSeconds(durationClock.current, Date.now()),
             durationStartedAt: startedAt, durationIsManual: durationManuallyEdited, restEndsAt: restAt, restTotalSeconds: restAt ? restTotalSeconds : null,
             draftReps: numberOrNull(reps), draftWeightKg: numberOrNull(weight), draftDurationSeconds: numberOrNull(durationInput),
             draftDistanceM: numberOrNull(distance), draftRpe: numberOrNull(setRpeRef.current), draftNotes: notes || null,
@@ -319,7 +319,7 @@ function WorkoutEngineFlow({ userId, initialSession, onClose, onFinished }: { us
   };
   const pauseDuration = () => {
     durationClock.current = pauseDurationClock(durationClock.current, Date.now());
-    setDurationElapsedSeconds(durationClock.current.accumulatedSeconds);
+    setDurationElapsedSeconds(elapsedDurationSeconds(durationClock.current, Date.now()));
     checkpointGeneration.current += 1; setDraftTouched(true); setPhase('paused');
   };
   const resetDuration = () => {

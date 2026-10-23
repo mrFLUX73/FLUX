@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Check } from 'lucide-react';
 import { normalizeTimerProgress } from './circularTimer';
 
@@ -35,6 +35,7 @@ export function CircularWorkoutTimer({
 }: CircularWorkoutTimerProps) {
   const [reducedMotion, setReducedMotion] = useState(false);
   const [displayProgress, setDisplayProgress] = useState(() => normalizeTimerProgress(progress));
+  const wasAnimating = useRef(false);
   useEffect(() => {
     const query = window.matchMedia('(prefers-reduced-motion: reduce)');
     const update = () => setReducedMotion(query.matches);
@@ -42,9 +43,18 @@ export function CircularWorkoutTimer({
     return () => query.removeEventListener('change', update);
   }, []);
   useEffect(() => {
-    if (!visualProgress || paused || reducedMotion) { setDisplayProgress(normalizeTimerProgress(progress)); return; }
+    if (!visualProgress || paused || reducedMotion) {
+      // Preserve the exact rAF frame when a running timer is paused. The
+      // persisted/digital clock intentionally stores whole seconds, so
+      // replacing that frame with `progress` would make the arc jump back.
+      if (!paused || reducedMotion || !wasAnimating.current) setDisplayProgress(normalizeTimerProgress(progress));
+      wasAnimating.current = false;
+      return;
+    }
+    const getVisualProgress = visualProgress;
+    wasAnimating.current = true;
     let frame = 0;
-    const animate = () => { setDisplayProgress(normalizeTimerProgress(visualProgress(Date.now()))); frame = window.requestAnimationFrame(animate); };
+    const animate = () => { setDisplayProgress(normalizeTimerProgress(getVisualProgress(Date.now()))); frame = window.requestAnimationFrame(animate); };
     frame = window.requestAnimationFrame(animate);
     return () => window.cancelAnimationFrame(frame);
   }, [paused, progress, reducedMotion, visualProgress]);

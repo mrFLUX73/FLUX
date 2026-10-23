@@ -6,8 +6,7 @@ export type DurationClock = {
 const nonNegative = (value: number) => Math.max(0, value);
 
 export function elapsedDurationSeconds(clock: DurationClock, nowMs: number): number {
-  if (clock.startedAtMs == null) return nonNegative(clock.accumulatedSeconds);
-  return nonNegative(clock.accumulatedSeconds + Math.floor((nowMs - clock.startedAtMs) / 1000));
+  return Math.floor(elapsedDurationSecondsPrecise(clock, nowMs));
 }
 
 /** Visual-only precision for animation; persisted and digital values stay whole seconds. */
@@ -21,7 +20,10 @@ export function startDurationClock(clock: DurationClock, nowMs: number): Duratio
 }
 
 export function pauseDurationClock(clock: DurationClock, nowMs: number): DurationClock {
-  return { accumulatedSeconds: elapsedDurationSeconds(clock, nowMs), startedAtMs: null };
+  // Keep the timestamp-derived fractional remainder in memory. It is needed
+  // only to resume the visual ring from its exact paused position; callers
+  // still persist and display whole seconds through elapsedDurationSeconds.
+  return { accumulatedSeconds: elapsedDurationSecondsPrecise(clock, nowMs), startedAtMs: null };
 }
 
 export function remainingRestSeconds(restEndsAtMs: number, nowMs: number): number {
