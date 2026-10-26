@@ -126,6 +126,17 @@ test(`Trainer V3 execution: client-safe snapshot preserves per-set plan and actu
     await settleUi(client.page);
     await client.page.locator('.flux-workout-list-button').filter({ hasText: planName }).click();
     await settleUi(client.page);
+    const clientPlanViewer = client.page.getByRole('dialog', { name: planName });
+    const openPrivateExercise = clientPlanViewer.getByRole('button', { name: `Открыть ${privateName}` });
+    await openPrivateExercise.click();
+    const clientExerciseDetail = client.page.getByRole('dialog', { name: privateName });
+    await expect(clientExerciseDetail.getByText('8 повторений · 40 кг', { exact: true })).toBeVisible();
+    await expect(clientExerciseDetail.getByText('Отдых 00:25', { exact: true })).toBeVisible();
+    expect(await clientExerciseDetail.textContent()).not.toContain(privateExerciseId!);
+    await expectNoHorizontalOverflow(client.page);
+    await stableScreenshot(client.page, `test-results/plan-viewer-v3-${width}.png`);
+    await client.page.getByRole('button', { name: 'Назад к плану' }).click();
+    await expect(openPrivateExercise).toBeFocused();
     await client.page.getByRole('button', { name: 'Начать тренировку', exact: true }).click();
     await expect(client.page.getByRole('dialog', { name: 'Активная тренировка' })).toBeVisible();
     const execution = await storedSessionRpc(client.page, 'get_my_active_workout_session_v3', {});

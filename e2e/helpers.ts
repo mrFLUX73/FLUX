@@ -28,6 +28,7 @@ type WorkoutV3PlannedSetInput = {
 type WorkoutV3StepInput = {
   exerciseId: string;
   plannedSets: WorkoutV3PlannedSetInput[];
+  notes?: string | null;
 };
 
 type OwnedPlan = { id: string; name: string };
@@ -132,7 +133,7 @@ export function createWorkoutFixtureScope(page: Page, userId: string, label: str
           exercise_source_kind: 'personal',
           exercise_source_id: step.exerciseId,
           day_number: 1,
-          notes: null,
+          notes: step.notes ?? null,
           planned_sets: step.plannedSets.map((plannedSet) => ({
             set_id: null,
             target_reps_min: plannedSet.targetRepsMin ?? null,

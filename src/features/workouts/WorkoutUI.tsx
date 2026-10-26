@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { Activity, ArrowLeft, Check, ChevronRight, Dumbbell, LoaderCircle, MoreHorizontal, Pause, Play, Plus, RefreshCw, SkipForward, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,7 @@ import {
   loadWorkoutExecutionCheckpoint,
   loadActiveWorkoutSessionV3,
   loadWorkoutHistory,
-  loadWorkoutPlanV2, loadWorkoutPlanV3,
+  loadWorkoutPlanV3,
   loadWorkoutPlans,
   loadWorkoutSessionV3,
   archiveMyWorkoutPlan,
@@ -38,11 +38,36 @@ const dateLabel = (value: string) => new Intl.DateTimeFormat('ru-RU', { day: 'nu
 const timerLabel = (seconds: number) => `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}`;
 const numberOrNull = (value: string) => value.trim() === '' ? null : Number(value);
 
-function targetLabel(step: Pick<WorkoutPlanStep, 'measurementType' | 'targetDurationSeconds' | 'targetDistanceM' | 'targetRepsMin' | 'targetRepsMax' | 'targetWeightKg'>) {
-  if (step.measurementType === 'duration') return `${step.targetDurationSeconds ?? 0} сек`;
-  if (step.measurementType === 'distance') return `${step.targetDistanceM ?? 0} м`;
-  const reps = step.targetRepsMax && step.targetRepsMax !== step.targetRepsMin ? `${step.targetRepsMin}–${step.targetRepsMax}` : step.targetRepsMin;
-  return `${reps ?? '—'} повторений${step.targetWeightKg != null ? ` · ${step.targetWeightKg} кг` : ''}`;
+const measurementLabel = (measurementType: WorkoutPlanStep['measurementType']) => ({ reps: 'Повторения', duration: 'Длительность', distance: 'Дистанция' })[measurementType];
+
+function plannedSetLabel(step: Pick<WorkoutPlanStep, 'measurementType'>, plannedSet: WorkoutPlanSetTarget) {
+  const targets: string[] = [];
+  if (step.measurementType === 'reps') {
+    if (plannedSet.targetRepsMin != null) {
+      targets.push(plannedSet.targetRepsMax != null && plannedSet.targetRepsMax !== plannedSet.targetRepsMin
+        ? `${plannedSet.targetRepsMin}–${plannedSet.targetRepsMax} повторений`
+        : `${plannedSet.targetRepsMin} повторений`);
+    }
+    if (plannedSet.targetWeightKg != null) targets.push(`${plannedSet.targetWeightKg} кг`);
+  }
+  if (step.measurementType === 'duration' && plannedSet.targetDurationSeconds != null) targets.push(timerLabel(plannedSet.targetDurationSeconds));
+  if (step.measurementType === 'distance') {
+    if (plannedSet.targetDistanceM != null) targets.push(`${plannedSet.targetDistanceM} м`);
+    if (plannedSet.targetDurationSeconds != null) targets.push(`Время ${timerLabel(plannedSet.targetDurationSeconds)}`);
+  }
+  return targets.length ? targets.join(' · ') : null;
+}
+
+function planStepSummary(step: SourceAwareWorkoutPlanStepV3) {
+  const plannedSets = orderedPlannedSets(step);
+  const targets = plannedSets
+    .map((plannedSet) => plannedSetLabel(step, plannedSet))
+    .filter((target): target is string => Boolean(target));
+  const setCount = `${plannedSets.length} ${plannedSets.length === 1 ? 'подход' : plannedSets.length < 5 ? 'подхода' : 'подходов'}`;
+  const uniqueTargets = [...new Set(targets)];
+  if (uniqueTargets.length === 1) return `${setCount} · ${uniqueTargets[0]}`;
+  if (plannedSets.length <= 3 && targets.length === plannedSets.length) return `${setCount} · ${targets.map((target, index) => `${index + 1}: ${target}`).join(' · ')}`;
+  return uniqueTargets.length ? `${setCount} · индивидуальные цели` : setCount;
 }
 
 type WorkoutEngineStep = SourceAwareWorkoutPlanStepV3 & { plannedSets: WorkoutPlanSetTarget[] };
@@ -107,16 +132,48 @@ function setFor(session: WorkoutEngineSession, stepId: string, setNumber: number
 }
 
 function PlanDetailDrawer({ userId, planId, open, onOpenChange, onStart, onEdit, onDuplicate, onArchive, onDelete }: { userId: string; planId: string | null; open: boolean; onOpenChange: (open: boolean) => void; onStart: (session: WorkoutEngineSession) => void; onEdit: (plan: SourceAwareWorkoutPlan) => void; onDuplicate: (plan: Pick<WorkoutPlan, 'id' | 'origin' | 'name'>) => void; onArchive: (plan: Pick<WorkoutPlan, 'id' | 'origin' | 'name'>) => void; onDelete: (plan: Pick<WorkoutPlan, 'id' | 'origin' | 'name'>) => void }) {
-  const [plan, setPlan] = useState<SourceAwareWorkoutPlan | null>(null);
+  const [plan, setPlan] = useState<SourceAwareWorkoutPlanV3 | null>(null);
   const [loading, setLoading] = useState(false);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState('');
   const [actionsOpen, setActionsOpen] = useState(false);
+  const [detailStepId, setDetailStepId] = useState<string | null>(null);
+  const [restorePlanFocus, setRestorePlanFocus] = useState(false);
+  const drawerBodyRef = useRef<HTMLDivElement | null>(null);
+  const detailFocusRef = useRef<HTMLElement | null>(null);
+  const exerciseTriggerRefs = useRef(new Map<string, HTMLButtonElement>());
+  const detailReturnStepIdRef = useRef<string | null>(null);
+  const planScrollTopRef = useRef(0);
+
   useEffect(() => {
     if (!open || !planId) return;
-    setLoading(true); setError(''); setActionsOpen(false);
-    void loadWorkoutPlanV2(userId, planId).then(setPlan).catch(() => setError('Не удалось загрузить план.')).finally(() => setLoading(false));
+    setLoading(true); setError(''); setActionsOpen(false); setDetailStepId(null); setPlan(null);
+    void loadWorkoutPlanV3(userId, planId).then(setPlan).catch(() => setError('Не удалось загрузить план.')).finally(() => setLoading(false));
   }, [open, planId, userId]);
+
+  const detailStep = plan?.exercises.find((step) => step.stepId === detailStepId) ?? null;
+  useEffect(() => {
+    if (!detailStep) return;
+    const frame = window.requestAnimationFrame(() => detailFocusRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [detailStep]);
+
+  useEffect(() => {
+    if (detailStep || !restorePlanFocus) return;
+    const timer = window.setTimeout(() => {
+      if (drawerBodyRef.current) drawerBodyRef.current.scrollTop = planScrollTopRef.current;
+      const stepId = detailReturnStepIdRef.current;
+      if (stepId) exerciseTriggerRefs.current.get(stepId)?.focus();
+      setRestorePlanFocus(false);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [detailStep, restorePlanFocus]);
+
+  const closeExerciseDetail = useCallback(() => {
+    setRestorePlanFocus(true);
+    setDetailStepId(null);
+  }, []);
+
   const start = async () => {
     if (!planId || starting) return;
     setStarting(true); setError('');
@@ -126,7 +183,56 @@ function PlanDetailDrawer({ userId, planId, open, onOpenChange, onStart, onEdit,
   };
   const chooseAction = (action: (value: SourceAwareWorkoutPlan) => void) => { if (!plan) return; setActionsOpen(false); action(plan); };
   const assigned = plan?.origin === 'trainer_assigned';
-  return <Drawer open={open} onOpenChange={onOpenChange}><DrawerContent className="flux-drawer flux-workout-plan-drawer"><DrawerHeader className="flux-drawer-header"><button type="button" className="flux-drawer-back" onClick={() => onOpenChange(false)} aria-label="Назад к тренировкам"><ArrowLeft /></button><div><DrawerTitle>{plan?.name ?? 'План тренировки'}</DrawerTitle><DrawerDescription>{plan?.description ?? (assigned ? 'План от тренера' : 'Личный план')}</DrawerDescription></div>{plan && !assigned && <button type="button" className="flux-drawer-back" aria-label="Действия плана" aria-expanded={actionsOpen} onClick={() => setActionsOpen((value) => !value)}><MoreHorizontal /></button>}</DrawerHeader><div className="flux-workout-drawer-body">{plan && !assigned && actionsOpen && <div className="flux-plan-actions-menu" role="menu"><button type="button" role="menuitem" onClick={() => chooseAction(onEdit)}>Редактировать</button><button type="button" role="menuitem" onClick={() => chooseAction(onDuplicate)}>Создать копию</button>{plan.isActive && <button type="button" role="menuitem" onClick={() => chooseAction(onArchive)}>В архив</button>}<button type="button" className="is-destructive" role="menuitem" onClick={() => chooseAction(onDelete)}>Удалить план</button></div>}{loading ? <p className="flux-trainer-empty">Загружаем план…</p> : error && !plan ? <p className="flux-client-inline-error">{error}</p> : plan ? <><section className="flux-workout-hero"><span className="flux-eyebrow">{assigned ? `От тренера${plan.trainerName ? ` · ${plan.trainerName}` : ''}` : 'Личный план'}</span><strong>{plan.name}</strong><p>{plan.estimatedDurationMinutes ? `${plan.estimatedDurationMinutes} мин` : 'Длительность не указана'} · {plan.exercises.length} упражнений</p></section><section className="flux-exercise-list"><div className="flux-section-heading"><h2>Упражнения</h2><span>{plan.level ?? 'Ваш темп'}</span></div>{plan.exercises.map((step, index) => <div key={step.stepId}><span>{String(index + 1).padStart(2, '0')}</span><p><strong>{step.name}</strong><small>{step.targetSets} × {targetLabel(step)} · отдых {step.restSeconds} сек</small></p><ChevronRight /></div>)}</section>{error && <p className="flux-client-inline-error">{error}</p>}<Button className="flux-main-button" size="lg" disabled={starting || plan.exercises.length === 0 || !plan.isActive} onClick={() => { void start(); }}>{starting ? <LoaderCircle className="is-spinning" /> : <Play />} {plan.isActive ? (starting ? 'Запускаю…' : 'Начать тренировку') : 'План в архиве'}</Button></> : null}</div></DrawerContent></Drawer>;
+  const closeDrawer = (nextOpen: boolean) => {
+    if (!nextOpen && detailStep) { closeExerciseDetail(); return; }
+    onOpenChange(nextOpen);
+  };
+  const openExerciseDetail = (step: SourceAwareWorkoutPlanStepV3) => {
+    planScrollTopRef.current = drawerBodyRef.current?.scrollTop ?? 0;
+    detailReturnStepIdRef.current = step.stepId;
+    setActionsOpen(false);
+    setDetailStepId(step.stepId);
+  };
+
+  return <Drawer open={open} onOpenChange={closeDrawer}>
+    <DrawerContent className="flux-drawer flux-workout-plan-drawer">
+      <DrawerHeader className="flux-drawer-header">
+        <button type="button" className="flux-drawer-back" onClick={() => detailStep ? closeExerciseDetail() : onOpenChange(false)} aria-label={detailStep ? 'Назад к плану' : 'Назад к тренировкам'}><ArrowLeft /></button>
+        <div>
+          <DrawerTitle>{detailStep?.name ?? plan?.name ?? 'План тренировки'}</DrawerTitle>
+          <DrawerDescription>{detailStep ? `План: ${plan?.name ?? ''}` : plan?.description ?? (assigned ? 'План от тренера' : 'Личный план')}</DrawerDescription>
+        </div>
+        {plan && !assigned && !detailStep && <button type="button" className="flux-drawer-back" aria-label="Действия плана" aria-expanded={actionsOpen} onClick={() => setActionsOpen((value) => !value)}><MoreHorizontal /></button>}
+      </DrawerHeader>
+      <div ref={drawerBodyRef} className="flux-workout-drawer-body" onKeyDownCapture={(event) => {
+        if (event.key === 'Escape' && detailStep) { event.preventDefault(); event.stopPropagation(); closeExerciseDetail(); }
+      }}>
+        {plan && !assigned && actionsOpen && <div className="flux-plan-actions-menu" role="menu"><button type="button" role="menuitem" onClick={() => chooseAction(onEdit)}>Редактировать</button><button type="button" role="menuitem" onClick={() => chooseAction(onDuplicate)}>Создать копию</button>{plan.isActive && <button type="button" role="menuitem" onClick={() => chooseAction(onArchive)}>В архив</button>}<button type="button" className="is-destructive" role="menuitem" onClick={() => chooseAction(onDelete)}>Удалить план</button></div>}
+        {loading ? <p className="flux-trainer-empty">Загружаем план…</p> : error && !plan ? <p className="flux-client-inline-error">{error}</p> : detailStep ? <ExercisePlanDetail step={detailStep} focusRef={detailFocusRef} /> : plan ? <>
+          <section className="flux-workout-hero"><span className="flux-eyebrow">{assigned ? `От тренера${plan.trainerName ? ` · ${plan.trainerName}` : ''}` : 'Личный план'}</span><strong>{plan.name}</strong><p>{plan.estimatedDurationMinutes ? `${plan.estimatedDurationMinutes} мин` : 'Длительность не указана'} · {plan.exercises.length} упражнений</p></section>
+          {plan.exercises.length ? <section className="flux-exercise-list"><div className="flux-section-heading"><h2>Упражнения</h2><span>{plan.level ?? 'Ваш темп'}</span></div>{plan.exercises.map((step, index) => <button type="button" className="flux-plan-exercise-row" key={step.stepId} aria-label={`Открыть ${step.name}`} ref={(element) => { if (element) exerciseTriggerRefs.current.set(step.stepId, element); else exerciseTriggerRefs.current.delete(step.stepId); }} onClick={() => openExerciseDetail(step)}><span>{String(index + 1).padStart(2, '0')}</span><p><strong>{step.name}</strong><small>{planStepSummary(step)}</small></p><ChevronRight /></button>)}</section> : <p className="flux-trainer-empty">В этом плане пока нет упражнений.</p>}
+          {error && <p className="flux-client-inline-error">{error}</p>}
+          <Button className="flux-main-button" size="lg" disabled={starting || plan.exercises.length === 0 || !plan.isActive} onClick={() => { void start(); }}>{starting ? <LoaderCircle className="is-spinning" /> : <Play />} {plan.isActive ? (starting ? 'Запускаю…' : 'Начать тренировку') : 'План в архиве'}</Button>
+        </> : null}
+      </div>
+    </DrawerContent>
+  </Drawer>;
+}
+
+function ExercisePlanDetail({ step, focusRef }: { step: SourceAwareWorkoutPlanStepV3; focusRef: RefObject<HTMLElement | null> }) {
+  const plannedSets = orderedPlannedSets(step);
+  return <article ref={focusRef} className="flux-plan-exercise-detail" aria-label={`Подробности упражнения: ${step.name}`} tabIndex={-1}>
+    <section className="flux-plan-exercise-overview"><span className="flux-eyebrow">{measurementLabel(step.measurementType)}</span></section>
+    {step.instructions && <section className="flux-plan-detail-copy"><h3>Техника выполнения</h3><p>{step.instructions}</p></section>}
+    {step.notes && <section className="flux-plan-detail-copy"><h3>Заметка к упражнению</h3><p>{step.notes}</p></section>}
+    <section className="flux-plan-set-section" aria-labelledby={`planned-sets-${step.stepId}`}>
+      <div className="flux-section-heading"><h3 id={`planned-sets-${step.stepId}`}>Плановые подходы</h3><span>{plannedSets.length}</span></div>
+      <ol className="flux-plan-set-list">{plannedSets.map((plannedSet) => {
+        const target = plannedSetLabel(step, plannedSet);
+        return <li key={plannedSet.setId ?? `${step.stepId}-${plannedSet.setNumber}`}><div><strong>Подход {plannedSet.setNumber}</strong>{target && <span>{target}</span>}</div>{plannedSet.restSeconds != null && <small>{plannedSet.restSeconds === 0 ? 'Без отдыха' : `Отдых ${timerLabel(plannedSet.restSeconds)}`}</small>}</li>;
+      })}</ol>
+    </section>
+  </article>;
 }
 
 function WorkoutDetailsDrawer({ userId, sessionId, open, onOpenChange }: { userId: string; sessionId: string | null; open: boolean; onOpenChange: (open: boolean) => void }) {

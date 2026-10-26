@@ -41,6 +41,88 @@ async function fillDurationInput(page: import('@playwright/test').Page, totalSec
   await page.getByLabel('Фактическая длительность: секунды').fill(String(totalSeconds % 60).padStart(2, '0'));
 }
 
+test('Workout plan viewer uses V3 planned sets and opens an exercise detail without starting the workout', async ({ browser }) => {
+  const { context, page, userId, errors } = await openWorkout(browser, 390);
+  const fixture = createWorkoutFixtureScope(page, userId, 'Plan viewer V3 detail');
+  try {
+    await fixture.assertNoActiveWorkout();
+    const exercise = await fixture.createExercise('Подробный V3 присед', 'reps', 'Держите спину ровно и контролируйте движение.');
+    await fixture.savePlanV3(Array.from({ length: 12 }, (_, index) => ({ exerciseId: exercise.id, notes: index === 11 ? 'Сохраняйте ровный темп.' : null, plannedSets: [
+      { targetRepsMin: 8, targetRepsMax: 10, targetWeightKg: 42.5, restSeconds: 30 },
+      { targetRepsMin: 12, targetWeightKg: 35, restSeconds: 0 },
+    ] })));
+
+    await page.getByRole('button', { name: 'Тренировки', exact: true }).click();
+    await page.locator('.flux-workout-list-button').filter({ hasText: fixture.planName }).click();
+    const drawer = page.getByRole('dialog', { name: fixture.planName });
+    await expect(drawer).toBeVisible();
+
+    const planBody = drawer.locator('.flux-workout-drawer-body');
+    const openExercise = drawer.getByRole('button', { name: `Открыть ${exercise.name}` }).last();
+    await openExercise.scrollIntoViewIfNeeded();
+    const planScrollTop = await planBody.evaluate((element) => element.scrollTop);
+    expect(planScrollTop).toBeGreaterThan(0);
+    await openExercise.press('Enter');
+    const exerciseDetail = page.getByRole('dialog', { name: exercise.name });
+    await expect(exerciseDetail.getByRole('heading', { name: exercise.name, exact: true })).toBeVisible();
+    await expect(exerciseDetail.getByText('Техника выполнения', { exact: true })).toBeVisible();
+    await expect(exerciseDetail.getByText('Сохраняйте ровный темп.', { exact: true })).toBeVisible();
+    await expect(exerciseDetail.getByText('8–10 повторений · 42.5 кг', { exact: true })).toBeVisible();
+    await expect(exerciseDetail.getByText('Отдых 00:30', { exact: true })).toBeVisible();
+    await expect(exerciseDetail.getByText('Без отдыха', { exact: true })).toBeVisible();
+
+    await page.keyboard.press('Escape');
+    await expect(openExercise).toBeVisible();
+    await expect(openExercise).toBeFocused();
+    await expect.poll(() => planBody.evaluate((element) => element.scrollTop)).toBeGreaterThanOrEqual(planScrollTop - 1);
+    await expect(page.getByRole('dialog', { name: 'Активная тренировка' })).toHaveCount(0);
+    await expectNoHorizontalOverflow(page);
+    expect(errors()).toEqual([]);
+  } finally {
+    await fixture.cleanup();
+    await context.close();
+  }
+});
+
+test('Workout plan viewer renders V3 virtual legacy sets for duration and distance', async ({ browser }) => {
+  const { context, page, userId, errors } = await openWorkout(browser, 375);
+  const fixture = createWorkoutFixtureScope(page, userId, 'Plan viewer legacy virtual sets');
+  try {
+    await fixture.assertNoActiveWorkout();
+    const duration = await fixture.createExercise('Наследуемая длительность', 'duration');
+    const distance = await fixture.createExercise('Наследуемая дистанция', 'distance');
+    const plan = await fixture.savePlan([
+      { exerciseId: duration.id, targetSets: 2, targetRepsMin: null, targetDurationSeconds: 75, targetDistanceM: null, targetWeightKg: null, restSeconds: 15 },
+      { exerciseId: distance.id, targetSets: 1, targetRepsMin: null, targetDurationSeconds: 60, targetDistanceM: 400, targetWeightKg: null, restSeconds: 0 },
+    ]);
+    const planV3 = await storedSessionRpc(page, 'get_my_workout_plan_v3', { p_plan_id: plan.id });
+    expect(planV3.status).toBe(200);
+    const legacySets = (planV3.data as { exercises: Array<{ name: string; planned_sets: Array<{ set_id: string | null; set_number: number }> }> }).exercises;
+    expect(legacySets.find((step) => step.name === duration.name)?.planned_sets).toEqual([
+      expect.objectContaining({ set_id: null, set_number: 1 }),
+      expect.objectContaining({ set_id: null, set_number: 2 }),
+    ]);
+
+    await page.getByRole('button', { name: 'Тренировки', exact: true }).click();
+    await page.locator('.flux-workout-list-button').filter({ hasText: fixture.planName }).click();
+    const drawer = page.getByRole('dialog', { name: fixture.planName });
+    await drawer.getByRole('button', { name: `Открыть ${duration.name}` }).click();
+    const durationDetail = page.getByRole('dialog', { name: duration.name });
+    await expect(durationDetail.getByText('01:15', { exact: true })).toHaveCount(2);
+    await expect(durationDetail.getByText('Отдых 00:15', { exact: true })).toHaveCount(2);
+    await page.getByRole('button', { name: 'Назад к плану' }).click();
+    await drawer.getByRole('button', { name: `Открыть ${distance.name}` }).click();
+    const distanceDetail = page.getByRole('dialog', { name: distance.name });
+    await expect(distanceDetail.getByText('400 м · Время 01:00', { exact: true })).toBeVisible();
+    await expect(distanceDetail.getByText('Без отдыха', { exact: true })).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+    expect(errors()).toEqual([]);
+  } finally {
+    await fixture.cleanup();
+    await context.close();
+  }
+});
+
 test('Workout Engine: Test Client starts a server session and persists an in-progress set', async ({ browser }) => {
   const { context, page, userId, errors } = await openWorkout(browser);
   const { fixture, repsName } = await prepareEngineFixture(page, userId, 'Engine persistence');

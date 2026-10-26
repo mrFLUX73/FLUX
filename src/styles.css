@@ -795,13 +795,15 @@ button:active { transform: scale(.97); }
 .flux-workout-page-hero [data-slot='button'] svg { width: 13px; height: 13px; }
 .flux-exercise-list { margin-top: 17px; }
 .flux-exercise-list .flux-section-heading > span { color: var(--flux-muted); font-size: 9px; }
-.flux-exercise-list > div:not(.flux-section-heading) { min-height: 51px; display: grid; grid-template-columns: 32px 1fr 18px; align-items: center; gap: 8px; border-bottom: 1px solid var(--flux-border); }
-.flux-exercise-list > div > span { color: var(--flux-muted); font-size: 9px; }
+.flux-exercise-list > div:not(.flux-section-heading), .flux-plan-exercise-row { min-width: 0; min-height: 51px; display: grid; grid-template-columns: 32px minmax(0, 1fr) 18px; align-items: center; gap: 8px; border-bottom: 1px solid var(--flux-border); }
+.flux-exercise-list > div > span, .flux-plan-exercise-row > span { color: var(--flux-muted); font-size: 9px; }
 .flux-exercise-list p { margin: 0; }
 .flux-exercise-list strong, .flux-exercise-list small { display: block; }
 .flux-exercise-list strong { font-size: 12px; font-weight: 500; }
 .flux-exercise-list small { margin-top: 3px; color: var(--flux-muted); font-size: 9px; }
 .flux-exercise-list svg { width: 14px; height: 14px; color: var(--flux-muted); }
+.flux-plan-exercise-row { width: 100%; padding: 8px 0; border-inline: 0; border-top: 0; background: transparent; color: var(--flux-ink); font: inherit; text-align: left; cursor: pointer; }
+.flux-plan-exercise-row:focus-visible { outline: 3px solid color-mix(in srgb, var(--flux-accent) 72%, white); outline-offset: 3px; border-radius: 8px; }
 .flux-workout-history { margin-top: 20px; }
 .flux-workout-history > div:not(.flux-section-heading) { min-height: 61px; display: grid; grid-template-columns: 34px 1fr auto; gap: 10px; align-items: center; border-bottom: 1px solid var(--flux-border); }
 .flux-workout-history .flux-rhythm-icon { width: 34px; height: 34px; border-radius: 11px; }
@@ -1492,7 +1494,8 @@ button:active { transform: scale(.97); }
 .flux-workout-summary > div:first-child { border-left: 0; }
 .flux-workout-summary span, .flux-workout-summary small { display: block; color: var(--flux-muted); font-size: 8px; }
 .flux-workout-summary strong { font-size: 23px; font-weight: 500; }
-.flux-workout-drawer-body { display: grid; gap: 18px; padding: 4px 21px calc(24px + env(safe-area-inset-bottom, 0px)); }
+.flux-workout-plan-drawer { display: flex; flex-direction: column; }
+.flux-workout-drawer-body { min-height: 0; flex: 1 1 auto; display: grid; align-content: start; gap: 18px; overflow-y: auto; overscroll-behavior: contain; padding: 4px 21px calc(24px + env(safe-area-inset-bottom, 0px)); }
 .flux-workout-drawer-body .flux-main-button { width: 100%; }
 .flux-workout-hero { min-height: 0; display: block; }
 .flux-workout-hero > strong, .flux-workout-hero > p { display: block; }
@@ -1505,6 +1508,20 @@ button:active { transform: scale(.97); }
 .flux-workout-list-button strong, .flux-workout-history-button strong { font-size: 11px; font-weight: 500; }
 .flux-workout-list-button small, .flux-workout-history-button small { margin-top: 3px; color: var(--flux-muted); font-size: 8px; }
 .flux-workout-list-button > svg, .flux-workout-history-button > svg { width: 16px; color: var(--flux-muted); }
+.flux-plan-exercise-detail { display: grid; gap: 18px; min-width: 0; padding-bottom: 2px; }
+.flux-workout-plan-drawer .flux-drawer-back { width: 44px; height: 44px; }
+.flux-plan-detail-copy { display: grid; gap: 6px; padding: 14px; border-radius: 17px; background: var(--flux-soft-2); }
+.flux-plan-detail-copy h3, .flux-plan-set-section h3 { margin: 0; color: var(--flux-ink); font-size: 11px; font-weight: 600; }
+.flux-plan-detail-copy p { margin: 0; color: var(--flux-muted); font-size: 11px; line-height: 1.55; overflow-wrap: anywhere; white-space: pre-line; }
+.flux-plan-set-section { min-width: 0; }
+.flux-plan-set-section .flux-section-heading { margin-bottom: 3px; }
+.flux-plan-set-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.flux-plan-set-list li { min-width: 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 12px; border: 1px solid var(--flux-border); border-radius: 15px; background: var(--flux-card); }
+.flux-plan-set-list li > div { min-width: 0; display: grid; gap: 3px; }
+.flux-plan-set-list strong, .flux-plan-set-list span, .flux-plan-set-list small { display: block; }
+.flux-plan-set-list strong { color: var(--flux-ink); font-size: 11px; font-weight: 600; }
+.flux-plan-set-list span, .flux-plan-set-list small { color: var(--flux-muted); font-size: 10px; line-height: 1.4; overflow-wrap: anywhere; }
+.flux-plan-set-list small { flex: 0 0 auto; text-align: right; }
 .flux-workout-history-button .flux-rhythm-icon { width: 34px; height: 34px; }
 .flux-workout-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
 .flux-workout-fields-single { grid-template-columns: minmax(0, 1fr); }
