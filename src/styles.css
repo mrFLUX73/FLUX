@@ -35,6 +35,7 @@
   --flux-muted: #718071;
   --flux-accent: #78a971;
   --flux-success: #3f9a57;
+  --flux-success-surface: #e4f2e7;
   --flux-border: #dfe8dc;
   --flux-border-soft: #e1e9de;
   --flux-on-primary: #f9fff7;
@@ -1432,8 +1433,9 @@ button:active { transform: scale(.97); }
 .flux-motion-field > button { position: absolute; bottom: 13px; min-height: 34px; padding: 0 13px; border: 0; border-radius: 13px; background: color-mix(in srgb, var(--flux-card) 88%, transparent); color: var(--flux-primary); font-size: 9px; }
 .flux-active-copy { margin-top: 18px; }
 .flux-active-copy p { min-height: 31px; margin: 7px 0 0; color: var(--flux-muted); font-size: 9px; line-height: 1.5; }
-.flux-execution-timer { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 12px; padding: 12px; border-radius: 21px; background: var(--flux-soft-2); text-align: center; }
-.flux-execution-timer.is-running { background: var(--flux-soft); }
+.flux-execution-timer { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 12px; padding: 12px; border-radius: 21px; background-color: var(--flux-soft-2); text-align: center; transition: background-color 350ms ease; }
+.flux-execution-timer.is-running { background-color: var(--flux-soft); }
+.flux-execution-timer:has(> .flux-circular-timer.is-work.has-reached-plan) { background-color: var(--flux-success-surface); }
 .flux-execution-timer > .flux-circular-timer { flex: 0 0 auto; }
 .flux-execution-timer-controls { display: grid; width: 100%; gap: 6px; margin-top: 0; }
 .flux-execution-timer-controls [data-slot='button'], .flux-execution-timer-controls .flux-main-button { width: 100%; min-height: 44px !important; margin-top: 0; border-radius: 13px; }

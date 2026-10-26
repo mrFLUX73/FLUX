@@ -523,7 +523,9 @@ test('Workout Engine V3: a work timer turns green only after its plan and preser
 
     const timer = page.locator('.flux-circular-timer[data-mode="work"]');
     const arc = timer.locator('.flux-circular-timer-progress');
+    const timerCard = page.locator('.flux-execution-timer');
     const stroke = () => arc.evaluate((node) => getComputedStyle(node).stroke);
+    const background = () => timerCard.evaluate((node) => getComputedStyle(node).backgroundColor);
     await page.getByRole('button', { name: 'Начать отсчёт', exact: true }).click();
     await expect(timer).not.toHaveClass(/has-reached-plan/);
     const beforeTarget = await stroke();
@@ -533,9 +535,11 @@ test('Workout Engine V3: a work timer turns green only after its plan and preser
     await page.waitForTimeout(220);
     const afterTarget = await stroke();
     expect(afterTarget).not.toBe(beforeTarget);
+    await expect.poll(background).toBe('rgb(228, 242, 231)');
 
     await page.getByRole('button', { name: 'Пауза', exact: true }).click();
     expect(await stroke()).toBe(afterTarget);
+    await expect.poll(background).toBe('rgb(228, 242, 231)');
 
     // Let the debounced checkpoint persist the paused, over-plan timer.
     await page.waitForTimeout(650);
@@ -545,10 +549,16 @@ test('Workout Engine V3: a work timer turns green only after its plan and preser
     await expect(timer).toHaveClass(/has-reached-plan/);
     await page.waitForTimeout(220);
     expect(await stroke()).toBe(afterTarget);
+    await expect.poll(background).toBe('rgb(228, 242, 231)');
     await page.getByRole('button', { name: 'Продолжить отсчёт', exact: true }).click();
     await page.waitForTimeout(220);
     await expect(timer).toHaveClass(/has-reached-plan/);
     expect(await stroke()).toBe(afterTarget);
+    await expect.poll(background).toBe('rgb(228, 242, 231)');
+    await page.getByRole('button', { name: 'Пауза', exact: true }).click();
+    await page.getByRole('button', { name: 'Сбросить таймер', exact: true }).click();
+    await expect(timer).not.toHaveClass(/has-reached-plan/);
+    await expect.poll(background).not.toBe('rgb(228, 242, 231)');
     expect(errors()).toEqual([]);
   } finally {
     await fixture.cleanup();
@@ -571,19 +581,58 @@ test('Workout Engine V3: reaching a work-duration goal uses the semantic success
 
     const timer = page.locator('.flux-circular-timer[data-mode="work"]');
     const arc = timer.locator('.flux-circular-timer-progress');
+    const timerCard = page.locator('.flux-execution-timer.is-running');
     const stroke = () => arc.evaluate((node) => getComputedStyle(node).stroke);
+    const background = () => timerCard.evaluate((node) => getComputedStyle(node).backgroundColor);
     await page.getByRole('button', { name: 'Начать отсчёт', exact: true }).click();
     await expect(timer).toHaveClass(/has-reached-plan/, { timeout: 5_000 });
 
     for (const theme of ['sage', 'ocean', 'bloom', 'storm', 'sand', 'night', 'titan', 'forge', 'ranger']) {
       await page.evaluate((nextTheme) => { document.documentElement.dataset.fluxTheme = nextTheme; }, theme);
       await expect.poll(stroke).toBe('rgb(63, 154, 87)');
+      await expect.poll(background).toBe('rgb(228, 242, 231)');
     }
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await expect.poll(background).toBe('rgb(228, 242, 231)');
+    const transitionDurationMs = await timerCard.evaluate((node) => {
+      const duration = getComputedStyle(node).transitionDuration;
+      const value = Number.parseFloat(duration);
+      return duration.endsWith('ms') ? value : value * 1_000;
+    });
+    expect(transitionDurationMs).toBeLessThanOrEqual(0.01);
 
     expect(errors()).toEqual([]);
   } finally {
     await fixture.cleanup();
     await context.close();
+  }
+});
+
+test('Workout Engine V3: goal background remains within the timer card on 320–430 px', async ({ browser }) => {
+  test.setTimeout(120_000);
+  for (const width of [320, 375, 390, 430]) {
+    const { context, page, userId, errors } = await openWorkout(browser, width);
+    const fixture = createWorkoutFixtureScope(page, userId, `Timer goal background ${width}`);
+    try {
+      await fixture.assertNoActiveWorkout();
+      const duration = await fixture.createExercise('Мобильная зелёная цель', 'duration');
+      await fixture.savePlanV3([{ exerciseId: duration.id, plannedSets: [{ targetDurationSeconds: 1, restSeconds: 0 }] }]);
+      await openFixturePlan(page, fixture.planName);
+      const active = await storedSessionRpc(page, 'get_my_active_workout_session_v3', {});
+      expect(active.status).toBe(200);
+      fixture.registerSession(active.data as { id: string; title?: string; plan_id?: string | null });
+
+      const timer = page.locator('.flux-circular-timer[data-mode="work"]');
+      const timerCard = page.locator('.flux-execution-timer.is-running');
+      await page.getByRole('button', { name: 'Начать отсчёт', exact: true }).click();
+      await expect(timer).toHaveClass(/has-reached-plan/, { timeout: 5_000 });
+      await expect.poll(() => timerCard.evaluate((node) => getComputedStyle(node).backgroundColor)).toBe('rgb(228, 242, 231)');
+      await expectNoHorizontalOverflow(page);
+      expect(errors()).toEqual([]);
+    } finally {
+      await fixture.cleanup();
+      await context.close();
+    }
   }
 });
 
