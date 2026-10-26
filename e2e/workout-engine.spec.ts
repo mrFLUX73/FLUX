@@ -556,6 +556,37 @@ test('Workout Engine V3: a work timer turns green only after its plan and preser
   }
 });
 
+test('Workout Engine V3: reaching a work-duration goal uses the semantic success green in every theme', async ({ browser }) => {
+  test.setTimeout(90_000);
+  const { context, page, userId, errors } = await openWorkout(browser);
+  const fixture = createWorkoutFixtureScope(page, userId, 'Circular timer semantic success color');
+  try {
+    await fixture.assertNoActiveWorkout();
+    const duration = await fixture.createExercise('Зелёная цель таймера', 'duration');
+    await fixture.savePlanV3([{ exerciseId: duration.id, plannedSets: [{ targetDurationSeconds: 1, restSeconds: 0 }] }]);
+    await openFixturePlan(page, fixture.planName);
+    const active = await storedSessionRpc(page, 'get_my_active_workout_session_v3', {});
+    expect(active.status).toBe(200);
+    fixture.registerSession(active.data as { id: string; title?: string; plan_id?: string | null });
+
+    const timer = page.locator('.flux-circular-timer[data-mode="work"]');
+    const arc = timer.locator('.flux-circular-timer-progress');
+    const stroke = () => arc.evaluate((node) => getComputedStyle(node).stroke);
+    await page.getByRole('button', { name: 'Начать отсчёт', exact: true }).click();
+    await expect(timer).toHaveClass(/has-reached-plan/, { timeout: 5_000 });
+
+    for (const theme of ['sage', 'ocean', 'bloom', 'storm', 'sand', 'night', 'titan', 'forge', 'ranger']) {
+      await page.evaluate((nextTheme) => { document.documentElement.dataset.fluxTheme = nextTheme; }, theme);
+      await expect.poll(stroke).toBe('rgb(63, 154, 87)');
+    }
+
+    expect(errors()).toEqual([]);
+  } finally {
+    await fixture.cleanup();
+    await context.close();
+  }
+});
+
 test('Workout Engine saves distance results with an optional minutes-and-seconds duration', async ({ browser }) => {
   test.setTimeout(90_000);
   const { context, page, userId, errors } = await openWorkout(browser);

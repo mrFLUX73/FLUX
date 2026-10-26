@@ -34,6 +34,7 @@
   --flux-ink: #202b21;
   --flux-muted: #718071;
   --flux-accent: #78a971;
+  --flux-success: #3f9a57;
   --flux-border: #dfe8dc;
   --flux-border-soft: #e1e9de;
   --flux-on-primary: #f9fff7;
@@ -1453,7 +1454,8 @@ button:active { transform: scale(.97); }
 .flux-rest-screen > p, .flux-complete-screen > p { max-width: 320px; margin: 9px auto 0; color: var(--flux-muted); font-size: 10px; line-height: 1.55; }
 .flux-circular-timer { --flux-timer-progress: var(--flux-ink); width: min(100%, clamp(200px, 58vw, 232px)); aspect-ratio: 1; position: relative; display: grid; place-items: center; margin: 0 auto; color: var(--flux-ink); }
 .flux-circular-timer.is-rest { --flux-timer-progress: var(--flux-primary); }
-.flux-circular-timer.has-reached-plan, .flux-circular-timer.is-completed { --flux-timer-progress: var(--flux-accent); }
+.flux-circular-timer.has-reached-plan { --flux-timer-progress: var(--flux-success); }
+.flux-circular-timer.is-completed { --flux-timer-progress: var(--flux-accent); }
 .flux-circular-timer svg { width: 100%; height: 100%; overflow: visible; }
 .flux-circular-timer-track, .flux-circular-timer-progress { fill: none; stroke-width: 8; transform: rotate(-90deg); transform-origin: 50% 50%; }
 .flux-circular-timer-track { stroke: var(--flux-soft); }
