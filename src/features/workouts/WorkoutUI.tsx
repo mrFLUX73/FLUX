@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { Activity, ArrowLeft, Check, ChevronRight, Dumbbell, LoaderCircle, MoreHorizontal, Pause, Play, Plus, RefreshCw, SkipForward, X } from 'lucide-react';
+import { Activity, ArrowLeft, Check, ChevronRight, Dumbbell, LoaderCircle, MoreHorizontal, Pause, Pencil, Play, Plus, RefreshCw, RotateCcw, SkipForward, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { Progress } from '@/components/ui/progress';
@@ -12,6 +12,7 @@ import {
   loadWorkoutPlanV3,
   loadWorkoutPlans,
   loadWorkoutSessionV3,
+  saveMyWorkoutPlanV3,
   archiveMyWorkoutPlan,
   deleteMyWorkoutPlan,
   duplicateMyWorkoutPlan,
@@ -20,7 +21,7 @@ import {
   startPersonalWorkoutV3,
   type WorkoutHistoryItem,
   type WorkoutPlan,
-  type SourceAwareWorkoutPlan, type SourceAwareWorkoutPlanV3,
+  type SourceAwareWorkoutPlan, type SourceAwareWorkoutPlanDraftV3, type SourceAwareWorkoutPlanV3,
   type SourceAwareWorkoutPlanStepV3,
   type SourceAwareWorkoutSessionV3,
   type WorkoutPlanSetTarget,
@@ -68,6 +69,100 @@ function planStepSummary(step: SourceAwareWorkoutPlanStepV3) {
   if (uniqueTargets.length === 1) return `${setCount} · ${uniqueTargets[0]}`;
   if (plannedSets.length <= 3 && targets.length === plannedSets.length) return `${setCount} · ${targets.map((target, index) => `${index + 1}: ${target}`).join(' · ')}`;
   return uniqueTargets.length ? `${setCount} · индивидуальные цели` : setCount;
+}
+
+type InlineSetDraft = Omit<WorkoutPlanSetTarget, 'setNumber'>;
+type DeletedInlineSet = { set: InlineSetDraft; index: number } | null;
+type InlineExerciseEdit = {
+  stepId: string;
+  basePlanFingerprint: string;
+  notes: string;
+  plannedSets: InlineSetDraft[];
+  deletedSet: DeletedInlineSet;
+};
+
+const editableSet = (set: WorkoutPlanSetTarget): InlineSetDraft => ({
+  setId: set.setId,
+  targetRepsMin: set.targetRepsMin,
+  targetRepsMax: set.targetRepsMax,
+  targetDurationSeconds: set.targetDurationSeconds,
+  targetDistanceM: set.targetDistanceM,
+  targetWeightKg: set.targetWeightKg,
+  restSeconds: set.restSeconds,
+});
+
+const planFingerprint = (plan: SourceAwareWorkoutPlanV3) => JSON.stringify({
+  id: plan.id,
+  name: plan.name,
+  description: plan.description,
+  level: plan.level,
+  estimatedDurationMinutes: plan.estimatedDurationMinutes,
+  exercises: plan.exercises.map((step) => ({
+    stepId: step.stepId,
+    sourceKind: step.exerciseSourceKind,
+    sourceId: step.exerciseSourceId,
+    dayNumber: step.dayNumber,
+    sortOrder: step.sortOrder,
+    notes: step.notes,
+    plannedSets: orderedPlannedSets(step).map((set) => ({ ...editableSet(set), setNumber: set.setNumber })),
+  })),
+});
+
+const inlineEditFingerprint = (edit: Pick<InlineExerciseEdit, 'notes' | 'plannedSets'>) => JSON.stringify({
+  notes: edit.notes,
+  plannedSets: edit.plannedSets,
+});
+
+function initialInlineSet(measurementType: WorkoutPlanStep['measurementType']): InlineSetDraft {
+  return {
+    setId: null,
+    targetRepsMin: measurementType === 'reps' ? 10 : null,
+    targetRepsMax: null,
+    targetDurationSeconds: measurementType === 'duration' ? 30 : null,
+    targetDistanceM: measurementType === 'distance' ? 1000 : null,
+    targetWeightKg: null,
+    restSeconds: 60,
+  };
+}
+
+function inlineEditError(step: Pick<WorkoutPlanStep, 'measurementType'>, plannedSets: InlineSetDraft[]) {
+  if (plannedSets.length < 1 || plannedSets.length > 100) return 'В упражнении должен быть от 1 до 100 подходов.';
+  for (const plannedSet of plannedSets) {
+    const numeric = [plannedSet.targetRepsMin, plannedSet.targetRepsMax, plannedSet.targetDurationSeconds, plannedSet.targetDistanceM, plannedSet.targetWeightKg, plannedSet.restSeconds];
+    if (numeric.some((value) => value != null && (!Number.isFinite(value) || value < 0))) return 'Введите допустимые неотрицательные значения.';
+    if (plannedSet.restSeconds != null && (!Number.isInteger(plannedSet.restSeconds) || plannedSet.restSeconds > 3600)) return 'Отдых указывается целым числом от 0 до 3600 секунд.';
+    if (step.measurementType === 'reps' && (plannedSet.targetRepsMin == null || plannedSet.targetRepsMin < 1 || plannedSet.targetDurationSeconds != null || plannedSet.targetDistanceM != null)) return 'Для повторений укажите минимум 1 повторение.';
+    if (step.measurementType === 'reps' && plannedSet.targetRepsMax != null && plannedSet.targetRepsMax < (plannedSet.targetRepsMin ?? 0)) return 'Максимум повторений не может быть меньше минимума.';
+    if (step.measurementType === 'duration' && (plannedSet.targetDurationSeconds == null || plannedSet.targetDurationSeconds < 1 || plannedSet.targetDistanceM != null || plannedSet.targetRepsMin != null || plannedSet.targetRepsMax != null || plannedSet.targetWeightKg != null)) return 'Для длительности укажите время не менее одной секунды.';
+    if (step.measurementType === 'distance' && ((plannedSet.targetDistanceM ?? 0) < 1 && (plannedSet.targetDurationSeconds ?? 0) < 1 || plannedSet.targetRepsMin != null || plannedSet.targetRepsMax != null || plannedSet.targetWeightKg != null)) return 'Для дистанции укажите метры или плановое время.';
+  }
+  return null;
+}
+
+function planDraftWithInlineExercise(plan: SourceAwareWorkoutPlanV3, edited: InlineExerciseEdit): SourceAwareWorkoutPlanDraftV3 {
+  return {
+    id: plan.id,
+    name: plan.name,
+    description: plan.description,
+    level: plan.level as SourceAwareWorkoutPlanDraftV3['level'],
+    estimatedDurationMinutes: plan.estimatedDurationMinutes,
+    steps: plan.exercises.map((step) => ({
+      stepId: step.stepId,
+      exerciseSourceKind: null,
+      exerciseSourceId: null,
+      dayNumber: step.dayNumber,
+      notes: step.stepId === edited.stepId ? (edited.notes.trim() || null) : step.notes,
+      plannedSets: (step.stepId === edited.stepId ? edited.plannedSets : orderedPlannedSets(step)).map((plannedSet) => ({
+        setId: plannedSet.setId,
+        targetRepsMin: plannedSet.targetRepsMin,
+        targetRepsMax: plannedSet.targetRepsMax,
+        targetDurationSeconds: plannedSet.targetDurationSeconds,
+        targetDistanceM: plannedSet.targetDistanceM,
+        targetWeightKg: plannedSet.targetWeightKg,
+        restSeconds: plannedSet.restSeconds,
+      })),
+    })),
+  };
 }
 
 type WorkoutEngineStep = SourceAwareWorkoutPlanStepV3 & { plannedSets: WorkoutPlanSetTarget[] };
@@ -138,18 +233,33 @@ function PlanDetailDrawer({ userId, planId, open, onOpenChange, onStart, onEdit,
   const [error, setError] = useState('');
   const [actionsOpen, setActionsOpen] = useState(false);
   const [detailStepId, setDetailStepId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<InlineExerciseEdit | null>(null);
+  const [savingExercise, setSavingExercise] = useState(false);
+  const [editError, setEditError] = useState('');
+  const [conflictingPlan, setConflictingPlan] = useState<SourceAwareWorkoutPlanV3 | null>(null);
+  const [discardPrompt, setDiscardPrompt] = useState<'detail' | 'drawer' | 'edit' | null>(null);
   const [restorePlanFocus, setRestorePlanFocus] = useState(false);
   const drawerBodyRef = useRef<HTMLDivElement | null>(null);
   const detailFocusRef = useRef<HTMLElement | null>(null);
+  const actionsRef = useRef<HTMLDivElement | null>(null);
   const exerciseTriggerRefs = useRef(new Map<string, HTMLButtonElement>());
   const detailReturnStepIdRef = useRef<string | null>(null);
   const planScrollTopRef = useRef(0);
 
   useEffect(() => {
     if (!open || !planId) return;
-    setLoading(true); setError(''); setActionsOpen(false); setDetailStepId(null); setPlan(null);
+    setLoading(true); setError(''); setActionsOpen(false); setDetailStepId(null); setEditing(null); setEditError(''); setConflictingPlan(null); setDiscardPrompt(null); setPlan(null);
     void loadWorkoutPlanV3(userId, planId).then(setPlan).catch(() => setError('Не удалось загрузить план.')).finally(() => setLoading(false));
   }, [open, planId, userId]);
+
+  useEffect(() => {
+    if (!actionsOpen) return;
+    const closeOnOutsidePress = (event: PointerEvent) => {
+      if (!actionsRef.current?.contains(event.target as Node)) setActionsOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePress);
+    return () => document.removeEventListener('pointerdown', closeOnOutsidePress);
+  }, [actionsOpen]);
 
   const detailStep = plan?.exercises.find((step) => step.stepId === detailStepId) ?? null;
   useEffect(() => {
@@ -170,9 +280,78 @@ function PlanDetailDrawer({ userId, planId, open, onOpenChange, onStart, onEdit,
   }, [detailStep, restorePlanFocus]);
 
   const closeExerciseDetail = useCallback(() => {
+    setEditing(null); setEditError(''); setConflictingPlan(null); setDiscardPrompt(null);
     setRestorePlanFocus(true);
     setDetailStepId(null);
   }, []);
+
+  const beginExerciseEdit = () => {
+    if (!plan || !detailStep || plan.origin !== 'personal') return;
+    const draft: InlineExerciseEdit = {
+      stepId: detailStep.stepId,
+      basePlanFingerprint: planFingerprint(plan),
+      notes: detailStep.notes ?? '',
+      plannedSets: orderedPlannedSets(detailStep).map(editableSet),
+      deletedSet: null,
+    };
+    setEditing(draft); setEditError(''); setConflictingPlan(null);
+  };
+
+  const editChanged = editing ? inlineEditFingerprint(editing) !== JSON.stringify({ notes: detailStep?.notes ?? '', plannedSets: detailStep ? orderedPlannedSets(detailStep).map(editableSet) : [] }) : false;
+  const requestDetailExit = (destination: 'detail' | 'drawer') => {
+    if (editing && editChanged) { setDiscardPrompt(destination); return; }
+    if (destination === 'detail') closeExerciseDetail(); else onOpenChange(false);
+  };
+  const requestEditCancel = () => {
+    if (editing && editChanged) { setDiscardPrompt('edit'); return; }
+    setEditing(null); setEditError(''); setConflictingPlan(null);
+  };
+  const discardExerciseChanges = () => {
+    const destination = discardPrompt;
+    setDiscardPrompt(null); setEditing(null); setEditError(''); setConflictingPlan(null);
+    if (destination === 'detail') closeExerciseDetail();
+    if (destination === 'drawer') onOpenChange(false);
+  };
+
+  const updateEditing = (changes: Partial<InlineExerciseEdit>) => setEditing((value) => value ? { ...value, ...changes } : value);
+  const updateEditingSet = (index: number, changes: Partial<InlineSetDraft>) => setEditing((value) => value ? { ...value, plannedSets: value.plannedSets.map((plannedSet, setIndex) => setIndex === index ? { ...plannedSet, ...changes } : plannedSet), deletedSet: value.deletedSet } : value);
+  const addEditingSet = () => setEditing((value) => {
+    if (!value || !detailStep) return value;
+    const previous = value.plannedSets.at(-1);
+    return { ...value, plannedSets: [...value.plannedSets, previous ? { ...previous, setId: null } : initialInlineSet(detailStep.measurementType)], deletedSet: null };
+  });
+  const removeEditingSet = (index: number) => setEditing((value) => {
+    if (!value || value.plannedSets.length <= 1) return value;
+    const removed = value.plannedSets[index];
+    return removed ? { ...value, plannedSets: value.plannedSets.filter((_, setIndex) => setIndex !== index), deletedSet: { set: removed, index } } : value;
+  });
+  const undoEditingSet = () => setEditing((value) => !value?.deletedSet ? value : {
+    ...value,
+    plannedSets: [...value.plannedSets.slice(0, value.deletedSet.index), value.deletedSet.set, ...value.plannedSets.slice(value.deletedSet.index)],
+    deletedSet: null,
+  });
+
+  const saveExerciseEdit = async () => {
+    if (!plan || !detailStep || !editing || savingExercise) return;
+    const validationError = inlineEditError(detailStep, editing.plannedSets);
+    if (validationError) { setEditError(validationError); return; }
+    if (editing.notes.length > 1000) { setEditError('Заметка не может быть длиннее 1000 символов.'); return; }
+    setSavingExercise(true); setEditError(''); setConflictingPlan(null);
+    try {
+      const latest = await loadWorkoutPlanV3(userId, plan.id);
+      if (planFingerprint(latest) !== editing.basePlanFingerprint) {
+        setConflictingPlan(latest);
+        setEditError('План изменён в другом окне. Сохранение остановлено, чтобы не потерять чужие изменения.');
+        return;
+      }
+      const saved = await saveMyWorkoutPlanV3(userId, planDraftWithInlineExercise(latest, editing));
+      setPlan(saved); setEditing(null); setEditError('');
+    } catch {
+      setEditError('Не удалось сохранить упражнение. Черновик остался на экране — повторите попытку.');
+    } finally {
+      setSavingExercise(false);
+    }
+  };
 
   const start = async () => {
     if (!planId || starting) return;
@@ -184,7 +363,7 @@ function PlanDetailDrawer({ userId, planId, open, onOpenChange, onStart, onEdit,
   const chooseAction = (action: (value: SourceAwareWorkoutPlan) => void) => { if (!plan) return; setActionsOpen(false); action(plan); };
   const assigned = plan?.origin === 'trainer_assigned';
   const closeDrawer = (nextOpen: boolean) => {
-    if (!nextOpen && detailStep) { closeExerciseDetail(); return; }
+    if (!nextOpen && detailStep) { requestDetailExit('detail'); return; }
     onOpenChange(nextOpen);
   };
   const openExerciseDetail = (step: SourceAwareWorkoutPlanStepV3) => {
@@ -197,42 +376,47 @@ function PlanDetailDrawer({ userId, planId, open, onOpenChange, onStart, onEdit,
   return <Drawer open={open} onOpenChange={closeDrawer}>
     <DrawerContent className="flux-drawer flux-workout-plan-drawer">
       <DrawerHeader className="flux-drawer-header">
-        <button type="button" className="flux-drawer-back" onClick={() => detailStep ? closeExerciseDetail() : onOpenChange(false)} aria-label={detailStep ? 'Назад к плану' : 'Назад к тренировкам'}><ArrowLeft /></button>
-        <div>
+        <button type="button" className="flux-drawer-back" onClick={() => detailStep ? requestDetailExit('detail') : onOpenChange(false)} aria-label={detailStep ? 'Назад к плану' : 'Назад к тренировкам'}><ArrowLeft /></button>
+        <div className="flux-plan-drawer-title">
           <DrawerTitle>{detailStep?.name ?? plan?.name ?? 'План тренировки'}</DrawerTitle>
           <DrawerDescription>{detailStep ? `План: ${plan?.name ?? ''}` : plan?.description ?? (assigned ? 'План от тренера' : 'Личный план')}</DrawerDescription>
         </div>
-        {plan && !assigned && !detailStep && <button type="button" className="flux-drawer-back" aria-label="Действия плана" aria-expanded={actionsOpen} onClick={() => setActionsOpen((value) => !value)}><MoreHorizontal /></button>}
+        {plan && !assigned && !detailStep ? <div className="flux-plan-actions" ref={actionsRef}><button type="button" className="flux-drawer-back" aria-label="Действия плана" aria-haspopup="menu" aria-expanded={actionsOpen} onClick={() => setActionsOpen((value) => !value)}><MoreHorizontal /></button>{actionsOpen && <div className="flux-plan-actions-menu" role="menu"><button type="button" role="menuitem" onClick={() => chooseAction(onEdit)}>Редактировать</button><button type="button" role="menuitem" onClick={() => chooseAction(onDuplicate)}>Создать копию</button>{plan.isActive && <button type="button" role="menuitem" onClick={() => chooseAction(onArchive)}>В архив</button>}<button type="button" className="is-destructive" role="menuitem" onClick={() => chooseAction(onDelete)}>Удалить план</button></div>}</div> : <span aria-hidden="true" className="flux-plan-drawer-header-spacer" />}
       </DrawerHeader>
       <div ref={drawerBodyRef} className="flux-workout-drawer-body" onKeyDownCapture={(event) => {
-        if (event.key === 'Escape' && detailStep) { event.preventDefault(); event.stopPropagation(); closeExerciseDetail(); }
+        if (event.key === 'Escape' && actionsOpen) { event.preventDefault(); event.stopPropagation(); setActionsOpen(false); }
+        if (event.key === 'Escape' && detailStep) { event.preventDefault(); event.stopPropagation(); requestDetailExit('detail'); }
       }}>
-        {plan && !assigned && actionsOpen && <div className="flux-plan-actions-menu" role="menu"><button type="button" role="menuitem" onClick={() => chooseAction(onEdit)}>Редактировать</button><button type="button" role="menuitem" onClick={() => chooseAction(onDuplicate)}>Создать копию</button>{plan.isActive && <button type="button" role="menuitem" onClick={() => chooseAction(onArchive)}>В архив</button>}<button type="button" className="is-destructive" role="menuitem" onClick={() => chooseAction(onDelete)}>Удалить план</button></div>}
-        {loading ? <p className="flux-trainer-empty">Загружаем план…</p> : error && !plan ? <p className="flux-client-inline-error">{error}</p> : detailStep ? <ExercisePlanDetail step={detailStep} focusRef={detailFocusRef} /> : plan ? <>
-          <section className="flux-workout-hero"><span className="flux-eyebrow">{assigned ? `От тренера${plan.trainerName ? ` · ${plan.trainerName}` : ''}` : 'Личный план'}</span><strong>{plan.name}</strong><p>{plan.estimatedDurationMinutes ? `${plan.estimatedDurationMinutes} мин` : 'Длительность не указана'} · {plan.exercises.length} упражнений</p></section>
-          {plan.exercises.length ? <section className="flux-exercise-list"><div className="flux-section-heading"><h2>Упражнения</h2><span>{plan.level ?? 'Ваш темп'}</span></div>{plan.exercises.map((step, index) => <button type="button" className="flux-plan-exercise-row" key={step.stepId} aria-label={`Открыть ${step.name}`} ref={(element) => { if (element) exerciseTriggerRefs.current.set(step.stepId, element); else exerciseTriggerRefs.current.delete(step.stepId); }} onClick={() => openExerciseDetail(step)}><span>{String(index + 1).padStart(2, '0')}</span><p><strong>{step.name}</strong><small>{planStepSummary(step)}</small></p><ChevronRight /></button>)}</section> : <p className="flux-trainer-empty">В этом плане пока нет упражнений.</p>}
+        {loading ? <p className="flux-trainer-empty">Загружаем план…</p> : error && !plan ? <p className="flux-client-inline-error">{error}</p> : detailStep ? <ExercisePlanDetail step={detailStep} focusRef={detailFocusRef} canEdit={plan?.origin === 'personal'} editing={editing} saving={savingExercise} error={editError} conflict={Boolean(conflictingPlan)} onBeginEdit={beginExerciseEdit} onUpdate={updateEditing} onUpdateSet={updateEditingSet} onAddSet={addEditingSet} onRemoveSet={removeEditingSet} onUndoSet={undoEditingSet} onSave={() => { void saveExerciseEdit(); }} onCancel={requestEditCancel} onReloadConflict={() => { if (!conflictingPlan) return; setPlan(conflictingPlan); setEditing(null); setEditError(''); setConflictingPlan(null); }} /> : plan ? <>
+          <section className="flux-plan-overview"><span className="flux-eyebrow">{assigned ? `От тренера${plan.trainerName ? ` · ${plan.trainerName}` : ''}` : 'Личный план'}{plan.level ? ` · ${plan.level}` : ''}</span><p>{plan.estimatedDurationMinutes ? `${plan.estimatedDurationMinutes} мин` : 'Длительность не указана'} · {plan.exercises.length} упражнений</p></section>
+          {plan.exercises.length ? <section className="flux-exercise-list"><div className="flux-section-heading"><h2>Упражнения</h2><span>{plan.exercises.length}</span></div>{plan.exercises.map((step, index) => <button type="button" className="flux-plan-exercise-row" key={step.stepId} aria-label={`Открыть ${step.name}`} ref={(element) => { if (element) exerciseTriggerRefs.current.set(step.stepId, element); else exerciseTriggerRefs.current.delete(step.stepId); }} onClick={() => openExerciseDetail(step)}><span>{String(index + 1).padStart(2, '0')}</span><p><strong>{step.name}</strong><small>{planStepSummary(step)}</small></p><ChevronRight /></button>)}</section> : <p className="flux-trainer-empty">В этом плане пока нет упражнений.</p>}
           {error && <p className="flux-client-inline-error">{error}</p>}
           <Button className="flux-main-button" size="lg" disabled={starting || plan.exercises.length === 0 || !plan.isActive} onClick={() => { void start(); }}>{starting ? <LoaderCircle className="is-spinning" /> : <Play />} {plan.isActive ? (starting ? 'Запускаю…' : 'Начать тренировку') : 'План в архиве'}</Button>
         </> : null}
+        {discardPrompt && <section className="flux-inline-edit-confirm" role="alertdialog" aria-label="Отменить изменения упражнения?"><p>Несохранённые изменения упражнения будут потеряны.</p><div><Button type="button" variant="secondary" onClick={() => setDiscardPrompt(null)}>Продолжить редактирование</Button><Button type="button" onClick={discardExerciseChanges}>Отменить изменения</Button></div></section>}
       </div>
     </DrawerContent>
   </Drawer>;
 }
 
-function ExercisePlanDetail({ step, focusRef }: { step: SourceAwareWorkoutPlanStepV3; focusRef: RefObject<HTMLElement | null> }) {
+function ExercisePlanDetail({ step, focusRef, canEdit, editing, saving, error, conflict, onBeginEdit, onUpdate, onUpdateSet, onAddSet, onRemoveSet, onUndoSet, onSave, onCancel, onReloadConflict }: { step: SourceAwareWorkoutPlanStepV3; focusRef: RefObject<HTMLElement | null>; canEdit: boolean; editing: InlineExerciseEdit | null; saving: boolean; error: string; conflict: boolean; onBeginEdit: () => void; onUpdate: (changes: Partial<InlineExerciseEdit>) => void; onUpdateSet: (index: number, changes: Partial<InlineSetDraft>) => void; onAddSet: () => void; onRemoveSet: (index: number) => void; onUndoSet: () => void; onSave: () => void; onCancel: () => void; onReloadConflict: () => void }) {
   const plannedSets = orderedPlannedSets(step);
   return <article ref={focusRef} className="flux-plan-exercise-detail" aria-label={`Подробности упражнения: ${step.name}`} tabIndex={-1}>
     <section className="flux-plan-exercise-overview"><span className="flux-eyebrow">{measurementLabel(step.measurementType)}</span></section>
-    {step.instructions && <section className="flux-plan-detail-copy"><h3>Техника выполнения</h3><p>{step.instructions}</p></section>}
-    {step.notes && <section className="flux-plan-detail-copy"><h3>Заметка к упражнению</h3><p>{step.notes}</p></section>}
-    <section className="flux-plan-set-section" aria-labelledby={`planned-sets-${step.stepId}`}>
-      <div className="flux-section-heading"><h3 id={`planned-sets-${step.stepId}`}>Плановые подходы</h3><span>{plannedSets.length}</span></div>
-      <ol className="flux-plan-set-list">{plannedSets.map((plannedSet) => {
-        const target = plannedSetLabel(step, plannedSet);
-        return <li key={plannedSet.setId ?? `${step.stepId}-${plannedSet.setNumber}`}><div><strong>Подход {plannedSet.setNumber}</strong>{target && <span>{target}</span>}</div>{plannedSet.restSeconds != null && <small>{plannedSet.restSeconds === 0 ? 'Без отдыха' : `Отдых ${timerLabel(plannedSet.restSeconds)}`}</small>}</li>;
-      })}</ol>
-    </section>
+    {!editing && <>{canEdit && <Button type="button" variant="secondary" size="sm" className="flux-inline-exercise-edit" aria-label="Редактировать упражнение" onClick={onBeginEdit}><Pencil /> Редактировать</Button>}{step.instructions && <section className="flux-plan-detail-copy"><h3>Техника выполнения</h3><p>{step.instructions}</p></section>}{step.notes && <section className="flux-plan-detail-copy"><h3>Заметка к упражнению</h3><p>{step.notes}</p></section>}<section className="flux-plan-set-section" aria-labelledby={`planned-sets-${step.stepId}`}><div className="flux-section-heading"><h3 id={`planned-sets-${step.stepId}`}>Плановые подходы</h3><span>{plannedSets.length}</span></div><ol className="flux-plan-set-list">{plannedSets.map((plannedSet) => { const target = plannedSetLabel(step, plannedSet); return <li key={plannedSet.setId ?? `${step.stepId}-${plannedSet.setNumber}`}><div><strong>Подход {plannedSet.setNumber}</strong>{target && <span>{target}</span>}</div>{plannedSet.restSeconds != null && <small>{plannedSet.restSeconds === 0 ? 'Без отдыха' : `Отдых ${timerLabel(plannedSet.restSeconds)}`}</small>}</li>; })}</ol></section></>}
+    {editing && <InlineExerciseEditor step={step} editing={editing} saving={saving} error={error} conflict={conflict} onUpdate={onUpdate} onUpdateSet={onUpdateSet} onAddSet={onAddSet} onRemoveSet={onRemoveSet} onUndoSet={onUndoSet} onSave={onSave} onCancel={onCancel} onReloadConflict={onReloadConflict} />}
   </article>;
+}
+
+function InlineExerciseEditor({ step, editing, saving, error, conflict, onUpdate, onUpdateSet, onAddSet, onRemoveSet, onUndoSet, onSave, onCancel, onReloadConflict }: { step: SourceAwareWorkoutPlanStepV3; editing: InlineExerciseEdit; saving: boolean; error: string; conflict: boolean; onUpdate: (changes: Partial<InlineExerciseEdit>) => void; onUpdateSet: (index: number, changes: Partial<InlineSetDraft>) => void; onAddSet: () => void; onRemoveSet: (index: number) => void; onUndoSet: () => void; onSave: () => void; onCancel: () => void; onReloadConflict: () => void }) {
+  const numeric = (value: string) => { const trimmed = value.trim(); if (!trimmed) return null; const parsed = Number(trimmed.replace(',', '.')); return Number.isFinite(parsed) && parsed >= 0 ? parsed : null; };
+  return <form className="flux-inline-exercise-editor" onSubmit={(event) => { event.preventDefault(); onSave(); }}>
+    <label className="flux-workout-field">Заметка к упражнению <small>необязательно</small><textarea aria-label="Заметка к упражнению" value={editing.notes} maxLength={1000} disabled={saving} onChange={(event) => onUpdate({ notes: event.target.value })} /></label>
+    <section className="flux-plan-set-section" aria-labelledby={`edit-planned-sets-${step.stepId}`}><div className="flux-section-heading"><h3 id={`edit-planned-sets-${step.stepId}`}>Плановые подходы</h3><span>{editing.plannedSets.length}</span></div>{editing.deletedSet && <p className="flux-set-undo" role="status">Подход удалён <button type="button" onClick={onUndoSet} disabled={saving}><RotateCcw /> Отменить</button></p>}<div className="flux-inline-set-list">{editing.plannedSets.map((plannedSet, index) => <fieldset className="flux-inline-set-card" key={plannedSet.setId ?? `new-${index}`}><legend>Подход {index + 1}</legend>{step.measurementType === 'reps' && <div className="flux-inline-target-grid"><label>Минимум повторений<input aria-label={`Минимум повторений, подход ${index + 1}`} inputMode="numeric" value={plannedSet.targetRepsMin ?? ''} disabled={saving} onChange={(event) => onUpdateSet(index, { targetRepsMin: numeric(event.target.value) })} /></label><label>Максимум повторений <small>необязательно</small><input aria-label={`Максимум повторений, подход ${index + 1}`} inputMode="numeric" value={plannedSet.targetRepsMax ?? ''} disabled={saving} onChange={(event) => onUpdateSet(index, { targetRepsMax: numeric(event.target.value) })} /></label><label>Вес, кг <small>необязательно</small><input aria-label={`Вес, кг, подход ${index + 1}`} inputMode="decimal" value={plannedSet.targetWeightKg ?? ''} disabled={saving} onChange={(event) => onUpdateSet(index, { targetWeightKg: numeric(event.target.value) })} /></label></div>}{step.measurementType === 'duration' && <MinutesSecondsInput label="Длительность" value={plannedSet.targetDurationSeconds} onChange={(value) => onUpdateSet(index, { targetDurationSeconds: value })} minutesAriaLabel={`Длительность: минуты, подход ${index + 1}`} secondsAriaLabel={`Длительность: секунды, подход ${index + 1}`} disabled={saving} />}{step.measurementType === 'distance' && <><label className="flux-workout-field">Дистанция, м<input aria-label={`Дистанция, подход ${index + 1}`} inputMode="decimal" value={plannedSet.targetDistanceM ?? ''} disabled={saving} onChange={(event) => onUpdateSet(index, { targetDistanceM: numeric(event.target.value) })} /></label><MinutesSecondsInput label="Плановая длительность" optional value={plannedSet.targetDurationSeconds} onChange={(value) => onUpdateSet(index, { targetDurationSeconds: value })} minutesAriaLabel={`Плановая длительность: минуты, подход ${index + 1}`} secondsAriaLabel={`Плановая длительность: секунды, подход ${index + 1}`} disabled={saving} /></>}<MinutesSecondsInput label="Отдых" optional value={plannedSet.restSeconds} onChange={(value) => onUpdateSet(index, { restSeconds: value })} minutesAriaLabel={`Отдых: минуты, подход ${index + 1}`} secondsAriaLabel={`Отдых: секунды, подход ${index + 1}`} disabled={saving} /><button type="button" className="flux-set-delete" aria-label={`Удалить подход ${index + 1}`} disabled={saving || editing.plannedSets.length === 1} onClick={() => onRemoveSet(index)}><Trash2 /> Удалить</button></fieldset>)}</div><button type="button" className="flux-add-set" disabled={saving || editing.plannedSets.length >= 100} onClick={onAddSet}><Plus /> Добавить подход</button></section>
+    {error && <p className="flux-client-inline-error" role="alert">{error}</p>}
+    {conflict && <Button type="button" variant="secondary" onClick={onReloadConflict}>Перезагрузить данные</Button>}
+    <div className="flux-inline-edit-actions"><Button type="button" variant="secondary" disabled={saving} onClick={onCancel}>Отмена</Button><Button type="submit" disabled={saving}>{saving ? <LoaderCircle className="is-spinning" /> : <Check />} {saving ? 'Сохраняем…' : 'Сохранить изменения'}</Button></div>
+  </form>;
 }
 
 function WorkoutDetailsDrawer({ userId, sessionId, open, onOpenChange }: { userId: string; sessionId: string | null; open: boolean; onOpenChange: (open: boolean) => void }) {

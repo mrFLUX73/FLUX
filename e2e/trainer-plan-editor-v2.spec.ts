@@ -132,6 +132,7 @@ test(`Trainer V3 execution: client-safe snapshot preserves per-set plan and actu
     const clientExerciseDetail = client.page.getByRole('dialog', { name: privateName });
     await expect(clientExerciseDetail.getByText('8 повторений · 40 кг', { exact: true })).toBeVisible();
     await expect(clientExerciseDetail.getByText('Отдых 00:25', { exact: true })).toBeVisible();
+    await expect(clientExerciseDetail.getByRole('button', { name: 'Редактировать упражнение', exact: true })).toHaveCount(0);
     expect(await clientExerciseDetail.textContent()).not.toContain(privateExerciseId!);
     await expectNoHorizontalOverflow(client.page);
     await stableScreenshot(client.page, `test-results/plan-viewer-v3-${width}.png`);

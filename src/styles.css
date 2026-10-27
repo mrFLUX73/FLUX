@@ -1495,12 +1495,21 @@ button:active { transform: scale(.97); }
 .flux-workout-summary span, .flux-workout-summary small { display: block; color: var(--flux-muted); font-size: 8px; }
 .flux-workout-summary strong { font-size: 23px; font-weight: 500; }
 .flux-workout-plan-drawer { display: flex; flex-direction: column; }
-.flux-workout-drawer-body { min-height: 0; flex: 1 1 auto; display: grid; align-content: start; gap: 18px; overflow-y: auto; overscroll-behavior: contain; padding: 4px 21px calc(24px + env(safe-area-inset-bottom, 0px)); }
+.flux-workout-plan-drawer .flux-drawer-header { position: relative; z-index: 2; display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; gap: 10px; align-items: center; padding: 16px 21px 12px; text-align: center !important; }
+.flux-plan-drawer-title { min-width: 0; display: grid; gap: 2px; }
+.flux-plan-drawer-title [data-slot='drawer-title'], .flux-plan-drawer-title [data-slot='drawer-description'] { overflow-wrap: anywhere; }
+.flux-plan-drawer-title [data-slot='drawer-description'] { font-size: 10px; line-height: 1.35; }
+.flux-plan-drawer-header-spacer { display: block; width: 44px; height: 44px; }
+.flux-plan-actions { position: relative; display: grid; place-items: center; }
+.flux-plan-actions-menu { position: absolute; top: calc(100% + 8px); right: 0; z-index: 3; width: min(220px, calc(100vw - 36px)); }
+.flux-workout-drawer-body { position: relative; z-index: 1; min-height: 0; flex: 1 1 auto; display: grid; align-content: start; gap: 18px; overflow-y: auto; overscroll-behavior: contain; padding: 4px 21px calc(24px + env(safe-area-inset-bottom, 0px)); }
 .flux-workout-drawer-body .flux-main-button { width: 100%; }
 .flux-workout-hero { min-height: 0; display: block; }
 .flux-workout-hero > strong, .flux-workout-hero > p { display: block; }
 .flux-workout-hero > strong { margin-top: 5px; font-size: 20px; font-weight: 500; }
 .flux-workout-hero > p { margin: 6px 0 0; color: var(--flux-muted); font-size: 10px; }
+.flux-plan-overview { display: grid; gap: 5px; padding: 13px 14px; border-radius: 17px; background: var(--flux-soft); }
+.flux-plan-overview > p { margin: 0; color: var(--flux-muted); font-size: 10px; line-height: 1.4; }
 .flux-workout-list-button, .flux-workout-history-button { width: 100%; min-height: 62px; display: grid; grid-template-columns: 34px minmax(0, 1fr) 18px; gap: 10px; align-items: center; padding: 0; border: 0; border-bottom: 1px solid var(--flux-border); background: transparent; color: var(--flux-ink); text-align: left; }
 .flux-workout-list-button > span { color: var(--flux-muted); font-size: 10px; }
 .flux-workout-list-button > p, .flux-workout-history-button > p { min-width: 0; margin: 0; }
@@ -1510,6 +1519,7 @@ button:active { transform: scale(.97); }
 .flux-workout-list-button > svg, .flux-workout-history-button > svg { width: 16px; color: var(--flux-muted); }
 .flux-plan-exercise-detail { display: grid; gap: 18px; min-width: 0; padding-bottom: 2px; }
 .flux-workout-plan-drawer .flux-drawer-back { width: 44px; height: 44px; }
+.flux-inline-exercise-edit { justify-self: start; min-height: 40px; }
 .flux-plan-detail-copy { display: grid; gap: 6px; padding: 14px; border-radius: 17px; background: var(--flux-soft-2); }
 .flux-plan-detail-copy h3, .flux-plan-set-section h3 { margin: 0; color: var(--flux-ink); font-size: 11px; font-weight: 600; }
 .flux-plan-detail-copy p { margin: 0; color: var(--flux-muted); font-size: 11px; line-height: 1.55; overflow-wrap: anywhere; white-space: pre-line; }
@@ -1518,6 +1528,18 @@ button:active { transform: scale(.97); }
 .flux-plan-set-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
 .flux-plan-set-list li { min-width: 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 12px; border: 1px solid var(--flux-border); border-radius: 15px; background: var(--flux-card); }
 .flux-plan-set-list li > div { min-width: 0; display: grid; gap: 3px; }
+.flux-inline-exercise-editor { display: grid; gap: 15px; }
+.flux-inline-set-list { display: grid; gap: 10px; }
+.flux-inline-set-card { min-width: 0; display: grid; gap: 12px; margin: 0; padding: 12px; border: 1px solid var(--flux-border); border-radius: 16px; background: var(--flux-card); }
+.flux-inline-set-card legend { padding: 0 4px; color: var(--flux-muted); font-size: 10px; }
+.flux-inline-target-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+.flux-inline-target-grid label, .flux-inline-set-card > .flux-workout-field { display: grid; min-width: 0; gap: 5px; color: var(--flux-muted); font-size: 10px; }
+.flux-inline-target-grid input, .flux-inline-set-card input { min-width: 0; }
+.flux-inline-edit-actions { display: grid; grid-template-columns: 1fr 1.25fr; gap: 10px; }
+.flux-inline-edit-actions [data-slot='button'] { min-height: 44px; }
+.flux-inline-edit-confirm { position: sticky; bottom: 0; z-index: 2; display: grid; gap: 10px; padding: 14px; border: 1px solid var(--flux-border); border-radius: 17px; background: var(--flux-card); box-shadow: 0 -10px 28px color-mix(in srgb, var(--flux-ink) 11%, transparent); }
+.flux-inline-edit-confirm p { margin: 0; color: var(--flux-ink); font-size: 12px; line-height: 1.45; }
+.flux-inline-edit-confirm > div { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .flux-plan-set-list strong, .flux-plan-set-list span, .flux-plan-set-list small { display: block; }
 .flux-plan-set-list strong { color: var(--flux-ink); font-size: 11px; font-weight: 600; }
 .flux-plan-set-list span, .flux-plan-set-list small { color: var(--flux-muted); font-size: 10px; line-height: 1.4; overflow-wrap: anywhere; }
@@ -1764,3 +1786,10 @@ button:active { transform: scale(.97); }
 @media (max-width: 350px) { .flux-catalog-picker-body { gap: 10px; } .flux-catalog-filters, .flux-catalog-create-options { grid-template-columns: 1fr; } .flux-catalog-card-main { align-items: start; } .flux-catalog-added { font-size: 9px !important; } .flux-catalog-pagination { grid-template-columns: 1fr 1fr; } .flux-catalog-pagination span { display: none; } }
 @media (max-width: 480px) { .flux-workout-editor { --drawer-content-height: 100dvh; position: fixed !important; inset: 0 !important; max-height: none !important; border: 0 !important; border-radius: 0 !important; display: flex; flex-direction: column; } .flux-workout-editor [data-slot='drawer-swipe-handle'] { display: none; } .flux-workout-editor .flux-drawer-header { padding-top: max(12px, env(safe-area-inset-top, 0px)); } .flux-workout-editor-body { flex: 1 1 auto; min-height: 0; } }
 @media (max-width: 350px) { .flux-create-exercise { grid-template-columns: 1fr; } .flux-create-exercise [data-slot='button'] { grid-column: 1 / -1; width: 100%; } .flux-measurement-choice button { padding-inline: 3px; font-size: 9px; } }
+@media (max-width: 480px) {
+  .flux-workout-plan-drawer { --drawer-content-height: 100dvh; position: fixed !important; inset: 0 !important; width: 100% !important; height: 100dvh !important; max-height: none !important; margin: 0 !important; border: 0 !important; border-radius: 0 !important; padding: 0 !important; display: flex; flex-direction: column; }
+  .flux-workout-plan-drawer [data-slot='drawer-swipe-handle'] { display: none; }
+  .flux-workout-plan-drawer .flux-drawer-header { padding-top: max(12px, env(safe-area-inset-top, 0px)); padding-right: max(18px, env(safe-area-inset-right, 0px)); padding-left: max(18px, env(safe-area-inset-left, 0px)); }
+  .flux-workout-plan-drawer .flux-workout-drawer-body { padding-right: max(18px, env(safe-area-inset-right, 0px)); padding-bottom: max(24px, env(safe-area-inset-bottom, 0px)); padding-left: max(18px, env(safe-area-inset-left, 0px)); }
+}
+@media (max-width: 350px) { .flux-inline-target-grid, .flux-inline-edit-actions, .flux-inline-edit-confirm > div { grid-template-columns: 1fr; } }

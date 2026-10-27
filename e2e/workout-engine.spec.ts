@@ -115,8 +115,259 @@ test('Workout plan viewer renders V3 virtual legacy sets for duration and distan
     const distanceDetail = page.getByRole('dialog', { name: distance.name });
     await expect(distanceDetail.getByText('400 м · Время 01:00', { exact: true })).toBeVisible();
     await expect(distanceDetail.getByText('Без отдыха', { exact: true })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(drawer.getByRole('button', { name: `Открыть ${distance.name}` })).toBeFocused();
     await expectNoHorizontalOverflow(page);
     expect(errors()).toEqual([]);
+  } finally {
+    await fixture.cleanup();
+    await context.close();
+  }
+});
+
+test('Workout plan viewer edits one personal V3 exercise inline and keeps its set identity', async ({ browser }) => {
+  const { context, page, userId, errors } = await openWorkout(browser, 390);
+  const fixture = createWorkoutFixtureScope(page, userId, 'Inline V3 exercise edit');
+  try {
+    await fixture.assertNoActiveWorkout();
+    const duration = await fixture.createExercise('Инлайн длительность', 'duration');
+    const untouched = await fixture.createExercise('Неизменяемое упражнение', 'reps');
+    const plan = await fixture.savePlanV3([
+      { exerciseId: duration.id, notes: 'Исходная заметка', plannedSets: [{ targetDurationSeconds: 30, restSeconds: 20 }] },
+      { exerciseId: untouched.id, plannedSets: [{ targetRepsMin: 8, targetWeightKg: 25, restSeconds: 45 }] },
+    ]);
+    const before = await storedSessionRpc(page, 'get_my_workout_plan_v3', { p_plan_id: plan.id });
+    expect(before.status).toBe(200);
+    const beforeSteps = (before.data as { exercises: Array<{ step_id: string; name: string; planned_sets: Array<{ set_id: string }> }> }).exercises;
+    const durationBefore = beforeSteps.find((step) => step.name === duration.name)!;
+    const untouchedBefore = beforeSteps.find((step) => step.name === untouched.name)!;
+
+    await page.getByRole('button', { name: 'Тренировки', exact: true }).click();
+    await page.locator('.flux-workout-list-button').filter({ hasText: fixture.planName }).click();
+    const drawer = page.locator('.flux-workout-plan-drawer');
+    await drawer.getByRole('button', { name: `Открыть ${duration.name}` }).click();
+
+    await drawer.getByRole('button', { name: 'Редактировать упражнение', exact: true }).click();
+    await expect(drawer.getByRole('button', { name: 'Сохранить изменения', exact: true })).toBeVisible();
+    await page.getByLabel('Длительность: минуты, подход 1').fill('0');
+    await page.getByLabel('Длительность: секунды, подход 1').fill('45');
+    await page.getByLabel('Отдых: минуты, подход 1').fill('0');
+    await page.getByLabel('Отдых: секунды, подход 1').fill('15');
+    await page.getByLabel('Заметка к упражнению').fill('Обновлённая заметка');
+    await drawer.getByRole('button', { name: 'Сохранить изменения', exact: true }).click();
+
+    await expect(drawer.getByText('00:45', { exact: true })).toBeVisible();
+    await expect(drawer.getByText('Отдых 00:15', { exact: true })).toBeVisible();
+    await expect(drawer.getByText('Обновлённая заметка', { exact: true })).toBeVisible();
+    await drawer.getByLabel('Назад к плану').click();
+    await drawer.getByRole('button', { name: `Открыть ${duration.name}` }).click();
+    await expect(drawer.getByText('00:45', { exact: true })).toBeVisible();
+    await expect(drawer.getByText('Отдых 00:15', { exact: true })).toBeVisible();
+    await expect(drawer.getByText('Обновлённая заметка', { exact: true })).toBeVisible();
+
+    const after = await storedSessionRpc(page, 'get_my_workout_plan_v3', { p_plan_id: plan.id });
+    expect(after.status).toBe(200);
+    const afterSteps = (after.data as { exercises: Array<{ step_id: string; name: string; notes: string | null; planned_sets: Array<{ set_id: string; target_duration_seconds: number; rest_seconds: number }> }> }).exercises;
+    const durationAfter = afterSteps.find((step) => step.name === duration.name)!;
+    const untouchedAfter = afterSteps.find((step) => step.name === untouched.name)!;
+    expect(durationAfter.notes).toBe('Обновлённая заметка');
+    expect(durationAfter.planned_sets[0]).toEqual(expect.objectContaining({ set_id: durationBefore.planned_sets[0]!.set_id, target_duration_seconds: 45, rest_seconds: 15 }));
+    expect(untouchedAfter).toEqual(expect.objectContaining({ step_id: untouchedBefore.step_id }));
+    expect(untouchedAfter.planned_sets[0]?.set_id).toBe(untouchedBefore.planned_sets[0]?.set_id);
+    await expectNoHorizontalOverflow(page);
+    expect(errors()).toEqual([]);
+  } finally {
+    await fixture.cleanup();
+    await context.close();
+  }
+});
+
+test('Workout plan detail is a safe-area-aware full-screen mobile drawer and keeps actions as an overlay', async ({ browser }) => {
+  const { context, page, userId, errors } = await openWorkout(browser, 320);
+  const fixture = createWorkoutFixtureScope(page, userId, 'Mobile plan detail geometry');
+  try {
+    const exercise = await fixture.createExercise('Мобильная геометрия', 'reps');
+    await fixture.savePlanV3([{ exerciseId: exercise.id, plannedSets: [{ targetRepsMin: 8, restSeconds: 30 }] }]);
+
+    await page.getByRole('button', { name: 'Тренировки', exact: true }).click();
+    await page.locator('.flux-workout-list-button').filter({ hasText: fixture.planName }).click();
+    const drawer = page.locator('.flux-workout-plan-drawer');
+    const before = await drawer.getByRole('button', { name: `Открыть ${exercise.name}` }).boundingBox();
+    await drawer.getByLabel('Действия плана').click();
+    const after = await drawer.getByRole('button', { name: `Открыть ${exercise.name}` }).boundingBox();
+    expect(before).not.toBeNull();
+    expect(after).not.toBeNull();
+    expect(after!.y).toBe(before!.y);
+    for (const width of [320, 375, 390, 430]) {
+      await page.setViewportSize({ width, height: 844 });
+      const drawerBox = await drawer.boundingBox();
+      const headerBox = await drawer.locator('.flux-drawer-header').boundingBox();
+      const rowBox = await drawer.getByRole('button', { name: `Открыть ${exercise.name}` }).boundingBox();
+      const menuBox = await drawer.locator('.flux-plan-actions-menu').boundingBox();
+      expect(drawerBox).not.toBeNull();
+      expect(headerBox).not.toBeNull();
+      expect(rowBox).not.toBeNull();
+      expect(menuBox).not.toBeNull();
+      expect(drawerBox!.height).toBeGreaterThanOrEqual(843);
+      expect(headerBox!.y + headerBox!.height).toBeLessThanOrEqual(rowBox!.y);
+      expect(menuBox!.x).toBeGreaterThanOrEqual(0);
+      expect(menuBox!.x + menuBox!.width).toBeLessThanOrEqual(width);
+      await expectNoHorizontalOverflow(page);
+    }
+    expect(errors()).toEqual([]);
+  } finally {
+    await fixture.cleanup();
+    await context.close();
+  }
+});
+
+test('Workout plan viewer warns before discarding inline edits and returns to the exercise detail', async ({ browser }) => {
+  const { context, page, userId, errors } = await openWorkout(browser, 390);
+  const fixture = createWorkoutFixtureScope(page, userId, 'Inline edit cancel');
+  try {
+    const exercise = await fixture.createExercise('Отмена редактирования', 'reps');
+    await fixture.savePlanV3([{ exerciseId: exercise.id, notes: 'Исходная заметка', plannedSets: [{ targetRepsMin: 8, restSeconds: 30 }] }]);
+
+    await page.getByRole('button', { name: 'Тренировки', exact: true }).click();
+    await page.locator('.flux-workout-list-button').filter({ hasText: fixture.planName }).click();
+    const drawer = page.locator('.flux-workout-plan-drawer');
+    await drawer.getByRole('button', { name: `Открыть ${exercise.name}` }).click();
+    await drawer.getByRole('button', { name: 'Редактировать упражнение', exact: true }).click();
+    await page.getByLabel('Минимум повторений, подход 1').fill('10');
+    await drawer.getByRole('button', { name: 'Отмена', exact: true }).click();
+    await expect(drawer.getByRole('alertdialog', { name: 'Отменить изменения упражнения?' })).toBeVisible();
+    await drawer.getByRole('button', { name: 'Отменить изменения', exact: true }).click();
+
+    await expect(drawer.getByText('Плановые подходы', { exact: true })).toBeVisible();
+    await expect(drawer.getByText('8 повторений', { exact: true })).toBeVisible();
+    await expect(drawer.getByRole('button', { name: 'Редактировать упражнение', exact: true })).toBeVisible();
+    expect(errors()).toEqual([]);
+  } finally {
+    await fixture.cleanup();
+    await context.close();
+  }
+});
+
+test('Workout plan viewer edits reps and distance targets, inheriting and restoring a deleted set', async ({ browser }) => {
+  const { context, page, userId, errors } = await openWorkout(browser, 390);
+  const fixture = createWorkoutFixtureScope(page, userId, 'Inline set targets');
+  try {
+    const reps = await fixture.createExercise('Инлайн повторы', 'reps');
+    const distance = await fixture.createExercise('Инлайн дистанция', 'distance');
+    const plan = await fixture.savePlanV3([
+      { exerciseId: reps.id, plannedSets: [{ targetRepsMin: 8, targetRepsMax: 10, targetWeightKg: 25, restSeconds: 30 }] },
+      { exerciseId: distance.id, plannedSets: [{ targetDistanceM: 400, restSeconds: null }] },
+    ]);
+    const before = await storedSessionRpc(page, 'get_my_workout_plan_v3', { p_plan_id: plan.id });
+    expect(before.status).toBe(200);
+    const beforeSteps = (before.data as { exercises: Array<{ name: string; planned_sets: Array<{ set_id: string }> }> }).exercises;
+    const repsBefore = beforeSteps.find((step) => step.name === reps.name)!;
+
+    await page.getByRole('button', { name: 'Тренировки', exact: true }).click();
+    await page.locator('.flux-workout-list-button').filter({ hasText: fixture.planName }).click();
+    const drawer = page.locator('.flux-workout-plan-drawer');
+    await drawer.getByRole('button', { name: `Открыть ${reps.name}` }).click();
+    await drawer.getByRole('button', { name: 'Редактировать упражнение', exact: true }).click();
+    await page.getByLabel('Минимум повторений, подход 1').fill('6');
+    await page.getByLabel('Максимум повторений, подход 1').fill('9');
+    await page.getByLabel('Вес, кг, подход 1').fill('32.5');
+    await page.getByLabel('Отдых: минуты, подход 1').fill('0');
+    await page.getByLabel('Отдых: секунды, подход 1').fill('45');
+    await drawer.getByRole('button', { name: 'Добавить подход', exact: true }).click();
+    await expect(page.getByLabel('Минимум повторений, подход 2')).toHaveValue('6');
+    await expect(page.getByLabel('Вес, кг, подход 2')).toHaveValue('32.5');
+    await page.getByLabel('Удалить подход 2').click();
+    await drawer.getByRole('button', { name: 'Отменить', exact: true }).click();
+    await expect(page.getByLabel('Минимум повторений, подход 2')).toHaveValue('6');
+    await drawer.getByRole('button', { name: 'Сохранить изменения', exact: true }).click();
+    await expect(drawer.getByText('6–9 повторений · 32.5 кг', { exact: true })).toHaveCount(2);
+
+    await drawer.getByLabel('Назад к плану').click();
+    await drawer.getByRole('button', { name: `Открыть ${distance.name}` }).click();
+    await drawer.getByRole('button', { name: 'Редактировать упражнение', exact: true }).click();
+    await page.getByLabel('Дистанция, подход 1').fill('1500');
+    await page.getByLabel('Плановая длительность: минуты, подход 1').fill('2');
+    await page.getByLabel('Плановая длительность: секунды, подход 1').fill('5');
+    await page.getByLabel('Отдых: минуты, подход 1').fill('0');
+    await page.getByLabel('Отдых: секунды, подход 1').fill('0');
+    await drawer.getByRole('button', { name: 'Сохранить изменения', exact: true }).click();
+    await expect(drawer.getByText('1500 м · Время 02:05', { exact: true })).toBeVisible();
+    await expect(drawer.getByText('Без отдыха', { exact: true })).toBeVisible();
+
+    const after = await storedSessionRpc(page, 'get_my_workout_plan_v3', { p_plan_id: plan.id });
+    expect(after.status).toBe(200);
+    const afterSteps = (after.data as { exercises: Array<{ name: string; planned_sets: Array<{ set_id: string; target_reps_min: number | null; target_reps_max: number | null; target_weight_kg: number | null; rest_seconds: number | null; target_distance_m: number | null; target_duration_seconds: number | null }> }> }).exercises;
+    expect(afterSteps.find((step) => step.name === reps.name)?.planned_sets).toEqual([
+      expect.objectContaining({ set_id: repsBefore.planned_sets[0]!.set_id, target_reps_min: 6, target_reps_max: 9, target_weight_kg: 32.5, rest_seconds: 45 }),
+      expect.objectContaining({ target_reps_min: 6, target_reps_max: 9, target_weight_kg: 32.5, rest_seconds: 45 }),
+    ]);
+    expect(afterSteps.find((step) => step.name === distance.name)?.planned_sets).toEqual([
+      expect.objectContaining({ target_distance_m: 1500, target_duration_seconds: 125, rest_seconds: 0 }),
+    ]);
+    await expectNoHorizontalOverflow(page);
+    expect(errors()).toEqual([]);
+  } finally {
+    await fixture.cleanup();
+    await context.close();
+  }
+});
+
+test('Workout plan viewer preserves the draft after writer failure and stops on a changed V3 plan', async ({ browser }) => {
+  const { context, page, userId, errors } = await openWorkout(browser, 390);
+  const fixture = createWorkoutFixtureScope(page, userId, 'Inline save failure and conflict');
+  try {
+    const exercise = await fixture.createExercise('Конфликт V3', 'duration');
+    const plan = await fixture.savePlanV3([{ exerciseId: exercise.id, notes: 'Исходная', plannedSets: [{ targetDurationSeconds: 30, restSeconds: 20 }] }]);
+    await page.getByRole('button', { name: 'Тренировки', exact: true }).click();
+    await page.locator('.flux-workout-list-button').filter({ hasText: fixture.planName }).click();
+    const drawer = page.locator('.flux-workout-plan-drawer');
+    await drawer.getByRole('button', { name: `Открыть ${exercise.name}` }).click();
+    await drawer.getByRole('button', { name: 'Редактировать упражнение', exact: true }).click();
+    await page.getByLabel('Длительность: секунды, подход 1').fill('45');
+
+    let failOnce = true;
+    await page.route('**/rest/v1/rpc/save_my_workout_plan_v3', async (route) => {
+      if (failOnce) {
+        failOnce = false;
+        await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'temporary plan failure' }) });
+        return;
+      }
+      await route.continue();
+    });
+    await drawer.getByRole('button', { name: 'Сохранить изменения', exact: true }).click();
+    await expect(drawer.getByText('Не удалось сохранить упражнение. Черновик остался на экране — повторите попытку.', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('Длительность: секунды, подход 1')).toHaveValue('45');
+    await page.unroute('**/rest/v1/rpc/save_my_workout_plan_v3');
+    await drawer.getByRole('button', { name: 'Сохранить изменения', exact: true }).click();
+    await expect(drawer.getByText('00:45', { exact: true })).toBeVisible();
+
+    await drawer.getByRole('button', { name: 'Редактировать упражнение', exact: true }).click();
+    await page.getByLabel('Длительность: секунды, подход 1').fill('50');
+    const remote = await storedSessionRpc(page, 'get_my_workout_plan_v3', { p_plan_id: plan.id });
+    expect(remote.status).toBe(200);
+    const remotePlan = remote.data as { name: string; description: string | null; level: string | null; estimated_duration_minutes: number | null; exercises: Array<{ step_id: string; exercise_source_kind: string; exercise_source_id: string | null; day_number: number; notes: string | null; planned_sets: Array<{ set_id: string | null; target_reps_min: number | null; target_reps_max: number | null; target_duration_seconds: number | null; target_distance_m: number | null; target_weight_kg: number | null; rest_seconds: number | null }> }> };
+    const externalSave = await storedSessionRpc(page, 'save_my_workout_plan_v3', {
+      p_plan_id: plan.id,
+      p_name: remotePlan.name,
+      p_description: remotePlan.description,
+      p_level: remotePlan.level,
+      p_estimated_duration_minutes: remotePlan.estimated_duration_minutes,
+      p_steps: remotePlan.exercises.map((step) => ({
+        step_id: step.step_id,
+        exercise_source_kind: step.exercise_source_kind,
+        exercise_source_id: step.exercise_source_id,
+        day_number: step.day_number,
+        notes: step.step_id === remotePlan.exercises[0]!.step_id ? 'Внешнее изменение' : step.notes,
+        planned_sets: step.planned_sets,
+      })),
+    });
+    expect(externalSave.status).toBe(200);
+    await drawer.getByRole('button', { name: 'Сохранить изменения', exact: true }).click();
+    await expect(drawer.getByText('План изменён в другом окне. Сохранение остановлено, чтобы не потерять чужие изменения.', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('Длительность: секунды, подход 1')).toHaveValue('50');
+    await drawer.getByRole('button', { name: 'Перезагрузить данные', exact: true }).click();
+    await expect(drawer.getByText('Внешнее изменение', { exact: true })).toBeVisible();
+    expect(errors().filter((message) => !message.includes('status of 503'))).toEqual([]);
   } finally {
     await fixture.cleanup();
     await context.close();
