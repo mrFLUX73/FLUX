@@ -1518,25 +1518,65 @@ button:active { transform: scale(.97); }
 .flux-workout-list-button small, .flux-workout-history-button small { margin-top: 3px; color: var(--flux-muted); font-size: 8px; }
 .flux-workout-list-button > svg, .flux-workout-history-button > svg { width: 16px; color: var(--flux-muted); }
 .flux-plan-exercise-detail { display: grid; gap: 18px; min-width: 0; padding-bottom: 2px; }
+.flux-plan-exercise-detail:has(.flux-inline-exercise-editor) { gap: 10px; }
 .flux-workout-plan-drawer .flux-drawer-back { width: 44px; height: 44px; }
 .flux-inline-exercise-edit { justify-self: start; min-height: 40px; }
 .flux-plan-detail-copy { display: grid; gap: 6px; padding: 14px; border-radius: 17px; background: var(--flux-soft-2); }
 .flux-plan-detail-copy h3, .flux-plan-set-section h3 { margin: 0; color: var(--flux-ink); font-size: 11px; font-weight: 600; }
 .flux-plan-detail-copy p { margin: 0; color: var(--flux-muted); font-size: 11px; line-height: 1.55; overflow-wrap: anywhere; white-space: pre-line; }
 .flux-plan-set-section { min-width: 0; }
-.flux-plan-set-section .flux-section-heading { margin-bottom: 3px; }
+.flux-plan-set-section .flux-section-heading { margin-bottom: 3px; padding-inline: 10px; }
 .flux-plan-set-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
-.flux-plan-set-list li { min-width: 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 12px; border: 1px solid var(--flux-border); border-radius: 15px; background: var(--flux-card); }
-.flux-plan-set-list li > div { min-width: 0; display: grid; gap: 3px; }
-.flux-inline-exercise-editor { display: grid; gap: 15px; }
-.flux-inline-set-list { display: grid; gap: 10px; }
-.flux-inline-set-card { min-width: 0; display: grid; gap: 12px; margin: 0; padding: 12px; border: 1px solid var(--flux-border); border-radius: 16px; background: var(--flux-card); }
-.flux-inline-set-card legend { padding: 0 4px; color: var(--flux-muted); font-size: 10px; }
-.flux-inline-target-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
-.flux-inline-target-grid label, .flux-inline-set-card > .flux-workout-field { display: grid; min-width: 0; gap: 5px; color: var(--flux-muted); font-size: 10px; }
-.flux-inline-target-grid input, .flux-inline-set-card input { min-width: 0; }
+.flux-plan-set-list > li { min-width: 0; display: block; margin: 0; padding: 0; border: 0; background: transparent; }
+.flux-inline-exercise-editor { display: grid; gap: 9px; min-width: 0; }
+.flux-inline-note-field { gap: 5px; margin: 0; }
+.flux-inline-note-field > span { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; color: var(--flux-muted); font-size: 10px; font-weight: 600; }
+.flux-inline-note-field > span small { color: var(--flux-muted); font-size: inherit; font-weight: 400; }
+.flux-inline-note-field textarea { width: 100%; min-width: 0; min-height: 60px; padding: 9px 11px; border: 1px solid var(--flux-border); border-radius: 12px; background: var(--flux-card); color: var(--flux-ink); font: inherit; font-size: 13px; font-weight: 400; line-height: 1.4; resize: vertical; }
+.flux-inline-note-field textarea::placeholder { color: var(--flux-muted); opacity: .8; }
+.flux-inline-note-field textarea:focus-visible { outline: 3px solid color-mix(in srgb, var(--flux-accent) 45%, transparent); outline-offset: 1px; border-color: var(--flux-accent); }
+.flux-inline-exercise-editor .flux-set-undo { gap: 6px; margin: 0; padding: 6px 10px; font-size: 11px; }
+.flux-inline-set-list { display: grid; gap: 8px; }
+.flux-inline-set-card { min-width: 0; display: grid; gap: 8px; margin: 0; padding: 11px 12px; border: 0; border-radius: 15px; background: var(--flux-surface-soft); }
+.flux-inline-set-heading { min-width: 0; min-height: 32px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.flux-inline-set-heading > strong { min-width: 0; color: var(--flux-ink); font-size: 12px; font-weight: 600; }
+.flux-inline-set-heading > .flux-set-delete { width: auto; min-width: 88px; min-height: 40px; display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; gap: 7px; padding: 0 10px; border: 1px solid transparent; border-radius: 11px; background: transparent; color: var(--flux-danger, #b54747); font: inherit; font-size: 11px; font-weight: 600; line-height: 1; white-space: nowrap; }
+.flux-inline-set-heading > .flux-set-delete svg { width: 16px; height: 16px; flex: 0 0 auto; }
+.flux-inline-set-heading > .flux-set-delete:disabled { opacity: .48; }
+.flux-set-primary-grid { min-width: 0; display: grid; align-items: end; gap: 10px; }
+.flux-set-primary-grid-reps { grid-template-columns: minmax(0, 1fr) minmax(78px, .55fr); }
+.flux-set-reps-range { min-width: 0; display: grid; gap: 4px; margin: 0; padding: 0; border: 0; }
+.flux-set-reps-range legend, .flux-set-weight-field > span, .flux-set-distance-field > span { padding: 0; color: var(--flux-muted); font-size: 9px; line-height: 1.2; }
+.flux-set-reps-range > div { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 4px; align-items: end; }
+.flux-set-reps-range label, .flux-set-weight-field, .flux-set-distance-field { min-width: 0; display: grid; gap: 4px; color: var(--flux-muted); font-size: 9px; }
+.flux-set-reps-range label > span { padding-left: 2px; }
+.flux-set-range-separator { align-self: center; padding-top: 12px; color: var(--flux-muted); }
+.flux-set-reps-range input, .flux-set-weight-field input, .flux-set-distance-field input { width: 100%; min-width: 0; height: 44px; box-sizing: border-box; padding: 8px 9px; border: 1px solid var(--flux-border); border-radius: 10px; background: var(--flux-card); color: var(--flux-ink); font: inherit; font-size: 14px; font-variant-numeric: tabular-nums; }
+.flux-set-reps-range input::placeholder, .flux-set-weight-field input::placeholder, .flux-set-distance-field input::placeholder { color: var(--flux-muted); opacity: .8; }
+.flux-set-primary-value { min-width: 0; display: flex; align-items: baseline; gap: 7px; }
+.flux-set-primary-value > span { color: var(--flux-muted); font-size: 9px; }
+.flux-set-primary-value > strong, .flux-set-weight-field > strong { min-width: 0; color: var(--flux-ink); font-size: 16px; font-weight: 650; line-height: 1.2; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.flux-set-weight-field > strong { padding: 10px 0 8px; }
+.flux-set-primary-time { min-width: 0; }
+.flux-set-primary-time .flux-minutes-seconds { width: min(100%, 236px); }
+.flux-set-primary-time .flux-minutes-seconds legend { color: var(--flux-ink); font-size: 11px; font-weight: 650; }
+.flux-set-secondary { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding-top: 7px; border-top: 1px solid var(--flux-divider); }
+.flux-set-secondary.is-distance { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.flux-set-secondary-item { min-width: 0; }
+.flux-set-secondary-item .flux-minutes-seconds { width: min(100%, 190px); }
+.flux-set-secondary-item .flux-minutes-seconds legend { color: var(--flux-muted); font-size: 9px; font-weight: 500; }
+.flux-set-secondary-item .flux-minutes-seconds legend small { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.flux-minutes-seconds.is-compact > div { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 5px; align-items: center; }
+.flux-minutes-seconds.is-compact > div > label { grid-template-columns: minmax(0, 1fr); }
+.flux-minutes-seconds.is-compact input { padding-inline: 5px; text-align: center; }
+.flux-time-separator { color: var(--flux-muted); font-size: 17px; line-height: 1; }
+.flux-set-secondary-view { min-height: 25px; display: flex; align-items: center; gap: 5px; color: var(--flux-muted); font-size: 10px; }
+.flux-set-secondary-view > strong { color: var(--flux-ink); font-size: 10px; font-weight: 600; }
+.flux-inline-set-card input:focus-visible, .flux-inline-set-card button:focus-visible { outline: 3px solid color-mix(in srgb, var(--flux-accent) 58%, white); outline-offset: 2px; }
+.flux-inline-set-card .flux-minutes-seconds { min-width: 0; }
+.flux-inline-set-card .flux-minutes-seconds input { height: 44px; min-height: 44px; box-sizing: border-box; }
 .flux-inline-edit-actions { display: grid; grid-template-columns: 1fr 1.25fr; gap: 10px; }
-.flux-inline-edit-actions [data-slot='button'] { min-height: 44px; }
+.flux-inline-edit-actions [data-slot='button'] { width: 100%; min-width: 0; min-height: 48px; padding: 8px 12px; white-space: nowrap; }
 .flux-inline-edit-confirm { position: sticky; bottom: 0; z-index: 2; display: grid; gap: 10px; padding: 14px; border: 1px solid var(--flux-border); border-radius: 17px; background: var(--flux-card); box-shadow: 0 -10px 28px color-mix(in srgb, var(--flux-ink) 11%, transparent); }
 .flux-inline-edit-confirm p { margin: 0; color: var(--flux-ink); font-size: 12px; line-height: 1.45; }
 .flux-inline-edit-confirm > div { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -1711,11 +1751,11 @@ button:active { transform: scale(.97); }
 .flux-minutes-seconds b { color: var(--flux-muted); font-size: 9px; font-weight: 600; }
 .flux-time-input-error { color: var(--flux-danger); font-size: 9px; line-height: 1.3; }
 .flux-set-delete, .flux-add-set { min-height: 42px; border: 1px solid var(--flux-border); border-radius: 10px; background: var(--flux-card); color: var(--flux-primary); }
-.flux-set-delete { display: grid; place-items: center; padding: 0; color: var(--flux-danger); }
+.flux-set-editor .flux-set-delete { display: grid; place-items: center; padding: 0; color: var(--flux-danger); }
 .flux-add-set { display: inline-flex; width: fit-content; align-items: center; gap: 6px; padding: 0 12px; font: inherit; font-size: 12px; font-weight: 600; }
 .flux-set-undo { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 10px; padding: 9px 10px; border-radius: 12px; background: var(--flux-soft); color: var(--flux-primary); font-size: 12px; }
 .flux-set-undo button { display: inline-flex; align-items: center; gap: 5px; min-height: 32px; border: 0; background: transparent; color: var(--flux-accent); font: inherit; font-weight: 700; }
-@media (max-width: 480px) { .flux-editor-exercise-card-header { grid-template-columns: 24px minmax(0, 1fr) 92px; align-items: start; } .flux-editor-step-actions { grid-template-columns: repeat(2, 44px); gap: 4px; } .flux-editor-step-actions button { width: 44px; height: 44px; } .flux-set-editor-heading { display: none; } .flux-set-editor-row { grid-template-columns: 24px minmax(0, 1fr) 44px; gap: 8px; align-items: start; padding: 4px 0; } .flux-set-input-grid { grid-template-columns: minmax(0, 1fr); gap: 8px; } .flux-set-target-inputs { grid-template-columns: repeat(2, minmax(0, 1fr)); } .flux-set-editor-row > strong { align-self: center; padding-bottom: 0; } .flux-set-delete { width: 44px; min-height: 44px; } }
+@media (max-width: 480px) { .flux-editor-exercise-card-header { grid-template-columns: 24px minmax(0, 1fr) 92px; align-items: start; } .flux-editor-step-actions { grid-template-columns: repeat(2, 44px); gap: 4px; } .flux-editor-step-actions button { width: 44px; height: 44px; } .flux-set-editor-heading { display: none; } .flux-set-editor-row { grid-template-columns: 24px minmax(0, 1fr) 44px; gap: 8px; align-items: start; padding: 4px 0; } .flux-set-input-grid { grid-template-columns: minmax(0, 1fr); gap: 8px; } .flux-set-target-inputs { grid-template-columns: repeat(2, minmax(0, 1fr)); } .flux-set-editor-row > strong { align-self: center; padding-bottom: 0; } .flux-set-editor .flux-set-delete { width: 44px; min-height: 44px; } }
 .flux-editor-review-section { display: grid; gap: 10px; margin-top: 20px; }
 .flux-editor-review-section h2 { margin: 0; color: var(--flux-primary); font-size: 13px; font-weight: 600; }
 .flux-editor-review { margin-bottom: 0; }
@@ -1791,5 +1831,7 @@ button:active { transform: scale(.97); }
   .flux-workout-plan-drawer [data-slot='drawer-swipe-handle'] { display: none; }
   .flux-workout-plan-drawer .flux-drawer-header { padding-top: max(12px, env(safe-area-inset-top, 0px)); padding-right: max(18px, env(safe-area-inset-right, 0px)); padding-left: max(18px, env(safe-area-inset-left, 0px)); }
   .flux-workout-plan-drawer .flux-workout-drawer-body { padding-right: max(18px, env(safe-area-inset-right, 0px)); padding-bottom: max(24px, env(safe-area-inset-bottom, 0px)); padding-left: max(18px, env(safe-area-inset-left, 0px)); }
+  .flux-inline-note-field textarea { min-height: 64px; font-size: 16px; }
 }
-@media (max-width: 350px) { .flux-inline-target-grid, .flux-inline-edit-actions, .flux-inline-edit-confirm > div { grid-template-columns: 1fr; } }
+@media (max-width: 350px) { .flux-inline-edit-actions, .flux-inline-edit-confirm > div { grid-template-columns: 1fr; } }
+@media (max-width: 350px) { .flux-set-primary-grid-reps, .flux-set-secondary.is-distance { grid-template-columns: 1fr; } }

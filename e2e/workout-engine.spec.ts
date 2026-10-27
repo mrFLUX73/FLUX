@@ -67,8 +67,13 @@ test('Workout plan viewer uses V3 planned sets and opens an exercise detail with
     await expect(exerciseDetail.getByRole('heading', { name: exercise.name, exact: true })).toBeVisible();
     await expect(exerciseDetail.getByText('Техника выполнения', { exact: true })).toBeVisible();
     await expect(exerciseDetail.getByText('Сохраняйте ровный темп.', { exact: true })).toBeVisible();
-    await expect(exerciseDetail.getByText('8–10 повторений · 42.5 кг', { exact: true })).toBeVisible();
+    const setRows = exerciseDetail.locator('.flux-planned-set-row');
+    await expect(setRows).toHaveCount(2);
+    await expect(exerciseDetail.getByText('8–10 повторений', { exact: true })).toBeVisible();
+    await expect(exerciseDetail.getByText('42.5 кг', { exact: true })).toBeVisible();
     await expect(exerciseDetail.getByText('Отдых 00:30', { exact: true })).toBeVisible();
+    await expect(setRows.nth(1)).toContainText('12 повторений');
+    await expect(setRows.nth(1).locator('.flux-set-weight-field')).toContainText('35 кг');
     await expect(exerciseDetail.getByText('Без отдыха', { exact: true })).toBeVisible();
 
     await page.keyboard.press('Escape');
@@ -113,7 +118,8 @@ test('Workout plan viewer renders V3 virtual legacy sets for duration and distan
     await page.getByRole('button', { name: 'Назад к плану' }).click();
     await drawer.getByRole('button', { name: `Открыть ${distance.name}` }).click();
     const distanceDetail = page.getByRole('dialog', { name: distance.name });
-    await expect(distanceDetail.getByText('400 м · Время 01:00', { exact: true })).toBeVisible();
+    await expect(distanceDetail.getByText('400 м', { exact: true })).toBeVisible();
+    await expect(distanceDetail.getByText('01:00', { exact: true })).toBeVisible();
     await expect(distanceDetail.getByText('Без отдыха', { exact: true })).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(drawer.getByRole('button', { name: `Открыть ${distance.name}` })).toBeFocused();
@@ -133,7 +139,7 @@ test('Workout plan viewer edits one personal V3 exercise inline and keeps its se
     const duration = await fixture.createExercise('Инлайн длительность', 'duration');
     const untouched = await fixture.createExercise('Неизменяемое упражнение', 'reps');
     const plan = await fixture.savePlanV3([
-      { exerciseId: duration.id, notes: 'Исходная заметка', plannedSets: [{ targetDurationSeconds: 30, restSeconds: 20 }] },
+      { exerciseId: duration.id, notes: 'Исходная заметка', plannedSets: [{ targetDurationSeconds: 30, restSeconds: 20 }, { targetDurationSeconds: 45, restSeconds: null }] },
       { exerciseId: untouched.id, plannedSets: [{ targetRepsMin: 8, targetWeightKg: 25, restSeconds: 45 }] },
     ]);
     const before = await storedSessionRpc(page, 'get_my_workout_plan_v3', { p_plan_id: plan.id });
@@ -147,8 +153,20 @@ test('Workout plan viewer edits one personal V3 exercise inline and keeps its se
     const drawer = page.locator('.flux-workout-plan-drawer');
     await drawer.getByRole('button', { name: `Открыть ${duration.name}` }).click();
 
+    const viewSetRows = drawer.locator('.flux-planned-set-row');
+    await expect(viewSetRows).toHaveCount(2);
+    await expect(viewSetRows.first()).toContainText('00:30');
+    await expect(viewSetRows.first()).toContainText('Отдых 00:20');
+    await expect(viewSetRows.nth(1)).toContainText('00:45');
+    await expect(viewSetRows.nth(1).locator('.flux-set-secondary')).toHaveCount(0);
+    await drawer.locator('.flux-plan-exercise-detail').screenshot({ path: 'test-results/inline-exercise-view-390.png', animations: 'disabled' });
+
     await drawer.getByRole('button', { name: 'Редактировать упражнение', exact: true }).click();
+    await expect(drawer.locator('.flux-planned-set-row')).toHaveCount(2);
     await expect(drawer.getByRole('button', { name: 'Сохранить изменения', exact: true })).toBeVisible();
+    await expect(page.getByLabel('Длительность: секунды, подход 2')).toHaveValue('45');
+    await expect(page.getByLabel('Отдых: секунды, подход 2')).toHaveValue('');
+    await drawer.locator('.flux-inline-exercise-editor').screenshot({ path: 'test-results/inline-exercise-edit-390.png', animations: 'disabled' });
     await page.getByLabel('Длительность: минуты, подход 1').fill('0');
     await page.getByLabel('Длительность: секунды, подход 1').fill('45');
     await page.getByLabel('Отдых: минуты, подход 1').fill('0');
@@ -156,12 +174,12 @@ test('Workout plan viewer edits one personal V3 exercise inline and keeps its se
     await page.getByLabel('Заметка к упражнению').fill('Обновлённая заметка');
     await drawer.getByRole('button', { name: 'Сохранить изменения', exact: true }).click();
 
-    await expect(drawer.getByText('00:45', { exact: true })).toBeVisible();
+    await expect(drawer.locator('.flux-planned-set-row').first().getByText('00:45', { exact: true })).toBeVisible();
     await expect(drawer.getByText('Отдых 00:15', { exact: true })).toBeVisible();
     await expect(drawer.getByText('Обновлённая заметка', { exact: true })).toBeVisible();
     await drawer.getByLabel('Назад к плану').click();
     await drawer.getByRole('button', { name: `Открыть ${duration.name}` }).click();
-    await expect(drawer.getByText('00:45', { exact: true })).toBeVisible();
+    await expect(drawer.locator('.flux-planned-set-row').first().getByText('00:45', { exact: true })).toBeVisible();
     await expect(drawer.getByText('Отдых 00:15', { exact: true })).toBeVisible();
     await expect(drawer.getByText('Обновлённая заметка', { exact: true })).toBeVisible();
 
@@ -280,7 +298,10 @@ test('Workout plan viewer edits reps and distance targets, inheriting and restor
     await drawer.getByRole('button', { name: 'Отменить', exact: true }).click();
     await expect(page.getByLabel('Минимум повторений, подход 2')).toHaveValue('6');
     await drawer.getByRole('button', { name: 'Сохранить изменения', exact: true }).click();
-    await expect(drawer.getByText('6–9 повторений · 32.5 кг', { exact: true })).toHaveCount(2);
+    await expect(drawer.locator('.flux-planned-set-row').filter({ hasText: 'Подход 1' }).getByText('6–9 повторений', { exact: true })).toBeVisible();
+    await expect(drawer.locator('.flux-planned-set-row').filter({ hasText: 'Подход 1' }).getByText('32.5 кг', { exact: true })).toBeVisible();
+    await expect(drawer.locator('.flux-planned-set-row').filter({ hasText: 'Подход 2' }).getByText('6–9 повторений', { exact: true })).toBeVisible();
+    await expect(drawer.locator('.flux-planned-set-row').filter({ hasText: 'Подход 2' }).getByText('32.5 кг', { exact: true })).toBeVisible();
 
     await drawer.getByLabel('Назад к плану').click();
     await drawer.getByRole('button', { name: `Открыть ${distance.name}` }).click();
@@ -291,7 +312,9 @@ test('Workout plan viewer edits reps and distance targets, inheriting and restor
     await page.getByLabel('Отдых: минуты, подход 1').fill('0');
     await page.getByLabel('Отдых: секунды, подход 1').fill('0');
     await drawer.getByRole('button', { name: 'Сохранить изменения', exact: true }).click();
-    await expect(drawer.getByText('1500 м · Время 02:05', { exact: true })).toBeVisible();
+    const distanceRow = drawer.locator('.flux-planned-set-row').filter({ hasText: 'Подход 1' });
+    await expect(distanceRow.getByText('1500 м', { exact: true })).toBeVisible();
+    await expect(distanceRow.locator('.flux-set-secondary-item').filter({ hasText: 'План' })).toContainText('02:05');
     await expect(drawer.getByText('Без отдыха', { exact: true })).toBeVisible();
 
     const after = await storedSessionRpc(page, 'get_my_workout_plan_v3', { p_plan_id: plan.id });
@@ -368,6 +391,164 @@ test('Workout plan viewer preserves the draft after writer failure and stops on 
     await drawer.getByRole('button', { name: 'Перезагрузить данные', exact: true }).click();
     await expect(drawer.getByText('Внешнее изменение', { exact: true })).toBeVisible();
     expect(errors().filter((message) => !message.includes('status of 503'))).toEqual([]);
+  } finally {
+    await fixture.cleanup();
+    await context.close();
+  }
+});
+
+test('Inline exercise editor controls stay compact, aligned, and reachable at phone widths', async ({ browser }) => {
+  const { context, page, userId, errors } = await openWorkout(browser, 390);
+  const fixture = createWorkoutFixtureScope(page, userId, 'Inline editor mobile layout');
+  try {
+    const reps = await fixture.createExercise('Длинное название упражнения для проверки мобильной компоновки', 'reps');
+    const duration = await fixture.createExercise('Планка с контролем корпуса', 'duration');
+    await fixture.savePlanV3([
+      { exerciseId: reps.id, notes: 'Положение корпуса сохраняйте ровным.', plannedSets: [
+        { targetRepsMin: 8, targetRepsMax: 12, targetWeightKg: 20, restSeconds: 45 },
+        { targetRepsMin: 10, targetWeightKg: 22.5, restSeconds: 60 },
+      ] },
+      { exerciseId: duration.id, notes: 'Не задерживайте дыхание.', plannedSets: [{ targetDurationSeconds: 90, restSeconds: 30 }] },
+    ]);
+
+    await page.getByRole('button', { name: 'Тренировки', exact: true }).click();
+    await page.locator('.flux-workout-list-button').filter({ hasText: fixture.planName }).click();
+    const drawer = page.locator('.flux-workout-plan-drawer');
+
+    for (const [width, exercise, removeSet] of [
+      [320, reps, true],
+      [375, duration, false],
+      [390, reps, false],
+      [430, duration, false],
+    ] as const) {
+      await page.setViewportSize({ width, height: 844 });
+      const exerciseRow = drawer.getByRole('button', { name: `Открыть ${exercise.name}` });
+      if (!(await drawer.getByRole('button', { name: 'Редактировать упражнение', exact: true }).count())) {
+        await exerciseRow.click();
+      } else if (await drawer.getByRole('button', { name: 'Редактировать упражнение', exact: true }).isVisible()) {
+        await drawer.getByLabel('Назад к плану').click();
+        await exerciseRow.click();
+      }
+      await drawer.getByRole('button', { name: 'Редактировать упражнение', exact: true }).click();
+      const form = drawer.locator('.flux-inline-exercise-editor');
+
+      if (removeSet) {
+        await drawer.getByRole('button', { name: 'Удалить подход 2' }).click();
+        await expect(drawer.getByRole('status').filter({ hasText: 'Подход удалён' })).toBeVisible();
+      }
+
+      const geometry = await form.evaluate((element) => {
+        const rect = (node: Element | null) => {
+          if (!node) return null;
+          const box = node.getBoundingClientRect();
+          return { x: box.x, y: box.y, width: box.width, height: box.height, right: box.right, bottom: box.bottom };
+        };
+        const note = element.querySelector('textarea')?.closest('label') ?? null;
+        const plannedSets = element.querySelector('.flux-plan-set-section');
+        const sectionHeading = plannedSets?.querySelector('.flux-section-heading') ?? null;
+        const setCount = sectionHeading?.querySelector('span') ?? null;
+        const primaryTime = element.querySelector('.flux-set-primary-time .flux-minutes-seconds');
+        const restTime = element.querySelector('.flux-set-rest-input .flux-minutes-seconds');
+        const restLegend = restTime?.querySelector('legend') ?? null;
+        const restOptionalLabel = restLegend?.querySelector('small') ?? null;
+        const deletion = element.querySelector('.flux-inline-set-card .flux-set-delete');
+        const deletionIcon = deletion?.querySelector('svg') ?? null;
+        const deletionLabel = deletion?.querySelector('span') ?? null;
+        const undo = element.querySelector('.flux-set-undo');
+        const actions = [...element.querySelectorAll('.flux-inline-edit-actions [data-slot="button"]')];
+        const inputHeights = [...element.querySelectorAll('.flux-inline-set-card input')].map((input) => input.getBoundingClientRect().height);
+        const actionMetrics = actions.map((button) => ({
+          ...rect(button),
+          scrollWidth: (button as HTMLElement).scrollWidth,
+          clientWidth: (button as HTMLElement).clientWidth,
+          text: button.textContent?.trim(),
+        }));
+        return {
+          note: rect(note), plannedSets: rect(plannedSets), deletion: rect(deletion),
+          sectionHeading: rect(sectionHeading), setCount: rect(setCount),
+          primaryTime: rect(primaryTime), restTime: rect(restTime), restLegendText: restLegend?.innerText.trim() ?? null,
+          restOptionalLabel: rect(restOptionalLabel),
+          deletionIcon: rect(deletionIcon), deletionLabel: rect(deletionLabel),
+          deletionText: deletion?.textContent?.trim() ?? '',
+          undo: rect(undo), inputHeights, actionMetrics,
+          formWidth: (element as HTMLElement).clientWidth,
+          formScrollWidth: (element as HTMLElement).scrollWidth,
+          drawerBodyPaddingBottom: Number.parseFloat(getComputedStyle(element.closest('.flux-workout-drawer-body')!).paddingBottom),
+        };
+      });
+
+      expect(geometry.note).not.toBeNull();
+      expect(geometry.plannedSets).not.toBeNull();
+      expect(geometry.plannedSets!.y - geometry.note!.bottom).toBeLessThanOrEqual(12);
+      expect(geometry.sectionHeading).not.toBeNull();
+      expect(geometry.setCount).not.toBeNull();
+      expect(geometry.sectionHeading!.right - geometry.setCount!.right).toBeGreaterThanOrEqual(10);
+      expect(geometry.restTime).not.toBeNull();
+      expect(geometry.restTime!.width).toBeLessThanOrEqual(200);
+      expect(geometry.restLegendText).toContain('Отдых');
+      expect(geometry.restLegendText).toContain('необязательно');
+      expect(geometry.restOptionalLabel!.width).toBeLessThanOrEqual(1);
+      expect(geometry.restOptionalLabel!.height).toBeLessThanOrEqual(1);
+      if (exercise === duration) {
+        expect(geometry.primaryTime).not.toBeNull();
+        expect(geometry.primaryTime!.width).toBeLessThanOrEqual(250);
+      }
+      expect(geometry.formScrollWidth).toBeLessThanOrEqual(geometry.formWidth + 1);
+      expect(geometry.drawerBodyPaddingBottom).toBeGreaterThanOrEqual(24);
+      expect(Math.max(...geometry.inputHeights) - Math.min(...geometry.inputHeights)).toBeLessThanOrEqual(1);
+      expect(geometry.actionMetrics).toHaveLength(2);
+      expect(geometry.actionMetrics[0]!.height).toBeGreaterThanOrEqual(44);
+      expect(geometry.actionMetrics[0]!.height).toBe(geometry.actionMetrics[1]!.height);
+      expect(geometry.actionMetrics.every((button) => button.scrollWidth <= button.clientWidth + 1)).toBe(true);
+      if (geometry.undo) expect(geometry.undo.height).toBeLessThanOrEqual(56);
+      if (geometry.deletion) {
+        expect(geometry.deletion.width).toBeGreaterThanOrEqual(84);
+        expect(geometry.deletion.height).toBeGreaterThanOrEqual(40);
+        expect(geometry.deletionText).toBe('Удалить');
+        expect(Math.abs((geometry.deletionIcon!.y + geometry.deletionIcon!.height / 2) - (geometry.deletionLabel!.y + geometry.deletionLabel!.height / 2))).toBeLessThanOrEqual(1);
+        expect(geometry.deletionLabel!.x).toBeGreaterThan(geometry.deletionIcon!.x);
+      }
+
+      await expectNoHorizontalOverflow(page);
+      await form.screenshot({ path: `test-results/inline-exercise-editor-${width}.png`, animations: 'disabled' });
+
+      if (removeSet) {
+        await drawer.getByRole('button', { name: 'Отменить', exact: true }).click();
+        await expect(page.getByLabel('Минимум повторений, подход 2')).toBeVisible();
+        await page.getByLabel('Минимум повторений, подход 2').fill('11');
+        await drawer.getByRole('button', { name: 'Отмена', exact: true }).click();
+        await expect(drawer.getByRole('alertdialog', { name: 'Отменить изменения упражнения?' })).toBeVisible();
+        await drawer.getByRole('button', { name: 'Продолжить редактирование', exact: true }).click();
+        await drawer.getByRole('button', { name: 'Отмена', exact: true }).click();
+        await drawer.getByRole('button', { name: 'Отменить изменения', exact: true }).click();
+      } else {
+        await drawer.getByRole('button', { name: 'Отмена', exact: true }).click();
+        await drawer.getByRole('button', { name: 'Назад к плану' }).click();
+      }
+    }
+
+    await page.setViewportSize({ width: 320, height: 560 });
+    await drawer.getByRole('button', { name: `Открыть ${reps.name}` }).click();
+    await drawer.getByRole('button', { name: 'Редактировать упражнение', exact: true }).click();
+    const note = page.getByLabel('Заметка к упражнению');
+    await note.focus();
+    await note.scrollIntoViewIfNeeded();
+    const focusedNote = await note.boundingBox();
+    expect(focusedNote).not.toBeNull();
+    expect(focusedNote!.y + focusedNote!.height).toBeLessThanOrEqual(560);
+    await expectNoHorizontalOverflow(page);
+
+    // Approximate enlarged system text while keeping the mobile viewport fixed.
+    await page.addStyleTag({ content: '.flux-inline-exercise-editor, .flux-inline-exercise-editor * { font-size: 20px !important; }' });
+    await expectNoHorizontalOverflow(page);
+    const scaledActions = await page.locator('.flux-inline-edit-actions [data-slot="button"]').evaluateAll((buttons) => buttons.map((button) => ({
+      width: (button as HTMLElement).clientWidth,
+      scrollWidth: (button as HTMLElement).scrollWidth,
+      height: (button as HTMLElement).getBoundingClientRect().height,
+    })));
+    expect(scaledActions).toHaveLength(2);
+    expect(scaledActions.every((button) => button.scrollWidth <= button.width + 1 && button.height >= 44)).toBe(true);
+    expect(errors()).toEqual([]);
   } finally {
     await fixture.cleanup();
     await context.close();

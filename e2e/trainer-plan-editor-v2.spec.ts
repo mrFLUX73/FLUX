@@ -284,8 +284,14 @@ test('Trainer Plan Editor V2: Visual Set Editor fits mobile widths', async ({ br
       await expect(page.getByLabel('Вес, подход 2')).toHaveValue('25.5');
       await expectNoHorizontalOverflow(page);
       await stableScreenshot(page, `test-results/trainer-visual-set-editor-${width}.png`);
-      page.once('dialog', (dialog) => dialog.accept());
-      await page.getByRole('button', { name: 'Закрыть', exact: true }).click();
+      await page.getByRole('button', { name: 'Назад', exact: true }).click();
+      const discardConfirmation = page.waitForEvent('dialog');
+      const closeEditor = page.getByRole('button', { name: 'Вернуться к тренировкам', exact: true }).click();
+      const dialog = await discardConfirmation;
+      expect(dialog.message()).toBe('Есть несохранённые изменения. Выйти без сохранения?');
+      await dialog.accept();
+      await closeEditor;
+      await expect(page.locator('.flux-workout-editor')).toHaveCount(0);
     }
   } finally {
     await client.context.close();
