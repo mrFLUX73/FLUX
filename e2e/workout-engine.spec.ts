@@ -70,7 +70,7 @@ test('Workout plan viewer uses V3 planned sets and opens an exercise detail with
     const setRows = exerciseDetail.locator('.flux-planned-set-row');
     await expect(setRows).toHaveCount(2);
     await expect(exerciseDetail.getByText('8–10 повторений', { exact: true })).toBeVisible();
-    await expect(exerciseDetail.getByText('42.5 кг', { exact: true })).toBeVisible();
+    await expect(exerciseDetail.getByText('42,5 кг', { exact: true })).toBeVisible();
     await expect(exerciseDetail.getByText('Отдых 00:30', { exact: true })).toBeVisible();
     await expect(setRows.nth(1)).toContainText('12 повторений');
     await expect(setRows.nth(1).locator('.flux-set-weight-field')).toContainText('35 кг');
@@ -274,12 +274,16 @@ test('Workout plan viewer edits reps and distance targets, inheriting and restor
     const distance = await fixture.createExercise('Инлайн дистанция', 'distance');
     const plan = await fixture.savePlanV3([
       { exerciseId: reps.id, plannedSets: [{ targetRepsMin: 8, targetRepsMax: 10, targetWeightKg: 25, restSeconds: 30 }] },
-      { exerciseId: distance.id, plannedSets: [{ targetDistanceM: 400, restSeconds: null }] },
+      { exerciseId: distance.id, plannedSets: [
+        { targetDistanceM: 400, restSeconds: null },
+        { targetDistanceM: 700, targetDurationSeconds: 120, restSeconds: 0 },
+      ] },
     ]);
     const before = await storedSessionRpc(page, 'get_my_workout_plan_v3', { p_plan_id: plan.id });
     expect(before.status).toBe(200);
     const beforeSteps = (before.data as { exercises: Array<{ name: string; planned_sets: Array<{ set_id: string }> }> }).exercises;
     const repsBefore = beforeSteps.find((step) => step.name === reps.name)!;
+    const distanceBefore = beforeSteps.find((step) => step.name === distance.name)!;
 
     await page.getByRole('button', { name: 'Тренировки', exact: true }).click();
     await page.locator('.flux-workout-list-button').filter({ hasText: fixture.planName }).click();
@@ -288,44 +292,101 @@ test('Workout plan viewer edits reps and distance targets, inheriting and restor
     await drawer.getByRole('button', { name: 'Редактировать упражнение', exact: true }).click();
     await page.getByLabel('Минимум повторений, подход 1').fill('6');
     await page.getByLabel('Максимум повторений, подход 1').fill('9');
-    await page.getByLabel('Вес, кг, подход 1').fill('32.5');
+    const firstWeight = page.getByLabel('Вес, кг, подход 1');
+    await firstWeight.fill('22,');
+    await expect(firstWeight).toHaveValue('22,');
+    await firstWeight.pressSequentially('5');
+    await expect(firstWeight).toHaveValue('22,5');
     await page.getByLabel('Отдых: минуты, подход 1').fill('0');
     await page.getByLabel('Отдых: секунды, подход 1').fill('45');
     await drawer.getByRole('button', { name: 'Добавить подход', exact: true }).click();
     await expect(page.getByLabel('Минимум повторений, подход 2')).toHaveValue('6');
-    await expect(page.getByLabel('Вес, кг, подход 2')).toHaveValue('32.5');
+    await expect(page.getByLabel('Вес, кг, подход 2')).toHaveValue('22,5');
+    await page.getByLabel('Вес, кг, подход 2').fill('22.5');
     await page.getByLabel('Удалить подход 2').click();
     await drawer.getByRole('button', { name: 'Отменить', exact: true }).click();
     await expect(page.getByLabel('Минимум повторений, подход 2')).toHaveValue('6');
     await drawer.getByRole('button', { name: 'Сохранить изменения', exact: true }).click();
     await expect(drawer.locator('.flux-planned-set-row').filter({ hasText: 'Подход 1' }).getByText('6–9 повторений', { exact: true })).toBeVisible();
-    await expect(drawer.locator('.flux-planned-set-row').filter({ hasText: 'Подход 1' }).getByText('32.5 кг', { exact: true })).toBeVisible();
+    await expect(drawer.locator('.flux-planned-set-row').filter({ hasText: 'Подход 1' }).getByText('22,5 кг', { exact: true })).toBeVisible();
     await expect(drawer.locator('.flux-planned-set-row').filter({ hasText: 'Подход 2' }).getByText('6–9 повторений', { exact: true })).toBeVisible();
-    await expect(drawer.locator('.flux-planned-set-row').filter({ hasText: 'Подход 2' }).getByText('32.5 кг', { exact: true })).toBeVisible();
+    await expect(drawer.locator('.flux-planned-set-row').filter({ hasText: 'Подход 2' }).getByText('22,5 кг', { exact: true })).toBeVisible();
 
     await drawer.getByLabel('Назад к плану').click();
+    await drawer.getByRole('button', { name: `Открыть ${reps.name}` }).click();
+    await drawer.getByRole('button', { name: 'Редактировать упражнение', exact: true }).click();
+    await expect(page.getByLabel('Вес, кг, подход 1')).toHaveValue('22,5');
+    await expect(page.getByLabel('Вес, кг, подход 2')).toHaveValue('22,5');
+    await drawer.getByRole('button', { name: 'Отмена', exact: true }).click();
+    await drawer.getByRole('button', { name: 'Назад к плану' }).click();
     await drawer.getByRole('button', { name: `Открыть ${distance.name}` }).click();
     await drawer.getByRole('button', { name: 'Редактировать упражнение', exact: true }).click();
+    const distanceCard = drawer.locator('.flux-inline-set-card').first();
+    for (const width of [320, 375, 390, 430]) {
+      await page.setViewportSize({ width, height: 844 });
+      const distanceGeometry = await distanceCard.evaluate((element) => {
+        const rect = (node: Element | null) => {
+          if (!node) return null;
+          const box = node.getBoundingClientRect();
+          return { left: box.left, right: box.right, top: box.top, bottom: box.bottom };
+        };
+        return {
+          card: rect(element),
+          heading: rect(element.querySelector('.flux-inline-set-heading')),
+          distance: rect(element.querySelector('.flux-set-distance-field')),
+          time: rect(element.querySelector('.flux-set-secondary-item:first-child .flux-minutes-seconds')),
+          rest: rect(element.querySelector('.flux-set-rest-input .flux-minutes-seconds')),
+        };
+      });
+      expect(distanceGeometry.heading, `set heading at ${width}px`).not.toBeNull();
+      expect(distanceGeometry.distance, `distance field at ${width}px`).not.toBeNull();
+      expect(distanceGeometry.distance!.top, `distance overlaps heading at ${width}px`).toBeGreaterThanOrEqual(distanceGeometry.heading!.bottom);
+      expect(distanceGeometry.time, `planned duration at ${width}px`).not.toBeNull();
+      expect(distanceGeometry.rest, `rest at ${width}px`).not.toBeNull();
+      expect(distanceGeometry.time!.top, `duration overlaps distance at ${width}px`).toBeGreaterThanOrEqual(distanceGeometry.distance!.bottom);
+      expect(distanceGeometry.rest!.top, `rest overlaps distance at ${width}px`).toBeGreaterThanOrEqual(distanceGeometry.distance!.bottom);
+      const timeAndRestOverlapHorizontally = distanceGeometry.time!.left < distanceGeometry.rest!.right && distanceGeometry.time!.right > distanceGeometry.rest!.left;
+      const timeAndRestOverlapVertically = distanceGeometry.time!.top < distanceGeometry.rest!.bottom && distanceGeometry.time!.bottom > distanceGeometry.rest!.top;
+      expect(timeAndRestOverlapHorizontally && timeAndRestOverlapVertically, `duration overlaps rest at ${width}px`).toBe(false);
+      expect(distanceGeometry.time!.left).toBeGreaterThanOrEqual(distanceGeometry.distance!.left);
+      expect(distanceGeometry.time!.right).toBeLessThanOrEqual(distanceGeometry.card!.right);
+      expect(distanceGeometry.rest!.left).toBeGreaterThanOrEqual(distanceGeometry.card!.left);
+      expect(distanceGeometry.rest!.right).toBeLessThanOrEqual(distanceGeometry.card!.right);
+      await expectNoHorizontalOverflow(page);
+      if (width === 390) await distanceCard.screenshot({ path: 'test-results/inline-exercise-distance-390-edit.png', animations: 'disabled' });
+    }
+    await page.setViewportSize({ width: 390, height: 844 });
     await page.getByLabel('Дистанция, подход 1').fill('1500');
-    await page.getByLabel('Плановая длительность: минуты, подход 1').fill('2');
-    await page.getByLabel('Плановая длительность: секунды, подход 1').fill('5');
-    await page.getByLabel('Отдых: минуты, подход 1').fill('0');
+    await page.getByLabel('Плановая длительность: минуты, подход 1').fill('8');
+    await page.getByLabel('Плановая длительность: секунды, подход 1').fill('30');
+    await page.getByLabel('Отдых: минуты, подход 1').fill('1');
     await page.getByLabel('Отдых: секунды, подход 1').fill('0');
+    await drawer.locator('.flux-workout-drawer-body').screenshot({ path: 'test-results/inline-exercise-distance-390-edit.png', animations: 'disabled' });
     await drawer.getByRole('button', { name: 'Сохранить изменения', exact: true }).click();
     const distanceRow = drawer.locator('.flux-planned-set-row').filter({ hasText: 'Подход 1' });
     await expect(distanceRow.getByText('1500 м', { exact: true })).toBeVisible();
-    await expect(distanceRow.locator('.flux-set-secondary-item').filter({ hasText: 'План' })).toContainText('02:05');
-    await expect(drawer.getByText('Без отдыха', { exact: true })).toBeVisible();
+    await expect(distanceRow.locator('.flux-set-secondary-item').filter({ hasText: 'План' })).toContainText('08:30');
+    await expect(distanceRow.getByText('01:00', { exact: true })).toBeVisible();
+    const zeroRestRow = drawer.locator('.flux-planned-set-row').filter({ hasText: 'Подход 2' });
+    await expect(zeroRestRow.getByText('700 м', { exact: true })).toBeVisible();
+    await expect(zeroRestRow.getByText('Без отдыха', { exact: true })).toBeVisible();
+    await distanceRow.screenshot({ path: 'test-results/inline-exercise-distance-390-view.png', animations: 'disabled' });
+    await drawer.getByLabel('Назад к плану').click();
+    await drawer.getByRole('button', { name: `Открыть ${distance.name}` }).click();
+    await expect(drawer.locator('.flux-planned-set-row').filter({ hasText: 'Подход 1' })).toContainText('1500 м');
+    await expect(drawer.locator('.flux-planned-set-row').filter({ hasText: 'Подход 1' }).locator('.flux-set-secondary-item').filter({ hasText: 'План' })).toContainText('08:30');
+    await expect(drawer.locator('.flux-planned-set-row').filter({ hasText: 'Подход 1' })).toContainText('01:00');
 
     const after = await storedSessionRpc(page, 'get_my_workout_plan_v3', { p_plan_id: plan.id });
     expect(after.status).toBe(200);
     const afterSteps = (after.data as { exercises: Array<{ name: string; planned_sets: Array<{ set_id: string; target_reps_min: number | null; target_reps_max: number | null; target_weight_kg: number | null; rest_seconds: number | null; target_distance_m: number | null; target_duration_seconds: number | null }> }> }).exercises;
     expect(afterSteps.find((step) => step.name === reps.name)?.planned_sets).toEqual([
-      expect.objectContaining({ set_id: repsBefore.planned_sets[0]!.set_id, target_reps_min: 6, target_reps_max: 9, target_weight_kg: 32.5, rest_seconds: 45 }),
-      expect.objectContaining({ target_reps_min: 6, target_reps_max: 9, target_weight_kg: 32.5, rest_seconds: 45 }),
+      expect.objectContaining({ set_id: repsBefore.planned_sets[0]!.set_id, target_reps_min: 6, target_reps_max: 9, target_weight_kg: 22.5, rest_seconds: 45 }),
+      expect.objectContaining({ target_reps_min: 6, target_reps_max: 9, target_weight_kg: 22.5, rest_seconds: 45 }),
     ]);
     expect(afterSteps.find((step) => step.name === distance.name)?.planned_sets).toEqual([
-      expect.objectContaining({ target_distance_m: 1500, target_duration_seconds: 125, rest_seconds: 0 }),
+      expect.objectContaining({ set_id: distanceBefore.planned_sets[0]!.set_id, target_distance_m: 1500, target_duration_seconds: 510, rest_seconds: 60 }),
+      expect.objectContaining({ set_id: distanceBefore.planned_sets[1]!.set_id, target_distance_m: 700, target_duration_seconds: 120, rest_seconds: 0 }),
     ]);
     await expectNoHorizontalOverflow(page);
     expect(errors()).toEqual([]);
@@ -457,6 +518,9 @@ test('Inline exercise editor controls stay compact, aligned, and reachable at ph
         const undo = element.querySelector('.flux-set-undo');
         const actions = [...element.querySelectorAll('.flux-inline-edit-actions [data-slot="button"]')];
         const inputHeights = [...element.querySelectorAll('.flux-inline-set-card input')].map((input) => input.getBoundingClientRect().height);
+        const addButton = element.querySelector('.flux-add-set');
+        const lastSet = element.querySelector('.flux-inline-set-card:last-child');
+        const addButtonGap = addButton && lastSet ? addButton.getBoundingClientRect().top - lastSet.getBoundingClientRect().bottom : null;
         const actionMetrics = actions.map((button) => ({
           ...rect(button),
           scrollWidth: (button as HTMLElement).scrollWidth,
@@ -471,6 +535,7 @@ test('Inline exercise editor controls stay compact, aligned, and reachable at ph
           deletionIcon: rect(deletionIcon), deletionLabel: rect(deletionLabel),
           deletionText: deletion?.textContent?.trim() ?? '',
           undo: rect(undo), inputHeights, actionMetrics,
+          addButtonGap,
           formWidth: (element as HTMLElement).clientWidth,
           formScrollWidth: (element as HTMLElement).scrollWidth,
           drawerBodyPaddingBottom: Number.parseFloat(getComputedStyle(element.closest('.flux-workout-drawer-body')!).paddingBottom),
@@ -491,8 +556,16 @@ test('Inline exercise editor controls stay compact, aligned, and reachable at ph
       expect(geometry.restOptionalLabel!.height).toBeLessThanOrEqual(1);
       if (exercise === duration) {
         expect(geometry.primaryTime).not.toBeNull();
-        expect(geometry.primaryTime!.width).toBeLessThanOrEqual(250);
+        expect(geometry.primaryTime!.width).toBeLessThanOrEqual(220);
+        expect(geometry.primaryTime!.height).toBeGreaterThanOrEqual(44);
+        expect(geometry.restTime!.height).toBeGreaterThanOrEqual(44);
+        expect(Math.abs(geometry.primaryTime!.width - geometry.restTime!.width)).toBeLessThanOrEqual(1);
+        await page.setViewportSize({ width: 390, height: 844 });
+        await form.screenshot({ path: 'test-results/inline-exercise-duration-390-edit.png', animations: 'disabled' });
+        await page.setViewportSize({ width, height: 844 });
       }
+      expect(geometry.addButtonGap).not.toBeNull();
+      expect(geometry.addButtonGap).toBeGreaterThanOrEqual(8);
       expect(geometry.formScrollWidth).toBeLessThanOrEqual(geometry.formWidth + 1);
       expect(geometry.drawerBodyPaddingBottom).toBeGreaterThanOrEqual(24);
       expect(Math.max(...geometry.inputHeights) - Math.min(...geometry.inputHeights)).toBeLessThanOrEqual(1);
@@ -548,6 +621,59 @@ test('Inline exercise editor controls stay compact, aligned, and reachable at ph
     })));
     expect(scaledActions).toHaveLength(2);
     expect(scaledActions.every((button) => button.scrollWidth <= button.width + 1 && button.height >= 44)).toBe(true);
+    expect(errors()).toEqual([]);
+  } finally {
+    await fixture.cleanup();
+    await context.close();
+  }
+});
+
+test('Inline editor keeps both bottom actions reachable at 320px with and without keyboard-height viewport', async ({ browser }) => {
+  const { context, page, userId, errors } = await openWorkout(browser, 320);
+  const fixture = createWorkoutFixtureScope(page, userId, 'Inline editor bottom actions');
+  try {
+    const exercise = await fixture.createExercise('Проверка нижних действий', 'reps');
+    await fixture.savePlanV3([{ exerciseId: exercise.id, plannedSets: [
+      { targetRepsMin: 8, targetRepsMax: 10, targetWeightKg: 20, restSeconds: 30 },
+      { targetRepsMin: 8, targetRepsMax: 10, targetWeightKg: 20, restSeconds: 30 },
+    ] }]);
+
+    await page.getByRole('button', { name: 'Тренировки', exact: true }).click();
+    await page.locator('.flux-workout-list-button').filter({ hasText: fixture.planName }).click();
+    const drawer = page.locator('.flux-workout-plan-drawer');
+    await drawer.getByRole('button', { name: `Открыть ${exercise.name}` }).click();
+    await drawer.getByRole('button', { name: 'Редактировать упражнение', exact: true }).click();
+
+    const body = drawer.locator('.flux-workout-drawer-body');
+    const cancel = drawer.getByRole('button', { name: 'Отмена', exact: true });
+    const save = drawer.getByRole('button', { name: 'Сохранить изменения', exact: true });
+    const assertBothActionsVisible = async (height: number) => {
+      const boxes = await Promise.all([cancel.boundingBox(), save.boundingBox()]);
+      expect(boxes[0]).not.toBeNull();
+      expect(boxes[1]).not.toBeNull();
+      for (const box of boxes) {
+        expect(box!.x).toBeGreaterThanOrEqual(0);
+        expect(box!.x + box!.width).toBeLessThanOrEqual(320);
+        expect(box!.y).toBeGreaterThanOrEqual(0);
+        expect(box!.y + box!.height).toBeLessThanOrEqual(height);
+      }
+    };
+
+    await body.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+    await save.scrollIntoViewIfNeeded();
+    await assertBothActionsVisible(844);
+
+    // Approximate the reduced usable viewport while the iPhone keyboard is open.
+    await page.setViewportSize({ width: 320, height: 420 });
+    await expect.poll(async () => (await drawer.boundingBox())?.height ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(420);
+    const weight = page.getByLabel('Вес, кг, подход 1');
+    await weight.focus();
+    await weight.scrollIntoViewIfNeeded();
+    await body.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+    await save.scrollIntoViewIfNeeded();
+    await assertBothActionsVisible(420);
+    await expectNoHorizontalOverflow(page);
+    await drawer.locator('.flux-workout-drawer-body').screenshot({ path: 'test-results/inline-exercise-actions-320-keyboard-height.png', animations: 'disabled' });
     expect(errors()).toEqual([]);
   } finally {
     await fixture.cleanup();

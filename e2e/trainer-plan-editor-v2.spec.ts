@@ -130,7 +130,9 @@ test(`Trainer V3 execution: client-safe snapshot preserves per-set plan and actu
     const openPrivateExercise = clientPlanViewer.getByRole('button', { name: `Открыть ${privateName}` });
     await openPrivateExercise.click();
     const clientExerciseDetail = client.page.getByRole('dialog', { name: privateName });
-    await expect(clientExerciseDetail.getByText('8 повторений · 40 кг', { exact: true })).toBeVisible();
+    const firstPrivateSet = clientExerciseDetail.locator('.flux-planned-set-row').filter({ hasText: 'Подход 1' });
+    await expect(firstPrivateSet.getByText('8 повторений', { exact: true })).toBeVisible();
+    await expect(firstPrivateSet.getByText('40 кг', { exact: true })).toBeVisible();
     await expect(clientExerciseDetail.getByText('Отдых 00:25', { exact: true })).toBeVisible();
     await expect(clientExerciseDetail.getByRole('button', { name: 'Редактировать упражнение', exact: true })).toHaveCount(0);
     expect(await clientExerciseDetail.textContent()).not.toContain(privateExerciseId!);

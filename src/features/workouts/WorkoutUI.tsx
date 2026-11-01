@@ -38,6 +38,7 @@ import { elapsedDurationSeconds, elapsedDurationSecondsPrecise, pauseDurationClo
 const dateLabel = (value: string) => new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long' }).format(new Date(value));
 const timerLabel = (seconds: number) => `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}`;
 const numberOrNull = (value: string) => value.trim() === '' ? null : Number(value);
+const weightLabel = (value: number) => `${value.toLocaleString('ru-RU', { useGrouping: false, maximumFractionDigits: 20 })} кг`;
 
 const measurementLabel = (measurementType: WorkoutPlanStep['measurementType']) => ({ reps: 'Повторения', duration: 'Длительность', distance: 'Дистанция' })[measurementType];
 
@@ -49,7 +50,7 @@ function plannedSetLabel(step: Pick<WorkoutPlanStep, 'measurementType'>, planned
         ? `${plannedSet.targetRepsMin}–${plannedSet.targetRepsMax} повторений`
         : `${plannedSet.targetRepsMin} повторений`);
     }
-    if (plannedSet.targetWeightKg != null) targets.push(`${plannedSet.targetWeightKg} кг`);
+    if (plannedSet.targetWeightKg != null) targets.push(weightLabel(plannedSet.targetWeightKg));
   }
   if (step.measurementType === 'duration' && plannedSet.targetDurationSeconds != null) targets.push(timerLabel(plannedSet.targetDurationSeconds));
   if (step.measurementType === 'distance') {
@@ -409,6 +410,13 @@ function ExercisePlanDetail({ step, focusRef, canEdit, editing, saving, error, c
 }
 
 function PlannedSetCard({ step, plannedSet, setNumber, editing, saving = false, canRemove = true, parseNumber, onUpdate, onRemove }: { step: SourceAwareWorkoutPlanStepV3; plannedSet: InlineSetDraft; setNumber: number; editing: boolean; saving?: boolean; canRemove?: boolean; parseNumber?: (value: string) => number | null; onUpdate?: (changes: Partial<InlineSetDraft>) => void; onRemove?: () => void }) {
+  const [weightText, setWeightText] = useState(() => plannedSet.targetWeightKg == null ? '' : String(plannedSet.targetWeightKg).replace('.', ','));
+  const weightInputRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (document.activeElement !== weightInputRef.current) {
+      setWeightText(plannedSet.targetWeightKg == null ? '' : String(plannedSet.targetWeightKg).replace('.', ','));
+    }
+  }, [plannedSet.targetWeightKg]);
   const min = plannedSet.targetRepsMin;
   const max = plannedSet.targetRepsMax;
   const repsText = min != null && max != null && min !== max ? `${min}–${max} повторений` : min != null ? `${min} повторений` : max != null ? `до ${max} повторений` : null;
@@ -417,7 +425,17 @@ function PlannedSetCard({ step, plannedSet, setNumber, editing, saving = false, 
     <div className="flux-inline-set-heading"><strong>Подход {setNumber}</strong>{editing && <button type="button" className="flux-set-delete" aria-label={`Удалить подход ${setNumber}`} disabled={saving || !canRemove} onClick={onRemove}><Trash2 aria-hidden="true" /><span>Удалить</span></button>}</div>
     {step.measurementType === 'reps' && <div className="flux-set-primary-grid flux-set-primary-grid-reps">
       {editing ? <fieldset className="flux-set-reps-range"><legend>Повторения</legend><div><label><span>Мин</span><input aria-label={`Минимум повторений, подход ${setNumber}`} inputMode="numeric" autoComplete="off" value={min ?? ''} placeholder="—" disabled={saving} onChange={(event) => onUpdate?.({ targetRepsMin: numeric(event.target.value) })} /></label><span className="flux-set-range-separator" aria-hidden="true">–</span><label><span>Макс</span><input aria-label={`Максимум повторений, подход ${setNumber}`} inputMode="numeric" autoComplete="off" value={max ?? ''} placeholder="—" disabled={saving} onChange={(event) => onUpdate?.({ targetRepsMax: numeric(event.target.value) })} /></label></div></fieldset> : repsText && <div className="flux-set-primary-value"><span>Повторения</span><strong>{repsText}</strong></div>}
-      {(plannedSet.targetWeightKg != null || editing) && <label className="flux-set-weight-field"><span>Вес, кг</span>{editing ? <input aria-label={`Вес, кг, подход ${setNumber}`} inputMode="decimal" autoComplete="off" value={plannedSet.targetWeightKg ?? ''} placeholder="—" disabled={saving} onChange={(event) => onUpdate?.({ targetWeightKg: numeric(event.target.value) })} /> : <strong>{plannedSet.targetWeightKg} кг</strong>}</label>}
+      {(plannedSet.targetWeightKg != null || editing) && <label className="flux-set-weight-field"><span>Вес, кг</span>{editing ? <input ref={weightInputRef} aria-label={`Вес, кг, подход ${setNumber}`} inputMode="decimal" autoComplete="off" value={weightText} placeholder="—" disabled={saving} onChange={(event) => {
+        const next = event.target.value.trim();
+        if (!/^\d*(?:[.,]\d*)?$/.test(next)) return;
+        setWeightText(next);
+        if (!next) { onUpdate?.({ targetWeightKg: null }); return; }
+        const normalized = next.replace(',', '.');
+        const numericText = normalized.endsWith('.') ? normalized.slice(0, -1) : normalized;
+        if (!numericText) return;
+        const numericValue = Number(numericText);
+        if (Number.isFinite(numericValue) && numericValue >= 0) onUpdate?.({ targetWeightKg: numericValue });
+      }} /> : <strong>{plannedSet.targetWeightKg == null ? '' : weightLabel(plannedSet.targetWeightKg)}</strong>}</label>}
     </div>}
     {step.measurementType === 'duration' && (editing ? <div className="flux-set-primary-time"><MinutesSecondsInput label="Длительность" value={plannedSet.targetDurationSeconds} onChange={(value) => onUpdate?.({ targetDurationSeconds: value })} minutesAriaLabel={`Длительность: минуты, подход ${setNumber}`} secondsAriaLabel={`Длительность: секунды, подход ${setNumber}`} disabled={saving} compact /></div> : plannedSet.targetDurationSeconds != null && <div className="flux-set-primary-value"><span>Длительность</span><strong>{timerLabel(plannedSet.targetDurationSeconds)}</strong></div>)}
     {step.measurementType === 'distance' && <>
